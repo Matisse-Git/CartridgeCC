@@ -48,7 +48,7 @@ insertion and 420 ms reverse ejection. Readiness still waits for real core initi
 Motion off bypasses both media transitions and carousel spring movement. Optional original contact
 audio defaults off. Motion/sound/shortcut settings and touch import/scrape controls are behind Tools;
 the collection at rest shows its objects, title, small hints and Tools. Existing controller shortcuts
-operate without opening it. Scraper UX redesign remains deferred as requested. No new confirmation
+operate without opening it. The then-deferred scraper UX is extended in M3 below. No new confirmation
 dialog, proprietary asset, always-moving decoration, disc system or alternate layout is introduced.
 
 ## Implemented online scraping increment
@@ -81,8 +81,9 @@ Accepted assets and provenance are cached locally; network failures must never b
 
 Local image import, online one-title/current-GBA-collection scraping, independent metadata/media
 candidates, manual review and accepted provenance are implemented. Folder imports grow the GBA library;
-saved batches resume after reopening with accepted choices preserved. Selected subsets/consoles,
-scrape packs, undo and automatic fill-missing remain M3 work.
+saved batches resume after reopening with accepted choices preserved. M3 adds selected subsets,
+preferences, reviewed fill-missing and persistent undo below. Multi-console scopes, scrape packs and
+unattended acceptance remain future work.
 See [LABEL_SCRAPING.md](LABEL_SCRAPING.md) for the complete required workflow and current boundaries.
 
 ## Explicitly deferred
@@ -115,7 +116,7 @@ automatically on cold launch. New scopes replace unfinished search progress, wit
 Unapplied preview/metadata drafts are discarded on recreation. See LIBRARY_PROGRESS for exact limits.
 
 Owner feedback: saved-batch resume works, but the review flow is tedious. A simpler controller-led
-scraper UX remains required and is deferred to a later version at the owner's request.
+scraper UX was deferred at that stage; M3 now implements the focused review increment below.
 
 ## Active M3 library management
 
@@ -142,5 +143,17 @@ Forgetting a root keeps games/media/saves and stops its scans; choosing the root
 History accrues during Running only, with 15-second checkpoints and pause/eject/background flushes.
 Pending failed writes remain attached to their original hash for retry and display a persistent warning.
 Last played reflects a successful running/resumed session, not the insertion animation. There is no
-zero-loss process-death promise beyond completed checkpoints. Multi-system/scoped scraped-pack and
-review-flow extensions remain planned; no online automatic replacement is added by this milestone.
+zero-loss process-death promise beyond completed checkpoints. Multi-system/scoped scrape-pack support
+remains planned; existing choices are never implicitly replaced.
+
+## M3 faster API review
+
+Y offers selected titles and missing-label scopes alongside single/GBA/all. A toggles target titles;
+X selects all/clears. Region/language settings persist and rank provider-tagged choices without hiding
+alternatives. Search the current title first; choose a match, preview a preferred flat label, fill missing
+metadata and advance. Existing choices display as kept. All media and individual field/variant controls
+remain available for explicit replacement. One previous artwork/metadata operation per game can be
+undone after reopening, through review or Details. It does not rewind saves/history/ROMs/favorites.
+Opaque review pages pause collection rendering. A hidden batch target's actual 3D preview restores the
+saved filter/focus after apply/cancel/recreation. No network resume or unattended acceptance on launch.
+GBA is the only supported console; disc labels/templates and multi-console scopes remain future work.

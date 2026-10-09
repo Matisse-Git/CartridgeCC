@@ -11,7 +11,7 @@ data class LabelRef(val assetId: String, val fit: LabelFit = LabelFit.Fit, val q
 }
 data class LibraryGame(val id: String, val title: String, val sourceUri: String, val label: LabelRef? = null,
     val metadata: Map<String, MetadataValue> = emptyMap(), val media: Map<String, MediaSelection> = emptyMap(),
-    val favorite: Boolean = false, val playMs: Long = 0, val lastPlayed: Long = 0) {
+    val favorite: Boolean = false, val playMs: Long = 0, val lastPlayed: Long = 0, val canUndoEnrichment: Boolean = false) {
     init { require(id.matches(Regex("[a-f0-9]{64}"))) }
 }
 data class LibrarySnapshot(val slots: List<LibraryGame?> = listOf(null), val selectedSlot: Int = 0,
@@ -32,7 +32,10 @@ interface CollectionRepository {
     suspend fun select(slot: Int)
     suspend fun setLabel(gameId: String, label: LabelRef?)
     suspend fun setMetadata(gameId: String, values: Map<String, MetadataValue>)
+    /** Atomically fill absent fields; existing manual/provider values always win. */
+    suspend fun fillMissingMetadata(gameId: String, values: Map<String, MetadataValue>): Int
     suspend fun setMedia(gameId: String, media: MediaSelection)
+    suspend fun undoEnrichment(gameId: String): Boolean
     suspend fun setFavorite(gameId: String, favorite: Boolean)
     suspend fun setQuery(query: LibraryQuery)
     suspend fun recordPlay(gameId: String, elapsedMs: Long, startedAt: Long? = null)

@@ -41,3 +41,9 @@
 - Persist query preferences separately from canonical slots; sorting/filtering must retain focused game
   identity and saves. Index only trustworthy positive document stamps; Verify all always hashes. Never
   mark unseen documents missing after cancellation or an incomplete traversal. Count only Running time.
+- Scrape one title at a time after publishing targets. Preserve v1 journal compatibility and source tags;
+  preferences rank alternatives without hiding them. Re-read accepted Room values before resumed review.
+- Fill missing metadata atomically; never overwrite existing choices implicitly. Enrichment undo restores
+  only label/metadata/media, not ROMs, saves, source, membership or history. Keep its previous files available.
+- A filtered scrape preview must never persist a temporary collection query/selection. Test apply, cancel
+  and recreation; opaque scraper pages pause 3D, actual label preview resumes it.

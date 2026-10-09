@@ -167,9 +167,8 @@ has one placeholder; inactive pooled instances lie beyond the far clip and label
 to three. Registered roots
 persist, while an interrupted scan restarts/deduplicates on explicit Rescan.
 
-Selected subsets/consoles, fill-missing automation, scrape packs, accepted-artwork undo, incremental rescanning and
-directory-removal UI remain planned. See LABEL_SCRAPING and ADRs 0005/0006. Renderer/native surface
-ownership is unchanged by the scraper and directory importer.
+Selected console scopes and scrape packs remain planned. M3 adds incremental indexing/root management
+and reviewed enrichment below; native surface ownership stays unchanged.
 
 ## M3 projection, index and history
 
@@ -204,3 +203,25 @@ Storage/migration API references were rechecked against official Android documen
 [SAF documents](https://developer.android.com/training/data-storage/shared/documents-files) and
 [Room migrations](https://developer.android.com/training/data-storage/room/migrating-db-versions).
 Pinned dependencies and the native/3D surface strategy are unchanged.
+
+## M3 reviewed enrichment
+
+ScrapePreferences persists region/language separately from the saved batch. RetroBase carries actual
+regional title and synopsis-language tags alongside values. Stable preference ranking keeps tags aligned,
+flat labels before extra media and all alternatives available; unknown tags stay unknown. Journal v2
+retains outcomes and tags while reading v1/untagged candidates. Room remains the accepted-data authority.
+Selected/missing-label scopes snapshot canonical content IDs before network work. Only the current title
+is searched; Next loads cached candidates or searches the next pending one. Resume refreshes current
+accepted values, preventing stale bare journal game records from enabling silent replacement.
+
+A chosen match opens Review. Preferred-label preview is guarded by existing-label protection; explicit
+media selection retains replacement control. Fill missing metadata reads and merges in one Room
+transaction so accepted manual/provider values always win. Room v6 stores one previous enrichment
+snapshot per game before changed label/metadata/media writes; no-op writes retain the snapshot. Undo
+restores only enrichment and consumes it, independently of sources, saves/history/favorites or membership.
+Explicit 5→6 migration extends the full chain without destructive fallback.
+
+A filtered-out preview target uses a transient canonical projection. It does not persist a query or
+selection change. Apply/cancel/recreation therefore restore the original collection view/focus while
+writes address the target hash. Opaque scrape pages pause Filament; genuine GLB preview resumes it.
+Native/core/saves and dependencies remain unchanged. See ADR 0010 and M3_SCRAPE_REVIEW.

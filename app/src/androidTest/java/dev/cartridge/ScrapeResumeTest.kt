@@ -68,7 +68,16 @@ class ScrapeResumeTest {
                 choose("probe-two.gba")
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame != null }
                 ui.onNodeWithTag("scrape").performClick(); ui.onNodeWithTag("scrape-action-1").performClick()
-                await(scenario) { it.scraper.state.value.busy && it.scraper.state.value.entries[0].searched && provider.calls.size == 2 }
+                await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.current?.searched == true }
+                assertEquals(1, provider.calls.size) // Review is available before searching the second title.
+                ui.onNodeWithTag("scrape-action-0").performClick()
+                await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.page == ScrapePage.Review }
+                ui.onNodeWithTag("review-fields").performClick()
+                ui.onNodeWithTag("metadata-year").performClick(); ui.onNodeWithTag("scrape-action-1").performClick()
+                await(scenario) { !it.scraper.state.value.busy && it.coordinator.state.value.slots[0]!!.metadata["year"]?.value == "2002" }
+                ui.onNodeWithTag("scrape-back").performClick()
+                ui.onNodeWithTag("review-next").performClick()
+                await(scenario) { it.scraper.state.value.busy && it.scraper.state.value.index == 1 && provider.calls.size == 2 }
                 ui.onNodeWithTag("scrape-back").performClick()
                 await(scenario) { !it.scraper.state.value.busy && !it.scraper.state.value.visible }
                 scenario.recreate()
@@ -84,14 +93,8 @@ class ScrapeResumeTest {
                 scenario.onActivity {
                     assertEquals(1, provider.calls.count { it.contains("one") })
                     assertEquals(2, provider.calls.count { it.contains("two") })
-                    assertTrue(it.scraper.state.value.entries[1].matches.isEmpty())
+                    assertTrue(it.scraper.state.value.entries[0].matches.isEmpty())
                 }
-                ui.onNodeWithTag("scrape-action-0").performClick(); ui.onNodeWithTag("scrape-action-0").performClick()
-                ui.onNodeWithTag("metadata-year").performClick(); ui.onNodeWithTag("scrape-action-1").performClick()
-                await(scenario) { !it.scraper.state.value.busy && it.coordinator.state.value.slots[0]!!.metadata["year"]?.value == "2002" }
-                ui.onNodeWithTag("scrape-back").performClick(); ui.onNodeWithTag("scrape-back").performClick()
-                ui.onNodeWithTag("scrape-action-2").performClick() // Next title, loading its candidates from disk.
-                await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.index == 1 }
                 scenario.recreate()
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady && it.scraper.state.value.ready }
                 ui.onNodeWithTag("scrape").performClick(); ui.onNodeWithTag("scrape-action-3").performClick()

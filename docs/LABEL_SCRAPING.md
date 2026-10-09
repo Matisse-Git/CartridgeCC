@@ -4,8 +4,9 @@ Required by the owner on 2026-10-09. M1 now implements single local PNG/JPEG/Web
 real 3D Fit/Crop/rotation preview and independent persistent labels. RP5 tests prove per-game GPU pixels,
 cancel, identical-ROM reimport and database reopening. Real RetroBase API scraping now adds one-title
 and current-GBA-collection search, ranked multiple candidates, regional thumbnails, independent
-label/media/metadata choices and accepted provenance. The full workflow below also includes future
-scrape packs, selected subsets/consoles, undo and durable jobs. Offline ROM launching is independent.
+label/media/metadata choices and accepted provenance. M3 adds selected scopes, preferences, protected
+fill-missing, faster reviewed batches and undo. Packs/multi-console scopes remain future work. Offline
+ROM launching is independent.
 
 ## User flow
 
@@ -82,32 +83,42 @@ SCRAPING_REPORT and LICENSING for evidence and precise Socket/Slot findings.
 ## Current implementation and limits
 
 GBA only, a growing persistent collection, one accepted label and one asset per additional-media category
-per game. SAF folder/Add .gba imports fill empty slots then append distinct content hashes. One-title,
-GBA collection and all-current-games scopes operate on deduplicated existing identities; the latter
-two remain the same scope while GBA is the only system. Every apply is explicit, protecting unchecked
-fields/current labels; no automatic fill-missing or apply-to-remaining policy. Search cancellation
-preserves accepted choices; failed and unfinished searches can retry or explicitly resume after reopening.
+per game. SAF imports deduplicate content hashes. Single/GBA/all, selected-title and missing-label scopes
+use canonical identities; collection filters do not silently reduce whole-library scope. GBA/all remain
+identical with one console. A saved batch is published before network work. Search only the current title,
+review its match, then explicitly advance; completed candidates survive cancellation/relaunch.
 
-Room v4 retains v2's per-field/provider/record/source/license/time and asset type/region, adding saved
-SAF directory URIs and removal exclusions through explicit migrations. Collection removal retains
-accepted choices; Undo/Add restores them, while Rescan respects exclusions. Originals carry a
-local SHA-256 content ID, while label Fit/Crop/rotation remains separate. Dimensions are checked at
-decode, not stored as provenance. Edition/disc/language tags and selection history are not modeled yet.
-Candidate JSON has a one-hour TTL and a 32-file/32-MiB cap; accepted assets persist offline.
+Review offers a preferred flat-label 3D preview, Fill missing metadata and Next. Persistent title/label
+region and description-language preferences rank source-tagged alternatives stably, without hiding any.
+Defaults US/English; Any keeps source order. Unknown tags stay untagged. All media and individual metadata
+fields/variants allow explicit replacements; existing values are displayed. Fill missing reads/merges
+current Room data atomically, preserving manual and previous provider choices. It cannot replace labels.
+No unattended apply-all or automatic acceptance of ambiguous title matches is implemented.
 
-ScrapeJournal stores targets, corrected queries, search/error status and review index in an atomic
-manifest, plus candidates in one file per title (≤8 MiB per file). Only current candidates occupy RAM.
-Completed searches load from disk on Resume; no implicit network activity on cold launch. One saved
-batch is supported. Starting a new scope replaces unfinished search progress, preserving applied data.
-Unapplied previews/checkbox drafts are discarded on recreation. See LIBRARY_PROGRESS and ADR 0006.
+Room v6 retains per-field/provider/record/source/license/time and asset type/region through explicit
+migrations, adding one prior enrichment snapshot per game. Changed label/metadata/media writes save it
+atomically; no-op writes retain it. Undo restores only the previous enrichment and consumes the snapshot.
+It survives reopening; ROM/source/membership/saves/history/favorites/query remain independent. Original
+files remain available. Removal keeps accepted choices/undo; rescan exclusions persist.
 
-Selected subsets/consoles, preferences, multiple providers, scrape-pack import, accepted-artwork undo, full metadata/details
-views and disc templates/emulation are future work. Directory rescans rehash files; scan cursors are
-not resumed after recreation, but completed imports remain deduplicated.
-Cancelled imports can leave unreferenced originals; reference-aware garbage collection is pending.
-The provider's source checksum is not verified; cached originals have the app's own SHA-256 identity.
+Originals have local SHA-256 content IDs; Fit/Crop/rotation are separate recipes. Dimensions are checked
+at decode, not stored in provenance. Edition/disc tags and multi-step selection history are not modeled.
+Accepted metadata stores values/provenance, not its candidate's region/language tag separately. Candidate
+cache TTL is one hour with a 32-file/32-MiB cap; accepted assets persist offline. Source checksums are not
+verified; cached originals use the app's own hash.
 
-M3 library projection keeps full canonical entries separate from favorites/search/sort views.
-The GBA/all scraper scopes still include the whole active collection; filters do not silently shrink
-those scopes. Details offers a direct single-title entry and local changed-field edits with independent
-provenance. Existing reviewed labels/media and saved batches are unchanged. See M3_PROGRESS.
+ScrapeJournal v2 holds targets, corrected queries, searched/error status, review position and applied/
+skipped outcomes in an atomic manifest; tagged candidates use one ≤8-MiB file per title. Only current
+candidates occupy RAM. It reads v1 and untagged candidates. Resume refreshes accepted Room values; no
+implicit network activity on launch. One saved batch; a new scope replaces progress, preserving accepted
+data. Unapplied preview/checkbox drafts are discarded on recreation. Undo does not recompute batch counts.
+
+A filtered target's preview uses a temporary view projection without persisting query/focus changes.
+Apply/cancel/recreation restore the saved collection view. Opaque scraper pages pause the Filament loop;
+the real preview resumes it. Gameplay surface/core ownership is unchanged. See M3_SCRAPE_REVIEW/ADR 0010.
+
+Remaining: selected-console scopes, multiple providers, scrape-pack import, disc templates/emulation,
+reference-aware garbage collection and large-batch/storage-failure validation. Incremental directory
+rescans/details/favorites/local metadata are implemented in M3_PROGRESS; scan cursors do not resume
+across recreation, but completed imports remain deduplicated. Provider data/image rights and exact
+Socket backend/coverage remain unresolved as documented in PROVIDER_RESEARCH and LICENSING.

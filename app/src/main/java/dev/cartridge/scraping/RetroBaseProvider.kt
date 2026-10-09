@@ -58,6 +58,8 @@ class RetroBaseProvider(private val cache: File) : ArtworkProvider {
         }.distinct()
         if (names.isEmpty()) return null
         val metadata = linkedMapOf("title" to names)
+        val tags = linkedMapOf("title" to names.map { name ->
+            MetadataTags(region = regional?.keys()?.asSequence()?.firstOrNull { regional.text(it) == name }.orEmpty()) })
         for (field in listOf("year", "developer", "publisher", "genre")) game.text(field)?.let { metadata[field] = listOf(it) }
         val synopses = game.optJSONObject("synopses")
         val descriptions = buildList {
@@ -66,6 +68,8 @@ class RetroBaseProvider(private val cache: File) : ArtworkProvider {
             synopses?.keys()?.forEach { synopses.text(it)?.let(::add) }
         }.distinct()
         if (descriptions.isNotEmpty()) metadata["description"] = descriptions
+        if (descriptions.isNotEmpty()) tags["description"] = descriptions.map { description ->
+            MetadataTags(language = synopses?.keys()?.asSequence()?.firstOrNull { synopses.text(it) == description }.orEmpty()) }
         val media = game.optJSONArray("media")
         val artwork = buildList {
             if (media != null) repeat(media.length()) { index ->
@@ -77,7 +81,7 @@ class RetroBaseProvider(private val cache: File) : ArtworkProvider {
             }
         }.distinctBy { it.url }.sortedWith(compareByDescending<ArtworkCandidate> { it.isLabel }.thenBy { it.region })
         return GameCandidate(id, names.first(), platform, names, metadata, artwork,
-            "$base/games/$id", meta?.text("license") ?: "Provider licence not supplied", exact)
+            "$base/games/$id", meta?.text("license") ?: "Provider licence not supplied", exact, tags)
     }
     private fun JSONObject.text(key: String): String? = if (isNull(key)) null else optString(key).trim().take(16_384).takeIf { it.isNotEmpty() && it != "null" }
     private fun normalized(value: String) = value.lowercase().replace(Regex("\\([^)]*\\)|\\[[^]]*]"), "")

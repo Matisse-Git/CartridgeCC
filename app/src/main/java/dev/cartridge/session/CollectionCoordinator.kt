@@ -33,6 +33,7 @@ data class CollectionState(
     val allGames: List<LibraryGame> = emptyList(),
     val query: LibraryQuery = LibraryQuery(),
     val historyWarning: String? = null,
+    val lastLabelAppliedTo: String? = null,
 ) {
     val selectedGame get() = slots[selection.index]
     val title get() = selectedGame?.title ?: if (allGames.isNotEmpty()) "No matching games" else "Your collection is empty"
@@ -75,6 +76,9 @@ class CollectionCoordinator(
     private var playActive = false
     private val pendingHistory = mutableMapOf<String, Pair<Long, Long?>>()
     private var playStartedAt: Long? = null
+    // A filtered-out scrape target is projected only for the draft. Never persist a temporary query
+    // or selection: a process death during preview must leave the user's collection view intact.
+    private var previewGameId: String? = null
 
     init {
         observers += scope.launch {
@@ -107,9 +111,9 @@ class CollectionCoordinator(
     }
     private fun applySnapshot(snapshot: LibrarySnapshot, forceFocus: Boolean = false) {
         canonical = snapshot
-        val focus = if (forceFocus) snapshot.slots[snapshot.selectedSlot]?.id else state.value.selectedGame?.id ?: snapshot.slots[snapshot.selectedSlot]?.id
+        val focus = previewGameId ?: if (forceFocus) snapshot.slots[snapshot.selectedSlot]?.id else state.value.selectedGame?.id ?: snapshot.slots[snapshot.selectedSlot]?.id
         val games = snapshot.slots.filterNotNull()
-        val matching = snapshot.query.apply(games)
+        val matching = if (previewGameId != null) games else snapshot.query.apply(games)
         val projected: List<LibraryGame?> = if (matching.isEmpty()) listOf(null) else matching
         val index = projected.indexOfFirst { it?.id == focus }.takeIf { it >= 0 }
             ?: state.value.selection.index.coerceAtMost(projected.lastIndex)
@@ -156,6 +160,14 @@ class CollectionCoordinator(
             applySnapshot(repository.initialize()); notify("Metadata saved")
         }
     }
+    fun undoEnrichment() {
+        val game = state.value.selectedGame ?: return
+        if (state.value.screen != CollectionScreen.Details) return
+        runAction {
+            notify(if (repository.undoEnrichment(game.id)) "Last artwork / metadata change undone" else "Nothing to undo")
+            applySnapshot(repository.initialize())
+        }
+    }
 
     fun rendererReady(generation: Int) {
         if (!destroyed && generation == state.value.viewportGeneration) mutableState.value = state.value.copy(rendererReady = true)
@@ -173,7 +185,7 @@ class CollectionCoordinator(
         if (current.screen == CollectionScreen.LibraryMenu) {
             mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 6))
         } else if (current.screen == CollectionScreen.Details) {
-            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 4))
+            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 5))
         } else if (current.screen == CollectionScreen.LabelPreview || engine.status.value.state == SessionState.Paused) {
             mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 3))
         } else if (current.screen == CollectionScreen.Library) {
@@ -314,8 +326,27 @@ class CollectionCoordinator(
         val game = selected.selectedGame ?: return notify("Choose a game before assigning its label.")
         runAction {
             val label = import()
-            mutableState.value = state.value.copy(screen = CollectionScreen.LabelPreview, labelDraft = LabelDraft(game.id, label), menuIndex = 0, labelPreviewReady = false)
+            mutableState.value = state.value.copy(screen = CollectionScreen.LabelPreview, labelDraft = LabelDraft(game.id, label), menuIndex = 0, labelPreviewReady = false, lastLabelAppliedTo = null)
         }
+    }
+    fun previewScrapedLabel(game: LibraryGame, label: LabelRef) {
+        if (state.value.screen != CollectionScreen.Library || !state.value.loaded) return
+        runAction {
+            focusJob?.cancelAndJoin()
+            val snapshot = repository.initialize()
+            val position = snapshot.slots.indexOfFirst { it?.id == game.id }
+            check(position >= 0) { "This game is no longer in the collection" }
+            if (state.value.slots.none { it?.id == game.id }) {
+                previewGameId = game.id
+            } else repository.select(position)
+            applySnapshot(repository.initialize(), forceFocus = true)
+            mutableState.value = state.value.copy(screen = CollectionScreen.LabelPreview, labelDraft = LabelDraft(game.id, label),
+                menuIndex = 0, labelPreviewReady = false, lastLabelAppliedTo = null)
+        }
+    }
+    private suspend fun restorePreviewView() {
+        previewGameId = null
+        refreshLibrary()
     }
     fun labelAction(index: Int) {
         if (state.value.busy) return
@@ -327,14 +358,18 @@ class CollectionCoordinator(
                 quarterTurns = (draft.label.quarterTurns + 1) % 4)))
             2 -> if (!state.value.labelPreviewReady) notify("Preparing label preview…") else runAction {
                 repository.setLabel(draft.gameId, draft.label)
+                restorePreviewView()
                 mutableState.value = state.value.copy(screen = CollectionScreen.Library, labelDraft = null,
-                    slots = state.value.slots.map { if (it?.id == draft.gameId) it.copy(label = draft.label) else it }, message = "Label applied")
+                    lastLabelAppliedTo = draft.gameId, message = "Label applied")
             }
             3 -> cancelLabel()
         }
     }
     fun cancelLabel() {
-        if (!state.value.busy) mutableState.value = state.value.copy(screen = CollectionScreen.Library, labelDraft = null, message = null)
+        if (state.value.labelDraft != null) runAction {
+            restorePreviewView()
+            mutableState.value = state.value.copy(screen = CollectionScreen.Library, labelDraft = null, lastLabelAppliedTo = null, message = null)
+        }
     }
     fun removeLabel() {
         val game = state.value.selectedGame ?: return

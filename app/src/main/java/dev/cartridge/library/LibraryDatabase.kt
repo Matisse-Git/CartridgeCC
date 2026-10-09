@@ -46,10 +46,17 @@ data class IndexedDocument(val treeUri: String, val documentUri: String, val gam
 @Entity(tableName = "removed_games")
 data class RemovedGameRecord(@PrimaryKey val gameId: String)
 
+@Entity(tableName = "enrichment_undo", foreignKeys = [ForeignKey(entity = GameRecord::class,
+    parentColumns = ["id"], childColumns = ["gameId"], onDelete = ForeignKey.CASCADE)])
+data class EnrichmentUndo(@PrimaryKey val gameId: String, val labelAssetId: String?, val labelFit: String,
+    val labelQuarterTurns: Int, val labelSourceUri: String?, val labelProvenance: String?,
+    val metadataJson: String?, val mediaJson: String?)
+
 data class SlotRow(val slot: Int, val selectedSlot: Int, val id: String?, val title: String?,
     val sourceUri: String?, val labelAssetId: String?, val labelFit: String?, val labelQuarterTurns: Int?, val labelSourceUri: String?,
     val labelProvenance: String?, val metadataJson: String?, val mediaJson: String?,
-    val favorite: Boolean?, val playMs: Long?, val lastPlayed: Long?, val sort: String, val favoritesOnly: Boolean, val search: String)
+    val favorite: Boolean?, val playMs: Long?, val lastPlayed: Long?, val sort: String, val favoritesOnly: Boolean, val search: String,
+    val canUndoEnrichment: Boolean)
 
 @Dao
 interface LibraryDao {
@@ -83,25 +90,37 @@ interface LibraryDao {
     @Query("SELECT * FROM games WHERE id = :id") suspend fun game(id: String): GameRecord?
     @Query("UPDATE games SET metadataJson = :json WHERE id = :id") suspend fun metadata(id: String, json: String)
     @Query("UPDATE games SET mediaJson = :json WHERE id = :id") suspend fun media(id: String, json: String)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun rememberEnrichment(snapshot: EnrichmentUndo)
+    @Query("SELECT * FROM enrichment_undo WHERE gameId = :id") suspend fun enrichmentUndo(id: String): EnrichmentUndo?
+    @Query("DELETE FROM enrichment_undo WHERE gameId = :id") suspend fun clearEnrichmentUndo(id: String)
+    @Query("UPDATE games SET labelAssetId = :asset, labelFit = :fit, labelQuarterTurns = :turns, labelSourceUri = :source, labelProvenance = :provenance, metadataJson = :metadata, mediaJson = :media WHERE id = :id")
+    suspend fun restoreEnrichment(id: String, asset: String?, fit: String, turns: Int, source: String?, provenance: String?, metadata: String?, media: String?)
     @Query("UPDATE games SET favorite = :favorite WHERE id = :id") suspend fun favorite(id: String, favorite: Boolean)
     @Query("UPDATE collection_state SET sort = :sort, favoritesOnly = :favorites, search = :search WHERE singleton = 0")
     suspend fun query(sort: String, favorites: Boolean, search: String)
     @Query("UPDATE games SET playMs = playMs + :elapsed, lastPlayed = CASE WHEN :started IS NULL THEN lastPlayed ELSE :started END WHERE id = :id")
     suspend fun play(id: String, elapsed: Long, started: Long?)
-    @Query("""SELECT slots.slot, collection_state.selectedSlot, collection_state.sort, collection_state.favoritesOnly, collection_state.search, games.* FROM slots
+    @Query("""SELECT slots.slot, collection_state.selectedSlot, collection_state.sort, collection_state.favoritesOnly, collection_state.search,
+        EXISTS(SELECT 1 FROM enrichment_undo WHERE gameId = slots.gameId) AS canUndoEnrichment, games.* FROM slots
         CROSS JOIN collection_state LEFT JOIN games ON slots.gameId = games.id
         WHERE collection_state.singleton = 0 ORDER BY slots.slot""")
     fun observe(): Flow<List<SlotRow>>
-    @Query("""SELECT slots.slot, collection_state.selectedSlot, collection_state.sort, collection_state.favoritesOnly, collection_state.search, games.* FROM slots
+    @Query("""SELECT slots.slot, collection_state.selectedSlot, collection_state.sort, collection_state.favoritesOnly, collection_state.search,
+        EXISTS(SELECT 1 FROM enrichment_undo WHERE gameId = slots.gameId) AS canUndoEnrichment, games.* FROM slots
         CROSS JOIN collection_state LEFT JOIN games ON slots.gameId = games.id
         WHERE collection_state.singleton = 0 ORDER BY slots.slot""")
     suspend fun read(): List<SlotRow>
 }
 
-@Database(entities = [GameRecord::class, SlotRecord::class, CollectionRecord::class, DirectoryRecord::class, RemovedGameRecord::class, IndexedDocument::class], version = 5, exportSchema = true)
+@Database(entities = [GameRecord::class, SlotRecord::class, CollectionRecord::class, DirectoryRecord::class, RemovedGameRecord::class, IndexedDocument::class, EnrichmentUndo::class], version = 6, exportSchema = true)
 abstract class LibraryDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
     companion object {
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE enrichment_undo (gameId TEXT NOT NULL PRIMARY KEY, labelAssetId TEXT, labelFit TEXT NOT NULL, labelQuarterTurns INTEGER NOT NULL, labelSourceUri TEXT, labelProvenance TEXT, metadataJson TEXT, mediaJson TEXT, FOREIGN KEY(gameId) REFERENCES games(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+            }
+        }
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE games ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
@@ -137,7 +156,7 @@ abstract class LibraryDatabase : RoomDatabase() {
         @Volatile private var instance: LibraryDatabase? = null
         fun get(context: Context): LibraryDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, LibraryDatabase::class.java, "library.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build().also { instance = it }
         }
     }
 }

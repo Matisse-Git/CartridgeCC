@@ -86,3 +86,9 @@ commercial artwork. See [LABEL_SCRAPING.md](LABEL_SCRAPING.md) for the requested
 
 M3 introduces original Kotlin library UI/query/index/history code and no third-party dependency,
 artwork, ROM or BIOS. Existing scraper provenance and GPL/source-distribution gates still apply.
+
+M3 review/region-language ranking/undo adds original Kotlin code and original isolated test imagery only.
+No new third-party dependency or artwork is bundled. The public RetroBase OpenAPI/developer reference
+and live response keys were rechecked on 2026-10-09 for source tags; no additional usage/redistribution
+rights are inferred. Preference ranking and private undo retain provider/rightsholder provenance.
+Existing GPL-compatible complete-source and provider/image distribution gates remain unresolved.

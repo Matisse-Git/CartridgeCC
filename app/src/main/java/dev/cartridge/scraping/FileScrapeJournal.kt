@@ -50,11 +50,12 @@ class FileScrapeJournal(private val directory: File) : ScrapeJournal {
     }
     override suspend fun load(): ScrapeState? = withContext(Dispatchers.IO) { guard.mutex.withLock {
         val root = read(File(directory, "manifest.json"))?.let(::JSONObject) ?: return@withLock null
-        require(root.getInt("version") == 1) { "Unknown saved scrape format" }
+        require(root.getInt("version") in 1..2) { "Unknown saved scrape format" }
         val entries = root.getJSONArray("entries").objects().map { item ->
             ScrapeEntry(LibraryGame(item.getString("id"), item.getString("title"), item.getString("source")),
                 item.getString("query"), error = item.optString("error").takeIf { it.isNotEmpty() && it != "null" },
-                searched = item.getBoolean("searched"), corrected = item.optBoolean("corrected"))
+                searched = item.getBoolean("searched"), corrected = item.optBoolean("corrected"),
+                outcome = ScrapeOutcome.valueOf(item.optString("outcome", "Pending")))
         }
         if (entries.isEmpty()) return@withLock null
         val index = root.getInt("index").coerceIn(entries.indices)
@@ -70,8 +71,8 @@ class FileScrapeJournal(private val directory: File) : ScrapeJournal {
             if (sequence < guard.savedSequence) return@withLock
             val entries = JSONArray().apply { state.entries.forEach { entry -> put(JSONObject()
                 .put("id", entry.game.id).put("title", entry.game.title).put("source", entry.game.sourceUri)
-                .put("query", entry.query).put("error", entry.error).put("searched", entry.searched).put("corrected", entry.corrected)) } }
-            write(File(directory, "manifest.json"), JSONObject().put("version", 1).put("index", state.index).put("entries", entries).toString())
+                .put("query", entry.query).put("error", entry.error).put("searched", entry.searched).put("corrected", entry.corrected).put("outcome", entry.outcome.name)) } }
+            write(File(directory, "manifest.json"), JSONObject().put("version", 2).put("index", state.index).put("entries", entries).toString())
             guard.savedSequence = sequence
         } }
     }
@@ -100,7 +101,9 @@ class FileScrapeJournal(private val directory: File) : ScrapeJournal {
         .put("platform", game.platform).put("names", JSONArray(game.names)).put("url", game.sourceUrl)
         .put("license", game.license).put("exact", game.exactHash).put("metadata", JSONObject().apply {
             game.metadata.forEach { (field, values) -> put(field, JSONArray(values)) }
-        }).put("artwork", JSONArray().apply { game.artwork.forEach { put(JSONObject().put("type", it.type)
+        }).put("tags", JSONObject().apply { game.metadataTags.forEach { (field, tags) -> put(field, JSONArray().apply {
+            tags.forEach { put(JSONObject().put("region", it.region).put("language", it.language)) }
+        }) } }).put("artwork", JSONArray().apply { game.artwork.forEach { put(JSONObject().put("type", it.type)
             .put("region", it.region).put("url", it.url).put("checksum", it.checksum)) } })
     private fun candidate(json: JSONObject): GameCandidate {
         val metadata = json.getJSONObject("metadata")
@@ -108,7 +111,10 @@ class FileScrapeJournal(private val directory: File) : ScrapeJournal {
             json.getJSONArray("names").strings(), metadata.keys().asSequence().associateWith { metadata.getJSONArray(it).strings() },
             json.getJSONArray("artwork").objects().map { ArtworkCandidate(it.getString("type"), it.getString("region"),
                 it.getString("url"), it.optString("checksum").takeIf { value -> value.isNotEmpty() && value != "null" }) },
-            json.getString("url"), json.getString("license"), json.getBoolean("exact"))
+            json.getString("url"), json.getString("license"), json.getBoolean("exact"),
+            json.optJSONObject("tags")?.let { tags -> tags.keys().asSequence().associateWith { field ->
+                tags.getJSONArray(field).objects().map { MetadataTags(it.optString("region"), it.optString("language")) }
+            } } ?: emptyMap())
     }
     private fun JSONArray.objects() = (0 until length()).map(::getJSONObject)
     private fun JSONArray.strings() = (0 until length()).map(::getString)

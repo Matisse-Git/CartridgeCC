@@ -87,6 +87,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     protected open fun createLabelStore(): LabelStore = LabelStore(File(filesDir, "labels"))
     protected open fun createArtworkProvider(): ArtworkProvider = RetroBaseProvider(File(cacheDir, "scrape-candidates"))
     protected open fun createScrapeJournal(): ScrapeJournal = FileScrapeJournal(File(filesDir, "scrape-job"))
+    protected open fun createScrapePreferences(): ScrapePreferenceStore = SharedScrapePreferences(this)
     protected open fun persistDirectoryPermission(uri: Uri) {
         contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
@@ -121,12 +122,9 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             override fun releaseLibrary() { cartridgeSurface?.close(); cartridgeSurface = null }
             override fun releaseEmulator() { emulatorHost?.release(); emulatorHost = null }
         }, lifecycleScope, preferences.getBoolean("reducedMotion", false), preferences.getBoolean("alternateShortcut", false))
-        scraper = ScrapeCoordinator(createArtworkProvider(), repository, labelStore, File(filesDir, "roms"), lifecycleScope, createScrapeJournal()) { game, label ->
-            val slot = coordinator.state.value.slots.indexOfFirst { it?.id == game.id }
-            if (slot >= 0) {
-                coordinator.navigate(slot - coordinator.state.value.selection.index)
-                coordinator.previewLabel { label }
-            } else { coordinator.notify("This game is no longer assigned to a cartridge"); scraper.previewFinished() }
+        scraper = ScrapeCoordinator(createArtworkProvider(), repository, labelStore, File(filesDir, "roms"), lifecycleScope, createScrapeJournal(), createScrapePreferences()) { game, label ->
+            if (coordinator.state.value.allGames.any { it.id == game.id }) coordinator.previewScrapedLabel(game, label)
+            else { coordinator.notify("This game is no longer in the collection"); scraper.previewFinished() }
         }
         input = ControllerRouter(
             navigate = { if (libraryOverlay == LibraryOverlay.Manager) managerFocus = (managerFocus + it).coerceIn(0, 6 + roots.size)
@@ -142,12 +140,14 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             chooseLabel = { chooseLabel?.invoke() }, chooseScrape = ::openScraper, chooseDirectory = { chooseDirectory?.invoke() }, alternate = {
                 val scrape = scraper.state.value
                 if (scrape.visible && scrape.page == ScrapePage.Metadata) scrape.candidate?.metadata?.keys?.elementAtOrNull(scrape.focus)?.let(scraper::variant)
+                else if (scrape.visible && scrape.page == ScrapePage.Targets) scraper.pickAll(scrape.pickedIds.size != scrape.availableGames.size)
             }, cancelOperation = coordinator::cancelScan, details = coordinator::details, favorite = coordinator::favorite)
         getSystemService(InputManager::class.java).registerInputDeviceListener(this, null)
         lifecycleScope.launch {
             var previousScreen = CollectionScreen.Library
             combine(coordinator.state, engine.status, scraper.state) { state, status, scrape -> Triple(state, status, scrape) }.collect { (state, status, scrape) ->
-                if (previousScreen == CollectionScreen.LabelPreview && state.screen == CollectionScreen.Library) scraper.previewFinished()
+                if (previousScreen == CollectionScreen.LabelPreview && state.screen == CollectionScreen.Library)
+                    scraper.previewFinished(applied = state.lastLabelAppliedTo == scrape.current?.game?.id)
                 previousScreen = state.screen
                 refreshInputMode()
                 input.pauseShortcut = if (state.alternateShortcut)
@@ -206,7 +206,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             1 -> showOverlay(LibraryOverlay.Edit)
             2 -> { coordinator.closeDetails(); openScraper(); scraper.chooseScope(true) }
             3 -> { recoveryId = coordinator.state.value.selectedGame?.id; coordinator.closeDetails(); chooseGame?.invoke() }
-            4 -> coordinator.closeDetails()
+            4 -> coordinator.undoEnrichment()
+            5 -> coordinator.closeDetails()
         }
     }
 
@@ -296,7 +297,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFD8C7A8), background = Color(0xFF191817))) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                 if (state.screen in listOf(CollectionScreen.Library, CollectionScreen.LibraryMenu, CollectionScreen.Details, CollectionScreen.Inserting, CollectionScreen.Ejecting, CollectionScreen.LabelPreview)) {
-                    glb?.let { bytes -> key(state.viewportGeneration) { LibraryViewport(bytes, state) } }
+                    glb?.let { bytes -> key(state.viewportGeneration) { LibraryViewport(bytes, state, scrape.visible) } }
                     Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(state.title, fontSize = 23.sp, color = Color(0xFFE9E2D6), modifier = Modifier.testTag("selected-title"))
                         if (state.selectedGame?.favorite == true || state.query != LibraryQuery()) Text(
@@ -414,7 +415,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         }
     }
 
-    @Composable private fun LibraryViewport(bytes: CollectionAssets, state: CollectionState) {
+    @Composable private fun LibraryViewport(bytes: CollectionAssets, state: CollectionState, scrapeVisible: Boolean) {
         var surface by remember { mutableStateOf<CartridgeSurface?>(null) }
         var pixels by remember { mutableStateOf<List<LabelPixels?>>(List(3) { null }) }
         val cache = remember { linkedMapOf<String, LabelPixels>() }
@@ -447,7 +448,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             it.reducedMotion = state.reducedMotion
             it.setLabels(if (pixels.map { pixel -> pixel?.key } == labels.map { label -> label?.textureKey }) pixels else List(3) { null })
         }, onRelease = { it.close() })
-        val suspended = state.screen == CollectionScreen.Details || libraryOverlay != LibraryOverlay.None
+        val suspended = state.screen == CollectionScreen.Details || libraryOverlay != LibraryOverlay.None || scrapeVisible
         DisposableEffect(surface, suspended) {
             val renderer = surface
             if (suspended) renderer?.pauseRendering() else if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) renderer?.resumeRendering()

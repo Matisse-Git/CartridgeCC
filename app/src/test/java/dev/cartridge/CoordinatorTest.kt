@@ -46,6 +46,8 @@ class CoordinatorTest {
             return GameRequest(File("${game.id}.gba"), game.id)
         }
         override suspend fun setMetadata(gameId: String, values: Map<String, MetadataValue>) = Unit
+        override suspend fun fillMissingMetadata(gameId: String, values: Map<String, MetadataValue>): Int { setMetadata(gameId, values); return values.size }
+        override suspend fun undoEnrichment(gameId: String) = false
         override suspend fun setMedia(gameId: String, media: MediaSelection) = Unit
         override suspend fun setFavorite(gameId: String, favorite: Boolean) {
             snapshots.value = snapshots.value.copy(slots = snapshots.value.slots.map { if (it?.id == gameId) it.copy(favorite = favorite) else it })
@@ -274,4 +276,31 @@ class CoordinatorTest {
         assertEquals(400L, library.playedById[library.one.id])
         coordinator.destroy()
     }
+    @Test fun filteredScrapePreviewNeverPersistsTemporaryViewAndRestoresFocus() = runTest {
+        val library = Library()
+        library.setFavorite(library.one.id, true); library.select(0)
+        val query = LibraryQuery(LibrarySort.Title, favoritesOnly = true)
+        library.setQuery(query)
+        val coordinator = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope)
+        runCurrent()
+        val draft = LabelRef("e".repeat(64))
+        coordinator.previewScrapedLabel(library.two, draft); runCurrent()
+        assertEquals(library.two.id, coordinator.state.value.selectedGame!!.id)
+        assertEquals(query, library.snapshots.value.query)
+        assertEquals(0, library.snapshots.value.selectedSlot)
+        coordinator.cancelLabel(); runCurrent()
+        assertEquals(library.one.id, coordinator.state.value.selectedGame!!.id)
+        assertEquals(1, coordinator.state.value.slots.size)
+        coordinator.previewScrapedLabel(library.two, draft); runCurrent()
+        coordinator.labelsReady(0, listOf(null, draft.textureKey)); coordinator.labelAction(2); runCurrent()
+        assertEquals(library.two.id, coordinator.state.value.lastLabelAppliedTo)
+        assertEquals(draft, library.snapshots.value.slots[1]!!.label)
+        assertEquals(library.one.id, coordinator.state.value.selectedGame!!.id)
+        coordinator.previewScrapedLabel(library.two, draft); runCurrent(); coordinator.destroy()
+        val reopened = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope); runCurrent()
+        assertEquals(query, reopened.state.value.query)
+        assertEquals(library.one.id, reopened.state.value.selectedGame!!.id)
+        reopened.destroy()
+    }
+
 }

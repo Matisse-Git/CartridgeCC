@@ -9,6 +9,8 @@ import android.net.Uri
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.hasTestTag
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.intent.Intents
 import androidx.test.espresso.intent.Intents.intending
@@ -69,6 +71,8 @@ class ScrapeUiTest {
                 ui.onNodeWithTag("scrape-action-0").performClick()
                 await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.current?.searched == true }
                 ui.onNodeWithTag("scrape-action-0").performClick() // First provider match.
+                await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.page == ScrapePage.Review }
+                ui.onNodeWithTag("review-media").performClick()
                 ui.onNodeWithTag("scrape-action-0").performClick() // Metadata, independently.
                 ui.onNodeWithTag("metadata-year").performClick()
                 ui.onNodeWithTag("scrape-action-3").performClick()
@@ -84,8 +88,12 @@ class ScrapeUiTest {
                     assertEquals("one", game.metadata["year"]!!.recordId)
                     assertFalse(game.metadata.containsKey("title"))
                 }
-                ui.onNodeWithTag("scrape-back").performClick() // Other matches.
+                ui.onNodeWithTag("scrape-back").performClick() // Review.
+                ui.onNodeWithTag("scrape-list").performScrollToNode(hasTestTag("review-match"))
+                ui.onNodeWithTag("review-match").performClick()
                 ui.onNodeWithTag("scrape-action-1").performClick()
+                await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.page == ScrapePage.Review }
+                ui.onNodeWithTag("review-media").performClick()
                 ui.onNodeWithTag("scrape-action-0").performClick()
                 ui.onNodeWithTag("metadata-developer").performClick()
                 ui.onNodeWithTag("scrape-action-2").performClick()

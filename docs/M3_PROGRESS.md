@@ -79,3 +79,11 @@ The owner had deferred the tedious review-flow redesign; these extensions remain
 Next: owner/controller review with a real folder, revoked/reboot grants and a large collection, then
 the requested simpler scraper review/subset/preferences workflow before M4/M5. Longer sleep/reboot,
 audio/thermal/battery/memory/input-latency profiling remains shared with M1/M2.
+
+## Continued M3 enrichment
+
+The version-8 boundaries above are historical. Version 9 implements selected/missing-label scopes,
+saved region/language ranking, current-title-first match review, atomic fill-missing protection and
+persistent single-step enrichment undo. Hidden-target previews retain saved filters/focus even through
+recreation. See M3_SCRAPE_REVIEW and ADR 0010 for implementation, tests and remaining limits. Scrape packs,
+large-library/reboot-grant testing and shared M1/M2 sustained gates remain open.

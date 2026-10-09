@@ -44,8 +44,8 @@ internal fun playLabel(ms: Long): String = if (ms < 60_000) "${ms / 1000} second
                 if (sources.isNotEmpty()) Text("Metadata: ${sources.joinToString()}", fontSize = 12.sp)
             }
             Column(Modifier.width(220.dp)) {
-                listOf(if (game.favorite) "Remove favorite" else "Add favorite", "Edit metadata", "Scrape this title", "Locate same ROM", "Back to collection").forEachIndexed { index, title ->
-                    LibraryAction(title, focus == index, "details-action-$index", !busy) { action(index) }
+                listOf(if (game.favorite) "Remove favorite" else "Add favorite", "Edit metadata", "Scrape this title", "Locate same ROM", "Undo artwork / metadata", "Back to collection").forEachIndexed { index, title ->
+                    LibraryAction(title, focus == index, "details-action-$index", !busy && (index != 4 || game.canUndoEnrichment)) { action(index) }
                 }
                 Text("↑ ↓ Choose · A Select · B Back", fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
             }

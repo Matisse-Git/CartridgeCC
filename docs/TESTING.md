@@ -579,3 +579,72 @@ Before calling full M3 acceptance complete, physically review a real collection 
 
 Scrape packs, selected-subset/preferred-region workflows and the deferred scraper review redesign remain
 open. Existing live API proof is historical; no new provider API/schema/dependency changes were made.
+
+## M3 scraper review — version 9, 2026-10-09
+
+The preceding version-8 enrichment deferrals are historical. Selected/missing-label scopes, saved
+region/language preferences, current-title-first review, protected fill-missing and persistent undo
+are now implemented; see M3_SCRAPE_REVIEW/ADR 0010. M0 remains passed; full M3, M1 sleep/reboot and
+M2 sustained/artistic/thermal gates remain open. No new dependency/native assets or thresholds changed.
+
+On the connected **Retroid Pocket 5**, Android 13/API 33, arm64/Adreno 650, 1920×1080@60 Hz,
+firmware **RP5_V1.0.0.189_20251128_174732_user**:
+
+| Check | Actual result |
+| --- | --- |
+| Final required Gradle build, test APK, unit tests and lint | Build successful; 31 host tests, 0 failures; lint 0 errors / 24 warnings |
+| Original asset checks | 8 pass |
+| Focused Review suite | 4 pass in 7.968 s |
+| Final All suite (`-Cycles 3`) | 19 pass, 0 failed/ignored, 105.499 s |
+| Earlier All run (`-Cycles 50`) | Native 50-handoff assertion passed; 18/19 tests passed, one old UI test omitted scrolling to the new off-screen action |
+| Fresh real provider URL/metadata/region probe | 1 pass in 1.882 s; no commercial artwork/ROM download |
+| Final app installation | Version 9 installed and MainActivity launched |
+
+New tests prove selected hashes are published before a provider request, only the current title is
+searched, source-tagged ranking retains alternatives/unknown order, resumed review reads current
+accepted data, fill-missing protects manually edited values and no-op filling does not erase undo.
+Production Room/Filament on RP5 verify persisted Japan/French preferences, selection of a target hidden
+by favorites, actual label texture readiness, draft recreation and restoration of saved query/focus,
+preferred-label apply, French synopsis fill while keeping a local year, reopened undo and one search
+across repeated recreation. The selected original fixtures contain no commercial labels/ROMs.
+
+Schema 5→6 reopening tests atomically restore enrichment without rewinding source URI, favorite,
+playtime/last-played, query or a save-state file. Label recipe and extra-media undo are also checked.
+Existing v1/v2/v3/v4 upgrades now reach v6. File journal v1/untagged candidate compatibility and v2
+tag/outcome round-trip pass. Resume cancels a gated second request after accepting first-title metadata;
+reopening repeats only the unfinished request and preserves the first result/choice.
+
+Corrected failures: host scheduling initially used actual IO outside the test scheduler; production
+still defaults to IO while tests inject a deterministic dispatcher. Memory journal now agrees with the
+file journal's empty-batch behavior. A new UI test now opens Tools; an older test scrolls the review list
+to its action. No assertions were dropped or performance thresholds weakened. Test databases, original
+provider fixtures and private preferences are isolated from the owner's collection.
+
+The final existing 36-second original-art viewport regression sampled 540 rest / 1,140 rapid-navigation /
+300 insertion-ejection intervals. Presentation p95 was **16.735937 / 16.746094 / 16.731145 ms**, with
+zero gaps above 1.5 refresh periods. CPU submission p95 **1.540365 ms**, 2,161/2,161 submitted. This
+remains an isolated short regression, not proof of sustained large-library/gameplay/input latency.
+Opaque review pauses rendering; actual 3D draft resumes it. Gameplay/context ownership is unchanged.
+
+Reproduce with the configured local SDK/JDK (see README):
+
+```powershell
+$env:JAVA_HOME = 'C:\Program Files\Android\openjdk\jdk-21.0.8'
+$env:GRADLE_USER_HOME = Join-Path (Get-Location) '.tools/gradle-home'
+.\gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug --console=plain
+python tools/test_assets.py
+.\tools\Test-Device.ps1 -Serial <device-serial> -Suite Review
+.\tools\Test-Device.ps1 -Serial <device-serial> -Suite All -Cycles 3
+.\tools\Test-Device.ps1 -Serial <device-serial> -Suite Live
+```
+
+Live is opt-in, account-free metadata/URL probing; availability/coverage may change. Offline test suites
+use only original fixture art and diagnostic ROMs, with production Room/SAF/Filament/mGBA. Tests report
+JUnit results explicitly because `am instrument` may exit zero on failures. The 24th lint warning is KTX
+preferences-edit style; synchronous commit stays on IO and checks its failure result, without suppression.
+
+Still required on RP5: owner/controller review with actual titles and long batches; D-pad/analog rapid
+review navigation and X selection; API ambiguity/missing flat labels/partial timeouts; cancellation at
+preview/download/commit; restart/reboot/revoked SAF grants; large-library storage and input profiling;
+storage-full/write-failure injection. Existing real sleep, controller disconnection, sustained memory,
+audio/thermal/battery/input-latency checks remain open. Scrape packs/multi-console scopes are not shipped.

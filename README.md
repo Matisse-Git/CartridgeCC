@@ -9,7 +9,7 @@ proprietary artwork is bundled; users can scrape artwork into their private coll
 scraping, independent media/metadata choices, 3D Fit/Crop/rotation preview and a tested session
 coordinator. Folder imports now grow the collection and saved scrape batches resume after reopening.
 Battery saves now restore before gameplay and checkpoint during play/pause. Both APKs build;
-27 unit tests and eight asset checks pass. Sixteen RP5 tests cover real native
+31 unit tests and eight asset checks pass. Nineteen RP5 tests cover real native
 handoffs, ordinary UI recovery, independent labels, schema migrations, folder imports and resumed scraping; a separate
 live API test passes. The owner confirmed physical navigation, gameplay/audio, save/load and local labels.
 M2 refinement is implemented: refined GBA mesh/PBR, original studio reflections, receiving slot,
@@ -90,15 +90,23 @@ in the current Activity session; after reopening, **X / Add .gba** restores a hi
 Only uncompressed GBA files are supported. Scans stop with an error at 10,000 entries or 16 levels;
 invalid files are reported while valid siblings continue. Originals are never changed or deleted.
 
-Press **Y / Scrape** for the main artwork workflow. Choose This title, GBA collection or All games,
-then review ranked RetroBase matches. Correct the search title if needed. Choose a regional flat label
-to preview on the real cartridge; choose metadata fields/variants independently. Box art, screenshots
-and logos can be saved separately without replacing the label. Next title advances or finishes the queue.
-Nothing is automatically applied. Cancel preserves accepted choices; retry retains successful searches.
-No account is required. GBA/all scopes cover the existing GBA collection, including folder imports.
-**Resume saved batch** restores an interrupted queue and its review position; completed searches load
-from private candidate files rather than repeating network requests. Starting a new scope replaces
-saved search progress, preserving applied choices. Unapplied preview/checkbox drafts are discarded.
+Press **Y / Scrape** for the main artwork workflow. Choose This title, GBA collection, All games,
+Choose games, or Games missing labels. A toggles selected titles; X selects all/clears. Region & language
+saves your preferred label/title region and description language. Preferences rank all alternatives;
+they do not hide options or accept choices. GBA/all cover the same canonical collection until other
+systems are supported, including games hidden by collection filters.
+
+The current title is searched first. Choose a RetroBase match, preview its preferred flat label on the
+real cartridge, then Fill missing metadata or Next. Existing label/metadata choices stay protected.
+All label / media choices and Choose metadata fields / variants allow explicit replacements; box art,
+screenshots and logos remain additional media. Undo last artwork / metadata change restores one
+previous operation per game and survives reopening, including through Details. ROMs/saves/history
+remain independent. Correct the title search or choose another match when needed; no account is required.
+
+Cancel preserves accepted choices. Resume saved batch restores its review position and cached
+completed searches; Next searches only the next pending title. Starting a new scope replaces saved
+search progress, preserving accepted data. Unapplied previews/checkbox drafts are discarded on recreation.
+A hidden target's preview temporarily shows it without changing your persisted filter/focus.
 
 Scraping requires internet and sends title queries or ROM fingerprints/size, never ROM bytes.
 Accepted images/metadata are cached for offline use; ordinary launch has no network dependency.
@@ -119,7 +127,7 @@ The first button of a two-button shortcut may reach the game before the second i
 Insertion lifts, aligns and slides the cartridge into a small physical receiving slot over 540 ms;
 ejection reverses it over 420 ms. Motion off bypasses both and snaps carousel selection. Optional
 original contact sound defaults off. Final manual art direction,
-selected-title/region preferences, disc media, other layouts and HOME registration remain planned.
+disc media, other layouts and HOME registration remain planned.
 Backgrounding ends the current session after saving RAM; full session sleep/resume comes later.
 
 ## M3 library controls
@@ -143,8 +151,8 @@ Play history counts Running time, excludes pause/preparation, checkpoints every 
 on pause/eject/background. Failed history writes remain visible and retry for the correct game while
 the Activity lives. Process death can lose history since the latest completed checkpoint.
 
-See [M3 progress](docs/M3_PROGRESS.md) and ADR 0009. Scraper review redesign, selected subsets,
-scrape-pack formats and preferred-region ranking remain open; existing reviewed API scopes stay intact.
+See [M3 library progress](docs/M3_PROGRESS.md), [scraper review](docs/M3_SCRAPE_REVIEW.md) and ADRs 0009/0010.
+Scrape-pack import, large-library validation and broader sleep/reboot/performance gates remain open.
 
 ## Engineering record
 
@@ -159,6 +167,7 @@ scrape-pack formats and preferred-region ranking remain open; existing reviewed 
 - [Asset pipeline](docs/ASSET_PIPELINE.md)
 - [M2 refinement and physical presentation results](docs/M2_PROGRESS.md)
 - [M3 library management and validation](docs/M3_PROGRESS.md)
+- [M3 selected scraping, preferences, fast review and undo](docs/M3_SCRAPE_REVIEW.md)
 - [Tests and actual results](docs/TESTING.md)
 - [License audit and distribution obligations](docs/LICENSING.md)
 - [M0 report and created files](docs/M0_REPORT.md)

@@ -2,7 +2,7 @@ param(
     [string]$Sdk = (Join-Path $PSScriptRoot '../.tools/sdk'),
     [string]$Serial,
     [ValidateRange(1, 50)][int]$Cycles = 3,
-    [ValidateSet('Surface', 'Collection', 'Scrape', 'Library', 'Battery', 'Render', 'Manage', 'Live', 'All')][string]$Suite = 'Surface'
+    [ValidateSet('Surface', 'Collection', 'Scrape', 'Library', 'Battery', 'Render', 'Manage', 'Review', 'Live', 'All')][string]$Suite = 'Surface'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -44,10 +44,11 @@ try {
         'Battery' { 'dev.cartridge.BatterySaveTest' }
         'Render' { 'dev.cartridge.RenderRefinementTest,dev.cartridge.RenderPacingTest' }
         'Manage' { 'dev.cartridge.LibraryManagementTest' }
+        'Review' { 'dev.cartridge.ScrapeReviewTest,dev.cartridge.ScrapeResumeTest' }
         'Live' { 'dev.cartridge.ProviderLiveTest' }
-        'All' { 'dev.cartridge.SurfaceHandoffTest,dev.cartridge.CollectionUiTest,dev.cartridge.ProviderContractTest,dev.cartridge.ScrapeUiTest,dev.cartridge.LibraryGrowthTest,dev.cartridge.ScrapeResumeTest,dev.cartridge.BatterySaveTest,dev.cartridge.RenderRefinementTest,dev.cartridge.RenderPacingTest,dev.cartridge.LibraryManagementTest' }
+        'All' { 'dev.cartridge.SurfaceHandoffTest,dev.cartridge.CollectionUiTest,dev.cartridge.ProviderContractTest,dev.cartridge.ScrapeUiTest,dev.cartridge.LibraryGrowthTest,dev.cartridge.ScrapeResumeTest,dev.cartridge.BatterySaveTest,dev.cartridge.RenderRefinementTest,dev.cartridge.RenderPacingTest,dev.cartridge.LibraryManagementTest,dev.cartridge.ScrapeReviewTest' }
     }
-    $expectedTests = switch ($Suite) { 'Surface' { 1 }; 'Collection' { 2 }; 'Scrape' { 5 }; 'Library' { 4 }; 'Battery' { 2 }; 'Render' { 2 }; 'Manage' { 2 }; 'Live' { 1 }; 'All' { 16 } }
+    $expectedTests = switch ($Suite) { 'Surface' { 1 }; 'Collection' { 2 }; 'Scrape' { 5 }; 'Library' { 4 }; 'Battery' { 2 }; 'Render' { 2 }; 'Manage' { 2 }; 'Review' { 4 }; 'Live' { 1 }; 'All' { 19 } }
     $result = Invoke-DeviceAdb -Arguments @('shell', 'am', 'instrument', '-w', '-r', '-e', 'cycles', "$Cycles", '-e', 'liveProvider', "$($Suite -eq 'Live')".ToLowerInvariant(), '-e', 'class',
         $testClass, 'dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner')
     $result | Set-Content -LiteralPath '.tools/device-test.log'
