@@ -105,3 +105,11 @@ dependency. Three Filament instances serve a variable-length collection via a vi
 focus; no GLB per-ROM allocation. AtomicFile-based ScrapeJournal persists minimal target/progress state
 and individual candidate files, restoring only current candidates to RAM. No new dependencies or pins.
 See ADR 0006 and LIBRARY_PROGRESS for API inspection, physical proofs and actual scaling limits.
+
+## Save reliability
+
+Version 6 keeps the lifecycle STARTED until SurfaceCreated and battery restoration/readback complete,
+then starts emulation and waits for FrameRendered. An original C11/JNI SaveBridge reads/restores public
+Libretro memory and captures states from the existing loaded core, avoiding the pinned frontend's
+capture-buffer leak/ignored SRAM result. No new dependency or second core; changed RAM checkpoints
+on GL/IO with explicit bounds and visible errors. See ADR 0007, SAVE_RELIABILITY and TESTING.

@@ -21,7 +21,8 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** All state/lifecycle mutations run on Main. JNI save calls run on the view's GL thread. */
-class LibretroEngine(private val context: Context, private val scope: CoroutineScope) : EmulationEngine {
+class LibretroEngine(private val context: Context, private val scope: CoroutineScope,
+    private val checkpointIntervalMs: Long = 15_000) : EmulationEngine {
     private class SessionOwner : LifecycleOwner {
         val registry = LifecycleRegistry(this)
         override val lifecycle: Lifecycle get() = registry
@@ -37,13 +38,17 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     private var game: GameRequest? = null
     private var eventJob: Job? = null
     private var errorJob: Job? = null
+    private var checkpointJob: Job? = null
+    private var lastWrittenRam: ByteArray? = null
+    private var corePath = ""
     private val pressed = mutableSetOf<Int>()
     private var ownsNative = false
     private var coreReady = false
 
     private fun transition(next: SessionState, error: String? = null) {
         machine.transition(next)
-        mutableStatus.value = EngineStatus(next, error)
+        mutableStatus.value = EngineStatus(next, error,
+            if (next in setOf(SessionState.Running, SessionState.Paused)) status.value.saveWarning else null)
     }
 
     override suspend fun prepare(game: GameRequest) = withContext(Dispatchers.Main.immediate) {
@@ -57,7 +62,9 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 require(game.rom.isFile) { "The game file is missing" }
                 val core = File(context.applicationInfo.nativeLibraryDir, "libmgba_libretro.so")
                 check(core.isFile) { "The packaged arm64 mGBA core is missing" }
+                corePath = core.absolutePath
                 val savedRam = withContext(Dispatchers.IO) { saves.read(game.id, "sram") }
+                lastWrittenRam = savedRam
                 val data = GLRetroViewData(context).apply {
                     coreFilePath = core.absolutePath
                     gameFilePath = game.rom.absolutePath
@@ -71,8 +78,10 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 owner = session
                 mutableSurface.value = view
                 val ready = CompletableDeferred<Unit>()
+                val initialized = CompletableDeferred<Unit>()
                 eventJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
                     view.getGLRetroEvents().collect { event ->
+                        if (event == GLRetroView.GLRetroEvents.SurfaceCreated) initialized.complete(Unit)
                         if (event == GLRetroView.GLRetroEvents.FrameRendered) {
                             coreReady = true
                             ready.complete(Unit)
@@ -82,7 +91,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 errorJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
                     view.getGLRetroErrors().collect { code ->
                         val failure = IllegalStateException("Embedded emulator failed (code $code). Check the ROM and native log.")
-                        if (!ready.isCompleted) ready.completeExceptionally(failure)
+                        if (!ready.isCompleted) { initialized.completeExceptionally(failure); ready.completeExceptionally(failure) }
                         else mutex.withLock {
                             if (machine.state in setOf(SessionState.Running, SessionState.Paused)) {
                                 releaseNative()
@@ -93,16 +102,20 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 }
                 // GLRetroView owns core initialization on its renderer thread, after onCreate.
                 session.registry.addObserver(view)
+                // Create the GL surface/core while RenderLifecycleObserver cannot run retro_run.
+                session.registry.currentState = Lifecycle.State.STARTED
+                withTimeout(15_000) { initialized.await() }
+                if (savedRam != null && savedRam.isNotEmpty()) {
+                    check(onGl {
+                        SaveBridge.restore(corePath, savedRam) && SaveBridge.read(corePath).let { restored ->
+                            restored.size >= savedRam.size && savedRam.indices.all { restored[it] == savedRam[it] }
+                        }
+                    }) { "The core rejected the stored battery save. The original file was kept." }
+                }
                 session.registry.currentState = Lifecycle.State.RESUMED
                 withTimeout(15_000) { ready.await() }
-                if (savedRam != null && savedRam.isNotEmpty()) {
-                    // Upstream's initial saveRAMState path ignores the core's rejection result.
-                    // Restore explicitly while paused and report incompatibility to the shell.
-                    session.registry.currentState = Lifecycle.State.STARTED
-                    check(onGl { unserializeSRAM(savedRam, false) }) { "The core rejected the stored SaveRAM" }
-                    session.registry.currentState = Lifecycle.State.RESUMED
-                }
                 transition(SessionState.Running)
+                startCheckpoints()
             } catch (failure: Throwable) {
                 releaseNative()
                 transition(SessionState.Error, failure.message ?: "Emulator initialization failed")
@@ -118,6 +131,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
             // ON_PAUSE waits for GLSurfaceView's GL thread before pausing native audio.
             owner!!.registry.currentState = Lifecycle.State.STARTED
             transition(SessionState.Paused)
+            checkpointWithWarning()
         }
     }
     override suspend fun resume() = withContext(Dispatchers.Main.immediate) {
@@ -136,8 +150,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 releaseInput()
                 if (coreReady && mutableSurface.value != null) {
                     owner!!.registry.currentState = Lifecycle.State.STARTED
-                    val bytes = onGl { serializeSRAM(false) }
-                    withContext(Dispatchers.IO) { saves.write(game!!.id, "sram", bytes) }
+                    writeBatterySave()
                 }
             } catch (failure: Throwable) { saveFailure = failure }
             finally { releaseNative() }
@@ -178,17 +191,51 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
         }
     }
     override suspend fun saveState() = pausedOperation {
-        val bytes = onGl { serializeState(false) }
+        val bytes = onGl { SaveBridge.captureState(corePath) }
         withContext(Dispatchers.IO) { saves.write(game!!.id, "state", bytes) }
+        checkpointWithWarning()
     }
     override suspend fun loadState() = pausedOperation {
         val bytes = withContext(Dispatchers.IO) { saves.read(game!!.id, "state") }
             ?: error("There is no saved state for this game")
         check(onGl { unserializeState(bytes, false) }) { "The core rejected this saved state" }
+        checkpointWithWarning()
     }
     override suspend fun persistSaveRam() = pausedOperation {
-        val bytes = onGl { serializeSRAM(false) }
-        withContext(Dispatchers.IO) { saves.write(game!!.id, "sram", bytes) }
+        writeBatterySave()
+    }
+    /** Called under the session mutex; capture happens between frames on the core's own GL thread. */
+    private suspend fun writeBatterySave() {
+        val bytes = onGl { SaveBridge.read(corePath) }
+        if (bytes.isNotEmpty() && lastWrittenRam?.contentEquals(bytes) != true) {
+            withContext(Dispatchers.IO) { saves.write(game!!.id, "sram", bytes) }
+            lastWrittenRam = bytes
+        }
+        mutableStatus.value = status.value.copy(saveWarning = null)
+    }
+    private suspend fun checkpointWithWarning() {
+        try { writeBatterySave() }
+        catch (failure: TimeoutCancellationException) { throw failure }
+        catch (failure: CancellationException) { throw failure }
+        catch (failure: Exception) {
+            mutableStatus.value = status.value.copy(saveWarning = "Battery save could not be written: ${failure.message}. Eject to retry.")
+        }
+    }
+    private fun startCheckpoints() {
+        checkpointJob = scope.launch {
+            while (isActive) {
+                delay(checkpointIntervalMs.coerceAtLeast(100))
+                mutex.withLock {
+                    if (machine.state == SessionState.Running) {
+                        try { checkpointWithWarning() }
+                        catch (failure: TimeoutCancellationException) {
+                            releaseNative()
+                            transition(SessionState.Error, "Battery save capture timed out. The session was released.")
+                        }
+                    }
+                }
+            }
+        }
     }
     override suspend fun configure(options: Map<String, String>) = pausedOperation {
         onGl {
@@ -199,6 +246,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     }
 
     private fun releaseNative() {
+        checkpointJob?.cancel(); checkpointJob = null
         eventJob?.cancel(); eventJob = null
         errorJob?.cancel(); errorJob = null
         val view = mutableSurface.value

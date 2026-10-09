@@ -286,7 +286,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                     Text(if (status.state == SessionState.Preparing) "Preparing embedded core…" else "Working…",
                         color = Color(0xFFE9E2D6), modifier = Modifier.align(Alignment.BottomCenter).padding(18.dp))
                 }
-                state.message?.let { Text(it, color = Color(0xFFE2CFAE), modifier = Modifier.align(Alignment.BottomStart)
+                (status.saveWarning ?: state.message)?.let { Text(it, color = Color(0xFFE2CFAE), modifier = Modifier.align(Alignment.BottomStart)
                     .background(Color(0xEE191817)).padding(16.dp).testTag("message"), fontSize = 13.sp) }
                 if (scrape.visible) ScrapePanel(scrape, scraper)
             }

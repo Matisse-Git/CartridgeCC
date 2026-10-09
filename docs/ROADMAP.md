@@ -18,8 +18,9 @@ LIBRARY_PROGRESS. Legacy duplicates are collapsed by hash; Remove/Undo preserves
 Real RetroBase search and independent flat-label/media/metadata choices work.
 Socket's precise backend is unverified; the inspected community Slot fork generates composite labels.
 Then finish M1's asset/insertion proof:
-polish the GBA template, establish a subtle receiving slot and verify asymmetric label UVs. Validate SaveRAM continuity using
-an original diagnostic that writes SRAM and profile longer collection/gameplay runs. Background/recreation
+polish the GBA template, establish a subtle receiving slot and verify asymmetric label UVs. Battery-save
+boot restoration and checkpoints now pass an original SRAM diagnostic on RP5 (SAVE_RELIABILITY).
+Profile longer collection/gameplay runs and validate real sleep/reboot/process kill. Background/recreation
 tests now pass for stop-and-return behaviour; seamless suspend restoration remains later work.
 The GBA online/directory/resume slices are brought forward; the complete provider/library workflow remains M3.
 Short handoff tests do not establish a memory plateau.

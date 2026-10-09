@@ -81,7 +81,10 @@ the app does not claim seamless resume of a lost EGL context.
 
 No confirmation dialog is added for ordinary insertion/ejection. Loading/saving errors remain visible
 and preserve selection. A failed save is reported even though native resources are still shut down.
-Force-stop/process death cannot guarantee a final SaveRAM write; periodic checkpoints are future work.
+Changed battery memory now checkpoints every 15 seconds during play, on pause/state operations and
+normal ejection. Restoration finishes before the first emulated frame. Save failures remain visible
+and preserve the previous file. Force-stop/process death can still lose changes since the latest
+successful checkpoint; no automatic full save-state resume or zero-loss guarantee.
 
 ## Larger GBA library increment
 

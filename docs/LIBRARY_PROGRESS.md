@@ -2,6 +2,7 @@
 
 Version 0.1.0-m1-library (versionCode 5) continues the validated embedded-play/API-label workflow.
 M0 remains passed and M1 remains in progress; final model/lighting/slot and sustained validation are pending.
+This is the version 5 snapshot; the next increment is documented in [SAVE_RELIABILITY.md](SAVE_RELIABILITY.md).
 
 ## Implemented
 

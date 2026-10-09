@@ -33,3 +33,5 @@
   journal writes/reset need ordering across Activity recreation. No implicit network resume on launch.
 - Deduplicate ROM hashes, never titles. Collection removal must preserve source files, saves and accepted
   enrichment; persisted exclusions must survive Rescan. Test legacy migrations and restore/Undo.
+- Restore battery data before the first emulated frame. SaveBridge may access only the already-loaded
+  core on its GL thread under the session mutex. Keep failed writes visible and previous saves intact.

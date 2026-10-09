@@ -9,6 +9,9 @@ A third increment grows the GBA collection through SAF folder imports and saves 
 explicit resume after reopening. Version 5 also collapses legacy duplicates and adds Remove/Undo with
 persisted rescan exclusions. LIBRARY_PROGRESS and the latest TESTING entry describe the current build.
 
+Version 6 fixes battery-save boot order, adds changed-data checkpoints and bounds native/file capture.
+SAVE_RELIABILITY records the new original SRAM diagnostic, files, decisions and physical results.
+
 ## Implemented
 
 - Room-persisted three-slot GBA collection, original source URIs, content hashes and selected focus.
@@ -56,9 +59,9 @@ studio cubemap or a receiving slot. Motion needs physical polish. One state slot
 are supported. The third increment grows the collection through SAF imports and saves scrape batches;
 disc templates/cores, incremental indexing, complete batch policies and very-large-library profiling
 remain pending. The second increment added real API choices and independent media/metadata.
-Backgrounding ends gameplay; seamless state restoration and periodic
-SaveRAM checkpoints are deferred. Force-stop cannot guarantee a final save. Validate a diagnostic that
-writes SRAM, asymmetric artwork orientation, held inputs/disconnection, sleep, sustained frame pacing,
+Backgrounding ends gameplay; seamless state restoration remains deferred. Periodic battery checkpoints
+and boot restoration are proved by an original SRAM diagnostic on RP5. Force-stop cannot guarantee a
+final save beyond the latest completed checkpoint. Validate asymmetric artwork, held inputs/disconnection, sleep, sustained frame pacing,
 audio timing, memory and battery on RP5.
 
 The owner requested immediate priority for database/API scraping and Socket/Slot-style labels after

@@ -23,3 +23,9 @@ FetchContent_MakeAvailable(mgba)
 # Android packages native libraries whose filename begins with lib.
 set_target_properties(mgba_libretro PROPERTIES PREFIX "lib")
 target_link_options(mgba_libretro PRIVATE "-Wl,-z,max-page-size=16384")
+
+add_library(cartridge_saves SHARED save_bridge.c)
+target_compile_features(cartridge_saves PRIVATE c_std_11)
+target_compile_options(cartridge_saves PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(cartridge_saves PRIVATE dl)
+target_link_options(cartridge_saves PRIVATE "-Wl,-z,max-page-size=16384")

@@ -14,8 +14,8 @@ android {
         applicationId = "dev.cartridge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.1.0-m1-library"
+        versionCode = 6
+        versionName = "0.1.0-m1-saves"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
@@ -24,7 +24,7 @@ android {
                 providers.gradleProperty("mgbaSource").orNull?.let {
                     arguments += "-DFETCHCONTENT_SOURCE_DIR_MGBA=$it"
                 }
-                targets += "mgba_libretro"
+                targets += listOf("mgba_libretro", "cartridge_saves")
             }
         }
     }

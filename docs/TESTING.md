@@ -124,7 +124,8 @@ Pass `-Sdk C:/path/to/Android/Sdk` and optionally `-Serial <serial>` when needed
 probe, installs both APKs, pushes the fixture, wakes the screen, runs instrumentation and checks the
 JUnit result (ADB's process exit code alone is insufficient). `-Suite Surface` is the default and runs
 one test; `-Suite Collection` runs two ordinary UI tests; `-Suite Scrape` runs five parser/migration/chooser
-tests; `-Suite Library` runs two folder/durable-queue tests; `-Suite All` runs all ten deterministic tests.
+tests; `-Suite Library` runs two folder/durable-queue tests; `-Suite Battery` runs two battery-save tests;
+`-Suite All` runs all twelve deterministic tests.
 `-Suite Live` opts into one real API test using
 a fresh candidate cache, requiring device internet. It retrieves no commercial image or ROM. Logs stay in
 ignored `.tools/device-test.log`. Collection tests stub only document-picker results, then use the real
@@ -170,7 +171,9 @@ the ordinary SAF picker. A passing instrumentation probe still needs manual audi
 - [ ] Check alternate Start+Select, Back, held-input release, every menu D-pad/A/B mapping, overlay
   readability/z-order during resizing and stopped audio/frame progression while paused.
 - [x] GPU probe proved visibly changing save/load; owner also confirmed ordinary app state save/load.
-- [ ] Eject/relaunch confirms SaveRAM continuity with a game that writes RAM. Missing state leaves
+- [x] Original SRAM diagnostic proves battery continuity across eject/relaunch and backgrounding,
+  restoration before the first frame, automatic checkpoints and failed-write retry. No state file used.
+- [ ] Owner-game battery continuity, real reboot/process death and sleep/suspend. Missing state leaves
   gameplay paused with an error; corrupt/incompatible data reports failure.
 - [x] 50 native handoffs passed, with missing/invalid ROM recovery and no crash.
 - [ ] Ordinary UI 50-cycle insertion/ejection stress: no duplicate session/thread or stale surface, same
@@ -369,3 +372,60 @@ isolated migration tests; the earlier owner snapshot and later inspection were n
 Manual Remove/Rescan/Undo validation is requested separately. Reboot, disk-full/process-kill timing,
 large-library profiling, source grant recovery, SaveRAM continuity and sustained suspend/audio/memory
 checks remain as listed above. M0 remains passed; M1 is in progress.
+
+## Battery boot barrier and checkpoints — 2026-10-09
+
+Version 0.1.0-m1-saves, versionCode 6, installed on the same physical RP5: Android 13/API 33,
+arm64-v8a, Adreno 650/GLES 3.2, landscape 1920×1080 at 60 Hz, firmware
+`RP5_V1.0.0.189_20251128_174732_user`. Both APKs compile; **19 host tests** (nine coordinator,
+five domain, three queue, two SaveStore), four GLB structural tests and lint pass, with zero lint
+errors/21 existing warnings. The original C11 JNI bridge exports its three SaveBridge methods and
+has ELF LOAD alignment 0x4000. No dependency pins changed.
+
+`Test-Device.ps1 -Suite Battery`: **OK (2 tests)** in **28.462 s**.
+`Test-Device.ps1 -Suite All -Cycles 50`: **OK (12 tests)** in **70.337 s** on the final source.
+The helper reopened the ordinary application after installing and testing version 6.
+
+New physical checks use an isolated Room database and unique ROM hash. The original 296-byte ARM
+diagnostic latches SRAM byte zero once at boot, turns green on A and gray on B. It is generated in
+ignored `.tools/probe/`, never bundled. The ordinary Compose UI, engine and mGBA core are exercised;
+GPU PixelCopy observes the actual framebuffer. Owner ROMs, library choices, labels and saves are untouched.
+
+- Save a real 32 KiB battery file, eject and reinsert: the boot latch reads the restored value before
+  retro_run. Repeat with changed RAM, then background/reopen and insert. No save-state file exists.
+- Oversized native restoration is rejected without changing memory. An oversized stored battery file
+  fails preparation, retains its original bytes and permits a fresh session after fixing the fixture.
+- Observe the production 15-second checkpoint while Running. A directory at only the fixture's unique
+  save destination forces a write failure; the app shows a warning, keeps RAM and succeeds after retry.
+  This simulates an unwritable destination, not physical disk exhaustion.
+- Deliberately skip graceful shutdown, release fixture native resources and recreate the Activity;
+  the latest checkpoint boots green. This is abrupt fixture teardown, **not actual OS process death,
+  force-stop or reboot**. Ordinary background shutdown is tested separately.
+- Host tests reject oversize and empty-state writes/reads without replacing previous data. Competing
+  SaveStore instances publish only complete byte arrays and leave no temporary files.
+
+The first native build exposed missing C++ runtime linkage; this small public-C-ABI bridge now uses
+C11 without another C++ runtime. The Windows competing-write test exposed AccessDenied during
+replacement; shared-directory serialization fixed it. All required checks were rerun successfully;
+no test was skipped or acceptance gate relaxed.
+
+Reproduce with the configured JDK and local SDK:
+
+```powershell
+$env:JAVA_HOME = 'C:\Program Files\Android\openjdk\jdk-21.0.8'
+$env:GRADLE_USER_HOME = Join-Path (Get-Location) '.tools/gradle-home'
+.\gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug --console=plain
+python tools/test_assets.py
+.\tools\Test-Device.ps1 -Serial <serial> -Suite Battery
+.\tools\Test-Device.ps1 -Serial <serial> -Suite All -Cycles 50
+```
+
+`Build-Probe.ps1 -Probe Battery` generates just the new diagnostic; `Test-Device.ps1` generates and
+copies both fixtures automatically for All. Logs remain ignored under `.tools/`.
+
+Owner-game battery saving is requested separately on the installed build. Still required: real OS
+process death, reboot, physical sleep/suspend, actual disk-full/power-loss behavior, sustained memory,
+audio/frame timing and controller disconnection. Sudden termination may lose progress since the latest
+completed checkpoint; scheduler delays and storage errors can extend that interval. No comparative PSS,
+frame-pacing or leak-free claim is made from this run. M0 remains passed; M1 is in progress.
+See SAVE_RELIABILITY.md and ADR 0007 for implementation and source API reasoning.

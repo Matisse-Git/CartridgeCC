@@ -11,7 +11,8 @@ versioned under app/schemas; no destructive migration fallback is permitted.
 
 `SessionMachine` enforces Idle → Preparing → Running ⇄ Paused → Stopping → Idle, with Error exits.
 `LibretroEngine` exposes Flow status and serializes native operations with a Mutex. Preparing includes
-core/game setup and waits for the first real FrameRendered event. Error recovery destroys the native
+core/game setup, a SurfaceCreated barrier with battery restoration/readback before emulation starts,
+then the first real FrameRendered event. Error recovery destroys the native
 session and returns through cleanup to Idle before retry. A process-wide atomic claim prevents a second
 LibretroDroid native frontend from being initialized concurrently.
 
@@ -58,15 +59,21 @@ Prepare loads both the single packaged core and a ROM. The UI never handles core
 surface Flow is specific to the Android host. Core initialization occurs only after a real surface exists.
 
 The adapter owns a fresh LifecycleRegistry per session and installs event/error collectors first.
-Pause uses the registry to stop the render loop/audio. Save calls queue a coroutine result on the GL
-thread, invoke the upstream serialization methods with `useEmulationThread=false`, catch exceptions
-there, and time out after three seconds. This avoids the upstream latch hanging on a thrown native error.
+The session remains STARTED until SurfaceCreated and battery restoration/readback complete; only then
+RESUMED permits the first retro_run. Pause uses the registry to stop the render loop/audio. Save calls
+queue a coroutine result on the GL thread and time out after three seconds. SaveBridge captures/restores
+battery memory and captures states through the already loaded core's public ABI; state loading uses the
+upstream checked method with `useEmulationThread=false`. No leaking frontend capture buffer or ignored
+SRAM rejection result. This also avoids the upstream latch hanging on a thrown native error.
 Timeout recovery stops the GL thread before destroying native state; no concurrent save/destroy is allowed.
 
 Files use a stable SHA-256 ROM-content identifier. SAF document import enforces `.gba`, size 192 bytes
 through 32 MiB, and bounded streaming into a private working copy. Save files are `<hash>.sram` and
 `<hash>.state`; invalid identifiers are rejected. Writes sync a temporary file then atomically replace
-the previous file. Save-state core-version compatibility is not encoded yet; mGBA is pinned for M0.
+the previous file. Reads/writes are bounded (128 KiB battery / 16 MiB state), with a shared directory
+guard and independent temporary paths. Changed battery bytes checkpoint every 15 seconds during play,
+on pause, after state save/load and on normal stop. Save failure stays visible without destroying usable
+gameplay; successful retry clears it. Save-state core-version compatibility is not encoded yet; mGBA is pinned.
 
 ## Lifecycle limits
 
@@ -74,7 +81,7 @@ Activity focus loss/disconnection clears UI input and pauses gameplay. On Activi
 cancels an unfinished insertion, waits for in-flight save/import writes, then ends any session after RAM
 persistence. Cancellation cleanup uses NonCancellable while the Activity remains alive. On destruction an
 idempotent synchronous native release is the final safety barrier. It cannot promise saving after
-process kill, and full-state restoration after rotation/suspend is deferred. Room restores assignments,
+process kill beyond the latest completed battery checkpoint, and full-state restoration after rotation/suspend is deferred. Room restores assignments,
 labels and focus after recreation; an ended game can be inserted afresh. Preview drafts are not accepted
 implicitly on recreation. These limits require no fabricated gameplay fallback.
 

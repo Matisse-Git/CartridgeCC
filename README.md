@@ -8,11 +8,13 @@ proprietary artwork is bundled; users can scrape artwork into their private coll
 **Status:** M0 passed on RP5 on 2026-10-09. M1 has Room-persisted game slots/focus, real API label
 scraping, independent media/metadata choices, 3D Fit/Crop/rotation preview and a tested session
 coordinator. Folder imports now grow the collection and saved scrape batches resume after reopening.
-Both APKs build; 17 unit tests and four asset checks pass. Ten RP5 tests cover real native
+Battery saves now restore before gameplay and checkpoint during play/pause. Both APKs build;
+19 unit tests and four asset checks pass. Twelve RP5 tests cover real native
 handoffs, ordinary UI recovery, independent labels, schema migrations, folder imports and resumed scraping; a separate
 live API test passes. The owner confirmed physical navigation, gameplay/audio, save/load and local labels.
 M1 remains in progress: the mesh and motion are engineering assets and long-duration validation
-is outstanding. See [docs/LIBRARY_PROGRESS.md](docs/LIBRARY_PROGRESS.md) and [docs/TESTING.md](docs/TESTING.md).
+is outstanding. See [docs/SAVE_RELIABILITY.md](docs/SAVE_RELIABILITY.md),
+[docs/LIBRARY_PROGRESS.md](docs/LIBRARY_PROGRESS.md) and [docs/TESTING.md](docs/TESTING.md).
 
 ## Prerequisites
 
@@ -67,7 +69,10 @@ document or focus its existing entry, then A / Insert to play. The picker uses S
 read grant. A bounded, SHA-256-addressed working copy lives in app-private storage; the original
 document is unchanged. Room preserves slot assignments, labels and the selected slot across relaunch.
 Old M0 assignments were transient and must be selected once in this version. SaveRAM and one
-save-state slot per content hash persist across sessions.
+save-state slot per content hash persist across sessions. Battery bytes restore before the first
+emulated frame and checkpoint when changed every 15 seconds during play, on pause/state operations
+and ejection. A save warning remains visible until a successful retry; sudden termination can still
+lose changes since the latest completed checkpoint. Automatic full-state resume is not implemented.
 
 Press **Start / Folder** to import a GBA directory and its subfolders through SAF. Read permissions and
 multiple roots persist. New content hashes append; duplicates keep accepted

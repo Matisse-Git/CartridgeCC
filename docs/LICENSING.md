@@ -23,6 +23,7 @@ Socket/Slot were references only; no frontend code was copied from them.
 | Oboe in LibretroDroid | b15f5e39c01a7ada306d959e5129620b145fb8b4 | Apache-2.0; corresponding selected source/notice included in a frontend distribution |
 | libretro-common in LibretroDroid | b0c348ea5543c4d7fb0bc479258aa6988b20c0c9 | File-level permissive licenses for the five compiled C files; preserve headers, not a guessed repository-wide license |
 | Cartridge GLB/PNG/icon/probe | original project generators/source | Original development assets, no adopted third-party art; project-wide licensing choice remains with the owner |
+| SaveBridge / SRAM diagnostic | original C/JNI and ARM assembly | No frontend implementation or third-party assets copied; uses public Libretro ABI and Android/NDK platform APIs. Combined-app GPL/source obligations remain |
 
 Inspected sources:
 
