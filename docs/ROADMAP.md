@@ -1,33 +1,21 @@
-# Roadmap and gates
+# Roadmap and acceptance gates
 
-| Milestone | Acceptance gate | Status |
+The development implementation has reached M6. Each increment is independently buildable and uses real native surfaces and embedded emulation. This is not a public-release or universal game-compatibility claim. See the dated results in TESTING, M6_PROGRESS and CONSOLE_RELIABILITY for the final validation run.
+
+| Milestone | Implemented acceptance scope | Evidence / remaining review |
 | --- | --- | --- |
-| M0 — Feasibility | APK builds; genuine GLB renders; physical controller changes state; real GBA core frames/audio; repeatable 3D↔emulator handoff | Passed on RP5, 2026-10-09; see TESTING for precise scope |
-| M1 — First loop | Persistent small GBA library, convincing template/carousel, insertion, internal play, pause/save/load/ejection, lifecycle recovery; prove local per-title label assignment on shared mesh | Functionality implemented, media refined in M2; longer stability/sleep/reboot validation remains open |
-| M2 — Refinement | Polished mesh/PBR/lighting/motion, measured frame pacing and reduced motion | Implemented increment; owner review/sustained validation open: refined GLB/PBR, original studio IBL, receiving slot, phased motion, optional sound and full reduced motion; physical results in M2_PROGRESS |
-| M3 — Library | SAF directories, indexing, duplicates, details/favorites; scrape-pack import and single-title/console/all-library scraping with independent candidate selection | Active by owner request: directories/automatic incremental scans, details/local metadata, persistent favorites/sort/search and Running-only history implemented. Selected/missing-label scopes, saved region/language ranking, current-title-first review, fill-missing protection and persistent enrichment undo implemented; offline reviewed scrape packs implemented; large-library/grant/storage-failure validation remains open |
-| M4 — Layouts | Horizontal/vertical/grid reuse one data/selection/rendering system | Implemented; 37 host / 23 RP5 tests pass, nine-object grid presentation profiled; owner/sustained gates open (M4_PROGRESS) |
-| M5 — Consoles | Add one audited core/media format at a time, verified internally | GB/GBC implemented and focused RP5 native tests pass; scope and gates in M5_PROGRESS |
-| M6 — Environment | Optional HOME, onboarding, sleep/resume, backup and long-term stability | Active: setup/settings/optional HOME implemented and RP5 tested; session recovery and actual sleep/wake tested; backup/stability next (M6_PROGRESS) |
+| M0 — Feasibility | Native arm64 APK; genuine GLB; physical controller state; embedded GBA frames/audio; repeated renderer handoff | Passed on RP5, 2026-10-09; owner navigation/gameplay confirmation and native pixel/state tests |
+| M1 — First loop | Persistent local GBA collection, physical carousel/insertion, internal play, custom pause/state/battery/eject loop | Implemented and RP5 verified; completed-session sleep/recovery added in M6. Broader real-title/audio/latency coverage remains |
+| M2 — Refinement | Original refined GBA PBR mesh, studio IBL, receiving slot, phased motion, optional contact sound, reduced motion | Implemented and bounded 60 Hz presentation profiled. Owner/art direction review and broader thermal/battery profiling remain |
+| M3 — Library | Multiple SAF roots, incremental/full-hash scans, SHA deduplication, preserved removal, search/favorites/sort/details/history, metadata editing/source recovery; API title/console/all/selected scraping, independent candidate choices, preferences/undo and offline packs | Implemented and isolated Room/SAF/provider/UI tests pass. Provider coverage/rights and large distinct-artwork/storage-provider failure coverage remain |
+| M4 — Layouts | Horizontal, vertical and nine-object grid share the same data, selection, input and bounded renderer pool | RP5 layout/focus/pixel/handoff tests and per-layout presentation profiles pass |
+| M5 — Additional consoles | Audited source-built mGBA adds GB/GBC, explicit identities, tall GLBs, matching labels/scrape routing, battery and MBC3 clock handling | Native GB/GBC frame/input/state/battery/RTC tests pass. Other consoles, discs and unusual peripherals are future audited increments |
+| M6 — Console environment | First-run setup, independent controller/core/preferences, optional HOME candidate/Android chooser, completed session sleep/cold/process recovery, frozen native pause frames and reviewed ROM-free backup/restore | Features implemented; focused RP5 tests pass. Final sustained/reboot/full-regression results are in CONSOLE_RELIABILITY. Default-HOME selection is the owner's Android choice |
 
-**Active task:** M6 console environment, after shared M4 layouts and audited M5 GB/GBC. Keep M1 longer stability/sleep/reboot and M2 artistic/sustained
-profiling gates open. See M3_PROGRESS and ADR 0009 for identity-preserving views, incremental
-indexing, metadata/details and history. M3_SCRAPE_REVIEW and ADR 0010 cover the faster current-title
-review, selected scopes, saved preferences, protected fill-missing and undo. The earlier deferred UX
-feedback is addressed by this increment; physical owner review remains open; offline packs are implemented in SCRAPE_PACK_FORMAT. SAF imports now
-expand the collection, and saved scrape batches resume without repeating completed searches. See
-LIBRARY_PROGRESS. Legacy duplicates are collapsed by hash; Remove/Undo preserves data and Rescan exclusions.
-Real RetroBase search and independent flat-label/media/metadata choices work.
-Socket's precise backend is unverified; the inspected community Slot fork generates composite labels.
-The M2 increment brings forward M1's refined GBA template and receiving slot; asymmetric label UVs
-are checked on the real GPU. Battery-save
-boot restoration and checkpoints now pass an original SRAM diagnostic on RP5 (SAVE_RELIABILITY).
-Profile longer collection/gameplay runs and validate real sleep/reboot/process kill. Background/recreation
-tests now pass for stop-and-return behaviour; seamless suspend restoration remains later work.
-The GBA online/directory/resume slices are brought forward; the complete provider/library workflow remains M3.
-Short handoff tests do not establish a memory plateau.
+Public-release gates: choose a GPL-compatible distribution/source plan and audit the complete dependency BOM; resolve provider/data/image redistribution terms; retain source/notice/relinking materials. No public release has been made. Registering a HOME candidate never chooses or replaces the owner's default.
 
-Label/media/metadata selection is a product priority, not an optional cosmetic extra. Implement the
-per-game texture binding and local image import in M1 (proved), then extend the working provider proof
-with scrape-pack import and scalable library enrichment in M3. Reuse the chooser/batch pipeline for optical-disc labels when their templates and cores
-are introduced in M5; do not claim CD emulation is supported by the initial GBA milestone.
+Manual hardware coverage: owner visual/motion/input review; choosing and reverting HOME; multi-hour mixed GBA/GB/GBC sessions and unplugged battery/heat/audio/latency measurements; external controller removal/reconnection; revoked SAF grants and storage-full/provider-write failures; hundreds of distinct label textures. Automated diagnostic ROMs contain original code/imagery and are generated outside Git/APK assets.
+
+Label/media/metadata scraping remains the primary enrichment workflow. Local image import is an optional fallback. Exact Socket artwork/backend parity is unverified; box art is not silently used as a flat label. Optical-disc label templates and internal disc-system integration follow as a separate audited console increment, using the existing candidate/review infrastructure.
+
+Recommended next engineering work: complete owner art/input review and a longer mixed-title thermal/memory/audio run, then select one disc-capable core/media format for a separately licensed and verified increment. Do not reopen finished subsystems or add several cores at once.

@@ -14,8 +14,8 @@ android {
         applicationId = "dev.cartridge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.6.2-portable-backup"
+        versionCode = 16
+        versionName = "0.6.3-console-validation"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {

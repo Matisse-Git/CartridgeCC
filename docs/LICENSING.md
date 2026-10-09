@@ -108,3 +108,7 @@ M6 setup/controller/core/HOME code adds no dependency. The APK now includes the 
 M6 recovery extends the original native wrapper with a narrowly scoped video callback counter over the unchanged hash-pinned mGBA translation unit. Corresponding source includes this wrapper/bridge/build change. SessionStore, lifecycle and pause-frame code are original; Android PixelCopy/Bitmap/PowerManager and Java atomic-file APIs add no third-party dependency. Actual diagnostic frame captures are private and generated from original homebrew, not bundled commercial images.
 
 Backup adds no third-party dependency. Accepted user/provider artwork stays private in an explicitly exported archive; exporting does not grant redistribution rights. Notice/licensing and complete-source release gates remain in force.
+
+Console reliability diagnostics add original test code only and no new dependency. Process markers and runtime logs stay in ignored private fixture storage and `.tools`. No commercial game was used for automated soak/recovery.
+
+M6's final live probe (2026-10-10, 3.794 seconds) verified the real GBA regional and GB/GBC platform/flat-label URL routes. It requested metadata/URLs only; the existing provider/image rights and complete-source release gates remain unchanged.

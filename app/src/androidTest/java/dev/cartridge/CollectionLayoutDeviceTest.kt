@@ -38,7 +38,11 @@ class CollectionLayoutDeviceTest {
     @get:Rule val ui = createEmptyComposeRule()
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private fun await(scenario: ActivityScenario<DebugCollectionActivity>, check: (DebugCollectionActivity) -> Boolean) {
-        ui.waitUntil(30_000) { var ready = false; scenario.onActivity { ready = check(it) }; ready }
+        try { ui.waitUntil(30_000) { var ready = false; scenario.onActivity { ready = check(it) }; ready } }
+        catch (failure: Throwable) {
+            scenario.onActivity { Log.e("CartridgeScale", "life=${it.lifecycle.currentState} loaded=${it.coordinator.state.value.loaded} ready=${it.coordinator.state.value.rendererReady} screen=${it.coordinator.state.value.screen} generation=${it.coordinator.state.value.viewportGeneration} message=${it.coordinator.state.value.message} renderer=${it.collectionSurface?.diagnosticState}") }
+            throw failure
+        }
     }
     private fun key(scenario: ActivityScenario<DebugCollectionActivity>, code: Int) {
         scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code)) }; Thread.sleep(80)
@@ -138,8 +142,10 @@ class CollectionLayoutDeviceTest {
                         assertTrue(it.coordinator.state.value.selection.index in 0..499)
                     }
                 }
-                scenario.recreate(); await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
-                scenario.onActivity { assertEquals(CollectionLayout.Grid, it.coordinator.state.value.layout); assertEquals(500, it.coordinator.state.value.allGames.size) }
+                repeat(8) {
+                    scenario.recreate(); await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
+                    scenario.onActivity { assertEquals(CollectionLayout.Grid, it.coordinator.state.value.layout); assertEquals(500, it.coordinator.state.value.allGames.size) }
+                }
                 Log.i("CartridgeScale", "500 original records; fixed nine-instance pool; PSS before=$startPss KiB, after=${Debug.getPss()} KiB")
             }
         } finally { DebugCollectionActivity.closeDatabases(); context.deleteDatabase("$name.db") }

@@ -9,6 +9,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.InputDevice
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
@@ -38,6 +40,23 @@ class ConsoleEnvironmentTest {
         ui.waitForIdle()
         scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, key)) }; Thread.sleep(120)
         scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, key)) }; Thread.sleep(120)
+    }
+    @Test fun configuredDeadZoneControlsBothMenuAndLibraryRepeatsWithActualAndroidAxes() {
+        val moves = mutableListOf<Int>()
+        val router = dev.cartridge.input.ControllerRouter(navigate = moves::add, select = {}, back = {}, pause = {}, gameKey = { _, _ -> }, gameMotion = { _, _ -> })
+        fun axis(x: Float, y: Float = 0f) {
+            val coordinates = MotionEvent.PointerCoords().apply { setAxisValue(MotionEvent.AXIS_X, x); setAxisValue(MotionEvent.AXIS_Y, y) }
+            val properties = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_UNKNOWN }
+            val event = MotionEvent.obtain(0, 0, MotionEvent.ACTION_MOVE, 1, arrayOf(properties), arrayOf(coordinates), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_JOYSTICK, 0)
+            try { assertTrue(router.motion(event)) } finally { event.recycle() }
+        }
+        router.deadZone = .2f; axis(.3f); router.tick(0); router.tick(300); assertEquals(listOf(1, 1), moves)
+        moves.clear(); router.deadZone = .5f; axis(.3f); router.tick(400); router.tick(800); assertTrue(moves.isEmpty())
+        axis(.7f); router.tick(900); assertEquals(listOf(1), moves)
+        axis(.3f); router.tick(1300); assertEquals(listOf(1), moves)
+        axis(.7f); router.tick(1301); assertEquals(listOf(1, 1), moves)
+        moves.clear(); router.mode = dev.cartridge.input.InputMode.Menu; router.deadZone = .2f; axis(0f, -.3f); router.tick(1400)
+        assertEquals(listOf(-1), moves)
     }
     @Test fun onboardingAndIndependentControllerCorePreferencesSurviveRecreationAndDriveNativeInput() {
         val name = "m1-test-${UUID.randomUUID()}"

@@ -74,6 +74,7 @@ class CartridgeSurface(
     var reducedMotion: Boolean = false
     internal val focusPosition get() = spring.position
     internal val isClosed get() = closed
+    internal val diagnosticState get() = "closed=$closed active=$active swap=${swapChain != null} ready=$reportedReady uiReady=${uiHelper.isReadyToRender} loads=${if (closed) "released" else "${resourceLoader.asyncGetLoadProgress()}/${tallLoader.asyncGetLoadProgress()}/${receiverLoader.asyncGetLoadProgress()}"}"
     /** Diagnostic only: CPU submission/scheduling, not a GPU presentation-time measurement. */
     internal var frameObserver: ((Long, Long, Boolean) -> Unit)? = null
     private var labelFailure = false

@@ -13,7 +13,7 @@ versioned under app/schemas; no destructive migration fallback is permitted.
 `LibretroEngine` exposes Flow status and serializes native operations with a Mutex. Preparing includes
 core/game setup, SurfaceCreated plus the pinned successful render-lifecycle observer registration,
 battery restoration/readback before emulation starts,
-then the first real FrameRendered event. Error recovery destroys the native
+then two actual native video callbacks. Upstream FrameRendered may be a zero-frame timing step; the wrapper counts produced video separately. Error recovery destroys the native
 session and returns through cleanup to Idle before retry. A process-wide atomic claim prevents a second
 LibretroDroid native frontend from being initialized concurrently.
 
@@ -30,16 +30,14 @@ Pause clears all previously forwarded keys/axes. No HOME interception or system-
 
 ## Graphics ownership
 
-Filament uses a SurfaceView/UiHelper swapchain. Its glTF loader creates three instances sharing meshes,
-shell textures/materials. The collection length is independent: these three instances represent a
-moving window around the global selection. CartridgeLabels duplicates only the named label material per visible instance
+Filament uses a SurfaceView/UiHelper swapchain. A bounded nine-slot pool holds each supported physical template, sharing meshes and shell textures/materials. Three carousel objects or up to nine grid objects are visible; slots represent a moving window around the global selection. CartridgeLabels duplicates only the named label material per visible instance
 and owns its replacement SRGB8_A8 texture. GLB/image file reads and label decoding use IO; every Filament/JNI resource call stays on Main. Texture
 resources load asynchronously and renderables are added when ready. A Choreographer callback updates
 root transforms and draws; the focus spring retargets in place. Backgrounding pauses that loop.
 
 M2 loads a CollectionAssets bundle on IO once per Activity: refined cartridge, independent receiving-slot
 GLB and original prefiltered studio KTX. Two bounded ResourceLoaders asynchronously prepare the two assets.
-Three cartridge instances still share mesh/plastic/normal/roughness resources. The official matching
+Visible cartridge instances share mesh/plastic/normal/roughness resources. The official matching
 KTX1Loader supplies diffuse SH and specular cubemap; both GPU resources are destroyed at handoff. No
 skybox or runtime prefilter work runs during navigation. The slot lies beyond the far clip at rest.
 MediaMotion owns phase curves and shared durations; Compose advances its linear progress while Filament
@@ -262,3 +260,7 @@ ConsolePreferences carries supported controller and core choices independently o
 SessionStore publishes checksum/version-bound completed state generations separately from manual saves. LibretroEngine checkpoints state after battery/RTC and restores before the first actual core video frames; JNI video callback count supplements pinned lifecycle setup barriers. The coordinator serializes background checkpoint/stop/release and fresh-view paused restoration. Cold startup offers recovery from the collection. The AndroidView is keyed by GLRetroView identity, preventing a stopped Compose collector from reusing a released host. Actual presented pixels are retained as one optional pause bitmap while Android’s paused surface releases buffers. See ADR 0015.
 
 M6 portable backup: logical records and declared checksummed blobs, read-only staging/review, append-only save merge and a Room transaction are specified in BACKUP_FORMAT and ADR 0016. No ROM bytes or Android grants/default roles are exported; settings restore is explicit.
+
+The configured input threshold is applied before generic UI repeat timing, avoiding a second fixed threshold. Console list focus uses Compose bring-into-view. Portable state records are core-bound with or without an automatic session. Process/stability diagnostics run only in instrumentation against an isolated DB and generated original game; they are not normal product flows.
+
+Resume-record IO finishes before the coordinator copies current state; a suspended receiver copy must not overwrite intervening render readiness. The scale regression recreates a 500-title grid eight times to cover this ordering.

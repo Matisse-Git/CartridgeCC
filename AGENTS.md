@@ -55,3 +55,7 @@
 - SessionStore publishes a completed generation last; keep manual/battery saves separate. Restore requires a compatible core revision, size and hash. Key emulator hosts by view identity; native readiness requires real video callbacks. Pause-frame imagery must come from PixelCopy of actual gameplay, with no active emulator loop behind the menu. A cold Activity test is not a process-kill or reboot test.
 
 - Backup archives contain only declared bounded records/images/saves; never extract ZIP names directly. Preserve existing files and choices during merge, require explicit settings opt-in, and exclude ROMs, roles, grants and credentials. Do not claim Room and filesystem commits are one atomic transaction.
+
+- Report actual process death, cold Activity recreation, screen sleep and reboot as separate evidence. Diagnostic holding tests intentionally terminated by the host are not reported as passing JUnit tests. Keep owner HOME/default choices and library data unchanged during diagnostics.
+
+- After any suspending operation, read current Flow/UI state before copying changed fields. Do not capture a state-copy receiver before IO and overwrite intervening readiness/input updates. The 500-title recreation regression guards this ordering.

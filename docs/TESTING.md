@@ -712,3 +712,15 @@ Version 14 builds both APKs with 44 host tests and lint passing. Focused Recover
 2026-10-10, M6 recovery v14: full RP5 suite passed all 28 tests with `-Cycles 50`, 182.603 seconds. Focused recovery passed in 8.366 seconds with real screen sleep/wake. Host tests: 44; lint and both APKs pass. Abrupt process termination, reboot and sustained stability remain separate tests.
 
 M6 backup v15: 3 RP5 tests passed in 3.394 seconds. `tools/Test-Device.ps1 -Suite Backup` exercises round trip, protected merges, malformed archives and real console SAF callbacks. Full suite now expects 31 tests; the new full run remains pending. Backup state fixtures test exact bytes and compatible core revision, not arbitrary cross-core compatibility.
+
+See CONSOLE_RELIABILITY for separate-process, real reboot and sustained-gameplay commands/results. The quick full suite expects 32 tests after the actual-axis settings regression. The holding process test is intentionally terminated; only its fresh-process verification is a JUnit pass. The long test is excluded from routine `-Suite All` runs.
+
+M6 sustained RP5 result: `Test-Stability.ps1 -Minutes 10` passed, one test, 636.783 seconds. Ten full play/save/load/sleep/wake/eject/reinsert cycles, no session/save warning failures. Native callback rate 60.003–60.009 FPS; PSS 242.7–294.8 MiB, first 266.5 and last 268.6; thermal NONE and battery 28.5°C with USB power. See CONSOLE_RELIABILITY; this is not an unplugged battery-life or universal stability claim.
+
+M6 reboot: real RP5 restart, changed boot ID and completed boot confirmed; fresh-process paused frame/battery recovery passed, 1 verification test in 3.346 seconds. Default-HOME choice was preserved. Do not confuse this with selecting/testing Cartridge as Android's default launcher.
+
+M6 final scale regression: the first expanded run passed 31/32; diagnostics isolated an IO state-copy race that cleared one-shot renderer readiness. Fix reads current state after the checkpoint lookup returns. Focused Layout now passes 2 tests in 15.679 seconds with eight consecutive 500-title recreations; assertions and timeout remain intact. Full results follow after the rerun.
+
+Final corrected v16 full RP5 suite PASS: 32 tests, 189.118 seconds, 50 native handoffs and eight 500-title recreations. No skipped/dropped assertions. Host tests 44; lint/both APKs/10 asset checks/3 GLB validators pass. Logs remain ignored under `.tools`.
+
+Final live provider probe PASS: 1 test, 3.794 seconds, real GBA/GB/GBC metadata and flat-label URLs, no image or ROM downloads. Ordinary `-Suite All` remains offline; `-Suite Live` is explicit.

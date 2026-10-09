@@ -1,6 +1,8 @@
 package dev.cartridge.environment
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -33,9 +35,12 @@ enum class ConsolePage { Setup, Settings, Controllers, Game, Notices, Backup }
                 Text("↑ ↓ Choose · A Select · B Back", modifier = Modifier.padding(top = 24.dp), fontSize = 12.sp)
             }
             val scroll = rememberScrollState()
-            LaunchedEffect(focus) { scroll.animateScrollTo(if (focus >= 4) scroll.maxValue else 0) }
+            val requests = remember(page, choices.size) { List(choices.size) { BringIntoViewRequester() } }
+            LaunchedEffect(focus, page) { requests.getOrNull(focus)?.bringIntoView() }
             Column(Modifier.width(300.dp).verticalScroll(scroll).background(Color(0xFF252320)).padding(8.dp)) {
-                choices.forEachIndexed { index, title -> LibraryAction(title, focus == index, "console-action-$index", !busy) { action(index) } }
+                choices.forEachIndexed { index, title -> Box(Modifier.bringIntoViewRequester(requests[index])) {
+                    LibraryAction(title, focus == index, "console-action-$index", !busy) { action(index) }
+                } }
             }
         }
     }

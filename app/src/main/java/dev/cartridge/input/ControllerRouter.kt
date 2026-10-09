@@ -127,10 +127,11 @@ class ControllerRouter(
             negative in held && positive !in held -> -1f
             else -> analog
         }
-        val y = axis(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, axisY)
+        fun threshold(value: Float) = if (abs(value) < deadZone) 0f else if (value > 0) 1f else -1f
+        val y = threshold(axis(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, axisY))
         val dy = verticalRepeat.poll(y, nowMillis)
         if (mode == InputMode.Menu) { if (dy != 0) navigate(dy); return }
-        val x = axis(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, axisX)
+        val x = threshold(axis(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, axisX))
         val dx = horizontalRepeat.poll(x, nowMillis)
         if (dx != 0 || dy != 0) {
             if (navigateLibrary != null) navigateLibrary.invoke(dx, dy) else if (dx != 0) navigate(dx)

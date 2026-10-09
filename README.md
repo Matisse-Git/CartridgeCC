@@ -1,24 +1,23 @@
 # Project Cartridge
 
 Native Android, controller-first physical-media collection with **embedded** GBA, GB and GBC emulation.
-This repository implements M0, focused M1/M2/M3 increments and shared M4 layouts, not the finished product. No RetroArch
-installation, external emulator intents or browser renderer is used. No commercial ROM, BIOS or
-proprietary artwork is bundled; users can scrape artwork into their private collection.
+This repository now contains the development implementation through M6: shared 3D collection layouts,
+API label/metadata review, internal GBA/GB/GBC play, console setup/settings, optional Android HOME,
+completed-session recovery and portable backup/restore. It remains a private development build;
+art direction, broad game/peripheral compatibility and public-release rights/source obligations are open.
+No RetroArch installation, external emulator intents or browser renderer is used. Commercial ROMs,
+BIOS and proprietary artwork are excluded from Git/APK assets.
 
-**Status:** M0 passed on RP5 on 2026-10-09. M1 has Room-persisted game slots/focus, real API label
-scraping, independent media/metadata choices, 3D Fit/Crop/rotation preview and a tested session
-coordinator. Folder imports now grow the collection and saved scrape batches resume after reopening.
-Battery saves now restore before gameplay and checkpoint during play/pause. Both APKs build;
-40 unit tests and ten asset checks pass. Twenty-three RP5 tests cover real native
-handoffs, ordinary UI recovery, independent labels, schema migrations, folder imports and resumed scraping; a separate
-live API test passes. The owner confirmed physical navigation, gameplay/audio, save/load and local labels.
-M2 refinement is implemented: refined GBA mesh/PBR, original studio reflections, receiving slot,
-phased insertion/ejection, optional contact sound and carousel reduced motion. A short isolated RP5
-viewport benchmark measured 16.74–16.75 ms presentation p95 across rest/navigation/media motion.
-Long-duration validation
-remains open, alongside M1's sleep/reboot gates. See [docs/M2_PROGRESS.md](docs/M2_PROGRESS.md),
-[docs/SAVE_RELIABILITY.md](docs/SAVE_RELIABILITY.md),
-[docs/LIBRARY_PROGRESS.md](docs/LIBRARY_PROGRESS.md) and [docs/TESTING.md](docs/TESTING.md).
+**Verified:** M0 passed on the physical RP5. The owner confirmed physical controller navigation,
+gameplay/audio, pause/eject, save/load, label thumbnails/apply/persistence and imports. Both APKs,
+44 host tests, lint, ten asset checks and three GLB validators pass. A separate live GBA/GB/GBC API probe passes. The final full regression passed
+32 RP5 tests with 50 native handoffs and eight 500-title recreations. Actual sleep/wake, process-death,
+reboot recovery and the ten-minute sustained diagnostic pass. Their exact scope and results are recorded
+in [M6_PROGRESS](docs/M6_PROGRESS.md) and [TESTING](docs/TESTING.md).
+
+See [ROADMAP](docs/ROADMAP.md) for exact scope and remaining manual gates. Collection presentation
+p95 measured 16.74–16.75 ms on RP5 across three layouts; this is a bounded viewport measurement,
+not a claim about every library/game or long-term battery use.
 
 ## Prerequisites
 
@@ -81,7 +80,7 @@ emulated frame and checkpoint when changed every 15 seconds during play, on paus
 and ejection. A save warning remains visible until a successful retry; sudden termination can still
 lose changes since the latest completed checkpoint. Automatic session checkpoints are separate from manual states; wake restores paused and cold launch offers Resume session.
 
-Press **Start / Folder** to import a GBA directory and its subfolders through SAF. Read permissions and
+Press **Start / Folder** to import a GBA, GB or GBC directory and its subfolders through SAF. Read permissions and
 multiple roots persist. New content hashes append; duplicates keep accepted
 labels/metadata. **Rescan** revisits saved roots without adding duplicate games. **B / Cancel scan** keeps
 completed imports. Legacy repeated assignments collapse on startup by hash; identical titles with
@@ -127,7 +126,7 @@ The first button of a two-button shortcut may reach the game before the second i
 Insertion lifts, aligns and slides the cartridge into a small physical receiving slot over 540 ms;
 ejection reverses it over 420 ms. Motion off bypasses both and snaps carousel selection. Optional
 original contact sound defaults off. Final manual art direction,
-disc media and HOME registration remain planned; all three collection layouts are implemented.
+disc media remain future increments; all three collection layouts and optional HOME registration are implemented.
 Backgrounding saves a completed state and releases the current session. Same-Activity wake restores paused; cold launch offers Resume session in Tools or Console settings.
 
 ## M3 library controls
@@ -152,8 +151,7 @@ on pause/eject/background. Failed history writes remain visible and retry for th
 the Activity lives. Process death can lose history since the latest completed checkpoint.
 
 See [M3 library progress](docs/M3_PROGRESS.md), [scraper review](docs/M3_SCRAPE_REVIEW.md) and ADRs 0009/0010.
-M3 scrape-pack import is implemented. Large-library/grant/storage-failure validation and broader
-sleep/reboot/performance gates remain open; the active roadmap continues through M4–M6.
+M3 scrape-pack import is implemented. Broader library/grant/storage-failure validation remains in the physical checklist. M4–M6 features are implemented; see the dated validation record.
 
 ## Engineering record
 
@@ -186,3 +184,5 @@ M6 version 13 adds first-run setup, Console settings (B → Collection or Tools)
 Version 14 adds checksum/core-bound session recovery and a real frozen pause frame; see M6_PROGRESS and ADR 0015.
 
 Version 15 adds portable backup/restore in Console settings. See [BACKUP_FORMAT](docs/BACKUP_FORMAT.md) for contents, review and transfer behavior.
+
+The development milestone summary and major changed file groups are in [MILESTONE_REPORT](docs/MILESTONE_REPORT.md). Reproducible sleep/process/reboot/soak commands are in [CONSOLE_RELIABILITY](docs/CONSOLE_RELIABILITY.md).

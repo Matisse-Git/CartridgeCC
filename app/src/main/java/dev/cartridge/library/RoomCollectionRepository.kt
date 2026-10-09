@@ -52,7 +52,10 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
                     metadataJson = LibraryJson.metadata(metadata), mediaJson = LibraryJson.media(media),
                     favorite = current.favorite || incoming.favorite, playMs = maxOf(current.playMs, incoming.playMs),
                     lastPlayed = maxOf(current.lastPlayed, incoming.lastPlayed))
-                if (merged != current) { rememberEnrichment(current); dao.updateGame(merged) }
+                if (merged != current) {
+                    if (merged.labelAssetId != current.labelAssetId || merged.metadataJson != current.metadataJson || merged.mediaJson != current.mediaJson) rememberEnrichment(current)
+                    dao.updateGame(merged)
+                }
             }
         }
         backup.order.filter { it !in existing && it !in backup.removed }.forEach { if (it !in ids) ids.add(it) }

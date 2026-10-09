@@ -52,7 +52,7 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
                 val file = File(temporary, "session.state").apply { writeBytes(sessions.read(it)) }
                 val path = "session/state.bin"; blobs.add(BackupBlob(path, hash(file), file.length(), it.id, "session")); files[path] = file
             }
-            val root = encodeLibrary(library).put("format", FORMAT).put("version", 1).put("settings", preferences)
+            val root = encodeLibrary(library).put("format", FORMAT).put("version", 1).put("core", SessionStore.CORE).put("settings", preferences)
                 .put("blobs", JSONArray(blobs.map { JSONObject().put("path", it.path).put("sha256", it.sha).put("bytes", it.bytes).put("id", it.id).put("kind", it.kind) }))
             session?.let { root.put("session", JSONObject().put("id", it.id).put("system", it.system.name).put("savedAt", it.savedAt).put("core", SessionStore.CORE)) }
             val manifest = root.toString().toByteArray(Charsets.UTF_8)
@@ -78,6 +78,7 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
             val array = root.getJSONArray("blobs"); require(array.length() < LIMITS.entries)
             val blobs = (0 until array.length()).map { index -> array.getJSONObject(index).let {
                 BackupBlob(it.getString("path"), it.getString("sha256"), it.getLong("bytes"), it.getString("id"), it.getString("kind")) } }
+            if (blobs.any { it.kind in setOf("state", "session") }) require(root.getString("core") == SessionStore.CORE) { "Saved states use a different core revision" }
             require(blobs.map { it.path }.distinct().size == blobs.size && files.keys == (blobs.map { it.path } + "backup.json").toSet()) { "Undeclared or duplicate backup data" }
             val ids = library.games.associateBy { it.id }
             val images = library.games.flatMap { listOfNotNull(it.labelAssetId) + LibraryJson.media(it.mediaJson).values.map { m -> m.image.assetId } }.toSet()

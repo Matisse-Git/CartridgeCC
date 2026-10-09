@@ -123,7 +123,12 @@ class CollectionCoordinator(
     }
     private suspend fun readResume() {
         val store = sessionStore ?: return
-        try { mutableState.value = state.value.copy(resumeSession = withContext(Dispatchers.IO) { store.available() }) }
+        try {
+            val saved = withContext(Dispatchers.IO) { store.available() }
+            // Read the latest UI state after suspension; renderer/input updates may arrive while
+            // the filesystem is checked. A captured receiver could clear its one-shot readiness.
+            mutableState.value = state.value.copy(resumeSession = saved)
+        }
         catch (failure: Exception) { if (failure is CancellationException) throw failure; notify("Saved session unavailable: ${failure.message}. Discard it in Console settings.") }
     }
     fun discardResume() {

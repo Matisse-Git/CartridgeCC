@@ -230,7 +230,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         ConsolePage.Setup -> listOf("Choose game folder", "Controller", "Continue to collection")
         ConsolePage.Settings -> listOf("Back", "Controller", "Game settings", if (coordinator.state.value.reducedMotion) "Motion: Off" else "Motion: On",
             if (soundEnabled) "Media sound: On" else "Media sound: Off", if (homeEnabled) "HOME candidate: On" else "HOME candidate: Off",
-            "Choose Android default home", "First-run setup", "About & licences", "Resume saved session", "Discard saved session", "Export backup", "Restore backup")
+            "Choose Android default home", "First-run setup", "About & licences", "Resume saved session", "Discard saved session", "Export backup", "Restore backup", "Android device settings")
         ConsolePage.Controllers -> listOf("Back", if (consoleSettings.swapMenuButtons) "Menu select: B / back: A" else "Menu select: A / back: B",
             if (consoleSettings.swapGameButtons) "Gameplay A/B: Swapped" else "Gameplay A/B: Direct",
             if (consoleSettings.swapShoulders) "Gameplay L/R: Swapped" else "Gameplay L/R: Direct",
@@ -266,6 +266,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 10 -> { consoleBack(); coordinator.discardResume() }
                 11, 12 -> if (engine.status.value.state != SessionState.Idle) coordinator.notify("Eject to the collection before backing up or restoring")
                     else if (index == 11) exportBackup?.invoke() else chooseBackup?.invoke()
+                13 -> try { startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) }
+                    catch (failure: Exception) { coordinator.notify("Android settings unavailable: ${failure.message}") }
             }
             ConsolePage.Controllers -> when(index) {
                 0 -> consoleBack(); 1 -> changeConsole(consoleSettings.copy(swapMenuButtons = !consoleSettings.swapMenuButtons))
