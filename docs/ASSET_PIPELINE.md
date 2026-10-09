@@ -51,3 +51,9 @@ with the pinned gltfio runtime, test ETC2/ASTC capability on RP5, and compare GP
 Never assume a WebP/extension provider exists. Draco/meshopt compression and runtime label replacement
 remain deferred; the separate label material/UV region is ready, but there is no label editor or game-art
 texture replacement API in M0. Avoid per-navigation texture decoding and retain the three-instance cache.
+
+The next label proof must assign different user-selected images to instances of this one mesh without
+changing adjacent games. Preserve original images; store a crop/fit/rotation recipe per selection and
+derive template-sized textures. Publish label UV orientation, aspect ratio and a mask with each template.
+Future disc templates also define outer radius and centre-hole masking. Distinguish flat label artwork
+from photographs of entire media and case/box art. See [LABEL_SCRAPING.md](LABEL_SCRAPING.md).

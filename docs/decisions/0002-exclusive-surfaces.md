@@ -10,3 +10,7 @@ shared contexts. The pause overlay remains ordinary Compose UI over the frozen e
 Cost: no fancy GPU crossfade; recreation requires a short loading cue. Test SurfaceView z-order,
 context loss, repeated handoffs and memory on RP5. M0 ends sessions on backgrounding; full resume
 must recreate safely and restore state in later hardening.
+
+Device evidence, 2026-10-09: 50 real native handoffs passed on RP5, including save/load and GPU pixel
+checks. The owner confirmed ordinary pause/resume/eject. This supports the exclusive-surface decision;
+context loss, longer memory trends and ordinary UI stress remain open in TESTING.

@@ -38,8 +38,9 @@ existing selected index. Explicit host removal also completes while backgrounded
 depend on a future Compose animation frame. Close methods are idempotent.
 
 TextureView compositing is deferred. For M0, separate SurfaceViews are the smaller correctness test.
-Verify pause overlay z-order and aspect ratio on RP5; neither context sharing nor crossfade correctness
-is assumed. Native context recreation in upstream GLRetroView is a known inspection risk.
+The owner confirmed the pause menu works on RP5; overlay resizing/aspect and lifecycle stress remain
+checks. The native 50-cycle handoff probe passed. Context sharing/crossfade were not tested. Native
+context recreation in upstream GLRetroView remains a known inspection risk for suspend hardening.
 
 ## Emulator adapter and files
 
@@ -68,3 +69,19 @@ survive recreation in M0. These limitations are visible and require no fabricate
 
 ADRs record dependency, surface and storage decisions. M1 should extract the shell coordinator from
 the Activity into a tested owner without retaining Android rendering objects, after device feasibility.
+
+## Planned artwork and metadata boundary
+
+Local image/scrape-pack import and online providers feed one enrichment workflow, separate from the
+ROM repository. A provider match never changes the content-hash game identifier. Candidate results are
+separate from accepted, versioned selections. Game identity, physical media template, label artwork,
+additional media and metadata fields have independent choices and provenance.
+
+Retain original images and crop/fit recipes separately from derived GPU textures. The renderer shares
+the cartridge mesh but binds a distinct label material instance per visible game; label decoding runs
+on IO, GPU creation/destruction on Main. This is a planned change: M0's material is still shared.
+Cache accepted files for offline use and bound GPU texture memory rather than decoding on every move.
+
+Batch jobs take a snapshot of the selected games, honour provider rate limits, retain resumable status,
+and commit reviewed choices transactionally. Default fill-missing behaviour preserves manual choices.
+See [LABEL_SCRAPING.md](LABEL_SCRAPING.md). No unused provider/database modules are created in M0.

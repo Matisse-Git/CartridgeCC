@@ -5,9 +5,12 @@ This repository implements an M0 feasibility slice, not the finished product. No
 installation, external emulator intents, browser renderer, commercial ROM, BIOS, or proprietary
 artwork is used.
 
-**Status:** debug APK builds; unit tests and asset checks pass. Runtime rendering, audio,
-physical controller input, and GPU handoff have **not** been tested on an Android device.
-M0 is not accepted until the device checks in [docs/TESTING.md](docs/TESTING.md) pass.
+**Status:** debug APK builds; unit tests and asset checks pass. On the physical RP5, the genuine
+GLB renders, D-pad/stick navigation is user-confirmed, and 50 real Filament/mGBA handoffs passed.
+GPU pixel checks prove emulator input and visible save-state restoration; missing/invalid ROM recovery
+also passes. The owner confirmed gameplay/audio and the ordinary pause/resume/save/load/eject loop.
+**M0 feasibility passed on 2026-10-09.** Broader lifecycle/performance checks remain open; see
+[docs/TESTING.md](docs/TESTING.md).
 
 ## Prerequisites
 
@@ -75,6 +78,7 @@ Backgrounding ends the current session after saving RAM; full session sleep/resu
 
 - [Technical plan and feasibility blockers](docs/TECHNICAL_PLAN.md)
 - [Product and UX scope](docs/PRODUCT.md)
+- [Required label import, candidate choice and bulk scraping](docs/LABEL_SCRAPING.md) (planned)
 - [Architecture and lifecycle](docs/ARCHITECTURE.md)
 - [Milestones](docs/ROADMAP.md)
 - [Asset pipeline](docs/ASSET_PIPELINE.md)

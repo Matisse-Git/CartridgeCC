@@ -6,7 +6,8 @@ The supplied directory was empty and had no Git repository or existing Android/e
 Java, Gradle, SDK, ADB, Ninja and Blender were absent from PATH. A readable Microsoft JDK 21.0.8
 was found in `C:/Program Files/Android/openjdk/jdk-21.0.8`. Git, Python 3.14 and system CMake
 were present. SDK command-line tools, Gradle, Android platform/build tools, NDK and SDK CMake
-were installed locally under ignored `.tools/`. ADB enumerated **zero devices**.
+were installed locally under ignored `.tools/`. Initially ADB enumerated zero devices. The owner then
+connected and authorized the physical RP5; the device verification results are in TESTING.
 
 ## Selected stack
 
@@ -47,6 +48,10 @@ The published CPU cluster matches the Snapdragon 865 family. The page's current 
 describe a later SKU; memory capacity is not hard-coded. Verify the actual device's ABI, resolution,
 firmware, RAM and button layout with the commands in TESTING. This code packages only arm64-v8a.
 
+Actual USB device inspection confirmed Android 13/API 33, arm64-v8a, kona board, Adreno 650/GLES 3.2,
+1920×1080 landscape at 60 Hz and about 7.5 GiB reported system memory. The controller exposes D-pad
+keys plus X/Y and HAT axes. Device firmware: RP5_V1.0.0.189_20251128_174732_user. No serial is stored here.
+
 ## Ordered feasibility work
 
 1. Build the shell, generate genuine cartridge geometry and verify the GLB structure.
@@ -56,11 +61,12 @@ firmware, RAM and button layout with the commands in TESTING. This code packages
 5. Pause/save/load/eject, detach the emulator, recreate Filament with the previous selection.
 6. Run host checks, build the debug instrumentation APK, then execute the real-surface probe on RP5.
 
-Steps 1–5 have compiled implementations. Their Android runtime behavior remains unverified.
+Steps 1–5 have compiled implementations. Real GLB rendering, physical navigation and a 50-cycle
+native surface probe with framebuffer/input/save-load checks now pass on RP5. See TESTING for scope.
 
 ## Risks and blockers
 
-- No connected device: native rendering, timing, audio and handoff acceptance cannot pass here.
+- Long-duration audio, timing, lifecycle and controller-disconnection checks remain device work.
 - GLRetroView's EGL recreation path and globally owned native frontend require strict single-session
   ownership. M0 stops on backgrounding; native context-loss recovery needs a real-device test and
   potentially a narrow upstream fix, not reliance on `preserveEGLContextOnPause` alone.

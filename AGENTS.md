@@ -22,3 +22,5 @@
   suppressions or pretend native runtime was tested. Device tests are in docs/TESTING.md.
 - Prefer small reviewable commits and simple interfaces. Do not rewrite working subsystems or
   introduce speculative modules. No public release until licensing/source obligations are resolved.
+- Label/media/metadata choices are independent of ROM identity and the reusable media mesh. Read
+  docs/LABEL_SCRAPING.md before enrichment work; preserve manual choices, provenance and offline launch.

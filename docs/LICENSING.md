@@ -45,3 +45,12 @@ all required dependency notices and an in-app notices entry. Audit the resolved 
 Filament/Oboe dependencies rather than treating this table as a complete binary BOM. Do not claim GPL
 obligations disappear because the core is dynamically loaded. Private feasibility builds are not a
 public commercial release, and this work does not assign a blanket license to the owner's source.
+
+## Planned scraping providers and imported labels
+
+ScreenScraper is a researched candidate, not a dependency or adopted artwork source. Its official
+API documentation requires developer credentials and limits ordinary API use to completely free apps
+unless a prior agreement is obtained. Check current terms, approval, quotas and individual asset rights
+before implementation/distribution. A provider subscription or an API response is not assumed to grant
+redistribution rights over every image. Preserve imported-asset provenance and never commit scraped
+commercial artwork. See [LABEL_SCRAPING.md](LABEL_SCRAPING.md) for the requested workflow.
