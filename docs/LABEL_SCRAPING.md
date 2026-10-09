@@ -1,7 +1,9 @@
 # Label import and scraping requirements
 
-Required by the owner on 2026-10-09. This document specifies future functionality; M0 has no image
-importer, scraper, candidate chooser or provider credentials. Offline ROM launching remains independent.
+Required by the owner on 2026-10-09. M1 now implements single local PNG/JPEG/WebP import through SAF,
+real 3D Fit/Crop/rotation preview and independent persistent labels. RP5 tests prove per-game GPU pixels,
+cancel, identical-ROM reimport and database reopening. Scrape-pack adapters, online scraping, multiple
+candidates, metadata choices and batch jobs below remain planned. Offline ROM launching is independent.
 
 ## User flow
 
@@ -72,3 +74,11 @@ will require a deliberate internet permission and credential-storage design in t
 - Prove fill-missing/manual protection, region ranking, duplicate handling and partial-failure recovery.
 - Relaunch offline and browse/play with accepted labels/metadata; no account or network needed to launch.
 - Audit the selected provider terms and asset provenance; keep credentials and downloaded media out of Git.
+
+## Current local-import limits
+
+GBA only, three persistent slots and one accepted label per game. The database records content hash,
+source URI and recipe; provider IDs, licence fields, accepted-version history/undo and batch policies
+are future schema work. Cancelled imports can leave unreferenced originals in the private cache;
+garbage collection needs a reference-aware policy. No network permission, provider credentials or
+remote artwork are used. Disc templates/emulation have not been implemented.

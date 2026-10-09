@@ -24,3 +24,6 @@
   introduce speculative modules. No public release until licensing/source obligations are resolved.
 - Label/media/metadata choices are independent of ROM identity and the reusable media mesh. Read
   docs/LABEL_SCRAPING.md before enrichment work; preserve manual choices, provenance and offline launch.
+- API/database scraping is the owner's primary artwork workflow. Local custom image import is an
+  optional fallback; never report it as completion of the scraping feature. Inspect Socket/Slot's
+  public references and real provider media categories; box art is not a flat label.

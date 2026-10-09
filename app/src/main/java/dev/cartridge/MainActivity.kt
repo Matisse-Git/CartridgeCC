@@ -1,7 +1,7 @@
 package dev.cartridge
 
-import android.content.Intent
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.hardware.input.InputManager
 import android.net.Uri
 import android.os.Bundle
@@ -9,12 +9,15 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
+import android.view.Choreographer
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -22,57 +25,56 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.edit
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.core.content.edit
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.swordfish.libretrodroid.GLRetroView
-import dev.cartridge.domain.Selection
 import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.LibretroEngine
 import dev.cartridge.input.ControllerRouter
 import dev.cartridge.input.InputMode
+import dev.cartridge.library.*
 import dev.cartridge.rendering.CartridgeSurface
-import dev.cartridge.storage.ImportedGame
-import dev.cartridge.storage.RomImporter
+import dev.cartridge.session.*
+import dev.cartridge.storage.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import java.io.File
 
-private enum class Screen { Library, Lifting, Handoff, Emulator }
-private data class ShellState(
-    val screen: Screen = Screen.Library,
-    val selection: Selection = Selection(),
-    val titles: List<String> = List(3) { "Cartridge study ${it + 1}" },
-    val message: String? = null,
-    val rendererReady: Boolean = false,
-    val busy: Boolean = false,
-    val menuIndex: Int = 0,
-    val reducedMotion: Boolean = false,
-    val alternateShortcut: Boolean = false,
-)
-
-class MainActivity : ComponentActivity(), InputManager.InputDeviceListener {
-    private val shell = MutableStateFlow(ShellState())
-    private lateinit var engine: LibretroEngine
+/** Android views/lifecycle only; collection and session decisions live in CollectionCoordinator. */
+open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener {
+    internal lateinit var coordinator: CollectionCoordinator
+        private set
+    internal lateinit var engine: LibretroEngine
+        private set
     private lateinit var input: ControllerRouter
-    private val games = arrayOfNulls<ImportedGame>(3)
-    private var libraryRelease: CompletableDeferred<Unit>? = null
-    private var emulatorRelease: CompletableDeferred<Unit>? = null
-    private var launchJob: Job? = null
-    private var operationJob: Job? = null
+    private lateinit var labelStore: LabelStore
     private var cartridgeSurface: CartridgeSurface? = null
     private var emulatorHost: EmulatorHost? = null
+    private var chooseGame: (() -> Unit)? = null
+    private var chooseLabel: (() -> Unit)? = null
+    internal val collectionSurface get() = cartridgeSurface
+    protected open fun createRepository(): CollectionRepository = RoomCollectionRepository(this)
+    protected open fun createLabelStore(): LabelStore = LabelStore(File(filesDir, "labels"))
     private val menuItems = listOf("Resume", "Save state", "Load state", "Eject to collection")
+    private val inputFrames = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                input.tick(SystemClock.uptimeMillis())
+                Choreographer.getInstance().postFrameCallback(this)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -83,207 +85,125 @@ class MainActivity : ComponentActivity(), InputManager.InputDeviceListener {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
         engine = LibretroEngine(this, lifecycleScope)
-        input = ControllerRouter(
-            navigate = { delta ->
-                val state = shell.value
-                if (!state.busy) {
-                    if (engine.status.value.state == SessionState.Paused) {
-                        shell.value = state.copy(menuIndex = (state.menuIndex + delta).coerceIn(0, menuItems.lastIndex))
-                    } else shell.value = state.copy(selection = state.selection.move(delta))
-                }
-            }, select = { if (engine.status.value.state == SessionState.Paused) menuAction(shell.value.menuIndex) else insert() },
-            back = { if (engine.status.value.state == SessionState.Paused) menuAction(0) },
-            pause = { openPauseMenu() }, gameKey = engine::key, gameMotion = engine::motion,
-        )
+        labelStore = createLabelStore()
         val preferences = getPreferences(MODE_PRIVATE)
-        shell.value = shell.value.copy(reducedMotion = preferences.getBoolean("reducedMotion", false),
-            alternateShortcut = preferences.getBoolean("alternateShortcut", false))
-        updateShortcut()
+        coordinator = CollectionCoordinator(engine, createRepository(), object : RendererHandoff {
+            override fun releaseLibrary() { cartridgeSurface?.close(); cartridgeSurface = null }
+            override fun releaseEmulator() { emulatorHost?.release(); emulatorHost = null }
+        }, lifecycleScope, preferences.getBoolean("reducedMotion", false), preferences.getBoolean("alternateShortcut", false))
+        input = ControllerRouter(coordinator::navigate, coordinator::select, coordinator::back, coordinator::pause,
+            engine::key, engine::motion, chooseGame = { chooseGame?.invoke() }, chooseLabel = { chooseLabel?.invoke() })
         getSystemService(InputManager::class.java).registerInputDeviceListener(this, null)
         lifecycleScope.launch {
-            engine.status.collect { status ->
-                updateInputMode()
-                if (status.state == SessionState.Error && !shell.value.busy) returnToLibrary(status.error)
+            combine(coordinator.state, engine.status) { state, status -> state to status }.collect { (state, status) ->
+                input.mode = when {
+                    state.busy || !state.loaded -> InputMode.Locked
+                    state.screen == CollectionScreen.LabelPreview -> InputMode.Menu
+                    status.state == SessionState.Running -> InputMode.Gameplay
+                    status.state == SessionState.Paused -> InputMode.Menu
+                    state.screen == CollectionScreen.Library -> InputMode.Library
+                    else -> InputMode.Locked
+                }
+                input.pauseShortcut = if (state.alternateShortcut)
+                    setOf(KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_BUTTON_SELECT)
+                else setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_THUMBR)
             }
         }
         setContent { CartridgeApp() }
     }
 
-    // The public Activity event hook inherits AndroidX core's internal annotation.
-    // Intercept here so Compose and GLRetroView cannot both consume gameplay input.
-    @SuppressLint("RestrictedApi")
+    @SuppressLint("RestrictedApi") // Public Activity hook avoids Compose/emulator duplicate input delivery.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean =
         if (::input.isInitialized && input.key(event)) true else super.dispatchKeyEvent(event)
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean =
         if (::input.isInitialized && input.motion(event)) true else super.dispatchGenericMotionEvent(event)
 
-    private fun updateInputMode() {
-        input.mode = when {
-            shell.value.busy -> InputMode.Locked
-            engine.status.value.state == SessionState.Running -> InputMode.Gameplay
-            engine.status.value.state == SessionState.Paused -> InputMode.Menu
-            shell.value.screen == Screen.Library -> InputMode.Library
-            else -> InputMode.Locked
+    private fun importGame(uri: Uri) = coordinator.assignGame {
+        runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        withContext(Dispatchers.IO) {
+            val game = RomImporter(contentResolver, File(filesDir, "roms")).import(uri)
+            LibraryGame(game.request.id, game.title, uri.toString())
         }
     }
-    private fun updateShortcut() {
-        input.pauseShortcut = if (shell.value.alternateShortcut)
-            setOf(KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_BUTTON_SELECT)
-        else setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_THUMBR)
-    }
-    private fun insert() {
-        val state = shell.value
-        if (state.busy || state.screen != Screen.Library || !state.rendererReady) return
-        val game = games[state.selection.index]
-        if (game == null) { shell.value = state.copy(message = "Choose a .gba file for this cartridge first."); return }
-        shell.value = state.copy(screen = Screen.Lifting, busy = true, message = null)
-        updateInputMode()
-        launchJob = lifecycleScope.launch {
-            try {
-                if (!state.reducedMotion) delay(320)
-                libraryRelease = CompletableDeferred()
-                shell.value = shell.value.copy(screen = Screen.Handoff, rendererReady = false)
-                cartridgeSurface?.close()
-                cartridgeSurface = null
-                withTimeout(5_000) { libraryRelease!!.await() }
-                shell.value = shell.value.copy(screen = Screen.Emulator)
-                engine.prepare(game.request)
-                shell.value = shell.value.copy(busy = false)
-                updateInputMode()
-                if (engine.status.value.state == SessionState.Error) returnToLibrary(engine.status.value.error)
-            } catch (failure: CancellationException) {
-                throw failure
-            } catch (failure: Exception) {
-                returnToLibrary(failure.message)
-            }
-        }
-    }
-
-    private fun openPauseMenu() {
-        if (shell.value.busy) return
-        operationJob = lifecycleScope.launch {
-            engine.pause()
-            shell.value = shell.value.copy(menuIndex = 0)
-        }
-    }
-    private fun menuAction(index: Int) {
-        if (shell.value.busy) return
-        shell.value = shell.value.copy(busy = true, message = null)
-        updateInputMode()
-        operationJob = lifecycleScope.launch {
-            try {
-                when (index) {
-                    0 -> engine.resume()
-                    1 -> { engine.saveState(); shell.value = shell.value.copy(message = "State saved") }
-                    2 -> { engine.loadState(); shell.value = shell.value.copy(message = "State loaded") }
-                    3 -> { returnToLibrary(); return@launch }
-                }
-            } catch (failure: Exception) { shell.value = shell.value.copy(message = failure.message) }
-            finally { shell.value = shell.value.copy(busy = false); updateInputMode() }
-        }
-    }
-
-    /** The emulator's child SurfaceView must detach before the next Filament Engine exists. */
-    private suspend fun returnToLibrary(message: String? = null) {
-        shell.value = shell.value.copy(busy = true)
-        updateInputMode()
-        val hadSurface = engine.surface.value != null
-        emulatorRelease = CompletableDeferred()
-        engine.stop()
-        emulatorHost?.release()
-        emulatorHost = null
-        val error = engine.status.value.error ?: message
-        if (hadSurface) withTimeout(5_000) { emulatorRelease!!.await() }
-        if (engine.status.value.state == SessionState.Error) engine.stop()
-        shell.value = shell.value.copy(screen = Screen.Library, busy = false, message = error, rendererReady = false)
-        updateInputMode()
-    }
-
-    private fun importRom(uri: Uri) {
-        if (shell.value.busy) return
-        val selected = shell.value.selection.index
-        shell.value = shell.value.copy(busy = true, message = "Reading game…")
-        updateInputMode()
-        lifecycleScope.launch {
-            try {
-                // Documents remain owned by the user; this M0 working copy is private and removable.
-                runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                games[selected] = withContext(Dispatchers.IO) {
-                    RomImporter(contentResolver, File(filesDir, "roms")).import(uri)
-                }
-                val titles = shell.value.titles.toMutableList()
-                titles[selected] = games[selected]!!.title
-                shell.value = shell.value.copy(titles = titles, message = null)
-            } catch (failure: Exception) { shell.value = shell.value.copy(message = failure.message) }
-            finally { shell.value = shell.value.copy(busy = false); updateInputMode() }
-        }
+    private fun importLabel(uri: Uri) = coordinator.previewLabel {
+        runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        withContext(Dispatchers.IO) { labelStore.import(contentResolver, uri) }
     }
 
     @Composable private fun CartridgeApp() {
-        val state by shell.collectAsStateWithLifecycle()
+        val state by coordinator.state.collectAsStateWithLifecycle()
         val status by engine.status.collectAsStateWithLifecycle()
         val emulator by engine.surface.collectAsStateWithLifecycle()
         var glb by remember { mutableStateOf<ByteArray?>(null) }
         LaunchedEffect(Unit) {
             glb = withContext(Dispatchers.IO) { assets.open("models/gba_cartridge.glb").use { it.readBytes() } }
         }
-        // Polling handles held axes and D-pad keys without relying on vendor event repeat rates.
-        LaunchedEffect(Unit) {
-            while (isActive) {
-                withFrameNanos { if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) input.tick(SystemClock.uptimeMillis()) }
+        val gamePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importGame) }
+        val labelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importLabel) }
+        DisposableEffect(gamePicker, labelPicker) {
+            chooseGame = { if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) gamePicker.launch(arrayOf("*/*")) }
+            chooseLabel = {
+                if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) {
+                    if (coordinator.state.value.selectedGame == null) coordinator.notify("Choose a game before assigning its label.")
+                    else labelPicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
+                }
             }
+            onDispose { chooseGame = null; chooseLabel = null }
         }
-        val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importRom) }
-        val lift by animateFloatAsState(if (state.screen == Screen.Lifting && !state.reducedMotion) 1f else 0f,
-            label = "Cartridge lift")
         MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFD8C7A8), background = Color(0xFF191817))) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                if (state.screen == Screen.Library || state.screen == Screen.Lifting) {
-                    glb?.let { bytes -> LibraryViewport(bytes, state.selection.index, lift) }
-                    Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(state.titles[state.selection.index], fontSize = 23.sp, color = Color(0xFFE9E2D6))
-                        Text("← → Browse   ·   A Insert   ·   ${state.selection.index + 1} / 3", fontSize = 12.sp,
-                            color = Color(0xFF9C968B), modifier = Modifier.padding(top = 8.dp))
+                if (state.screen in listOf(CollectionScreen.Library, CollectionScreen.Inserting, CollectionScreen.Ejecting, CollectionScreen.LabelPreview)) {
+                    glb?.let { bytes -> key(state.viewportGeneration) { LibraryViewport(bytes, state) } }
+                    Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(state.title, fontSize = 23.sp, color = Color(0xFFE9E2D6), modifier = Modifier.testTag("selected-title"))
+                        Text(if (state.screen == CollectionScreen.LabelPreview) "↑ ↓ Choose   ·   A Apply action   ·   B Cancel"
+                            else "← → Browse   ·   A Insert   ·   X Game   ·   Y Label   ·   ${state.selection.index + 1} / 3",
+                            fontSize = 12.sp, color = Color(0xFF9C968B), modifier = Modifier.padding(top = 8.dp))
                     }
-                    Row(Modifier.align(Alignment.TopEnd).padding(16.dp)) {
-                        TextButton(enabled = !state.busy, onClick = { picker.launch(arrayOf("*/*")) }) { Text("Choose .gba") }
-                        TextButton(enabled = !state.busy && state.rendererReady, onClick = ::insert) { Text("Insert") }
+                    if (state.screen == CollectionScreen.Library) {
+                        Row(Modifier.align(Alignment.TopEnd).padding(16.dp)) {
+                            TextButton(enabled = !state.busy && state.loaded, onClick = { chooseGame?.invoke() }, modifier = Modifier.testTag("choose-game")) { Text("Choose .gba") }
+                            TextButton(enabled = !state.busy && state.selectedGame != null, onClick = { chooseLabel?.invoke() }, modifier = Modifier.testTag("choose-label")) { Text("Label") }
+                            if (state.selectedGame?.label != null) TextButton(enabled = !state.busy, onClick = coordinator::removeLabel) { Text("Reset label") }
+                            TextButton(enabled = !state.busy && state.rendererReady && state.loaded, onClick = coordinator::insert, modifier = Modifier.testTag("insert")) { Text("Insert") }
+                        }
+                        Row(Modifier.align(Alignment.TopStart).padding(16.dp)) {
+                            TextButton(enabled = !state.busy, onClick = {
+                                coordinator.settings(reducedMotion = !state.reducedMotion)
+                                getPreferences(MODE_PRIVATE).edit { putBoolean("reducedMotion", !state.reducedMotion) }
+                            }) { Text(if (state.reducedMotion) "Motion off" else "Motion on") }
+                            TextButton(enabled = !state.busy, onClick = {
+                                coordinator.settings(alternateShortcut = !state.alternateShortcut)
+                                getPreferences(MODE_PRIVATE).edit { putBoolean("alternateShortcut", !state.alternateShortcut) }
+                            }) { Text(if (state.alternateShortcut) "Menu: Start + Select" else "Menu: L3 + R3") }
+                        }
+                        TextButton(enabled = !state.busy, onClick = { coordinator.navigate(-1) }, modifier = Modifier.align(Alignment.CenterStart).testTag("previous")) { Text("‹") }
+                        TextButton(enabled = !state.busy, onClick = { coordinator.navigate(1) }, modifier = Modifier.align(Alignment.CenterEnd).testTag("next")) { Text("›") }
                     }
-                    Row(Modifier.align(Alignment.TopStart).padding(16.dp)) {
-                        TextButton(enabled = !state.busy, onClick = {
-                            shell.value = state.copy(reducedMotion = !state.reducedMotion)
-                            getPreferences(MODE_PRIVATE).edit { putBoolean("reducedMotion", !state.reducedMotion) }
-                        }) { Text(if (state.reducedMotion) "Motion off" else "Motion on") }
-                        TextButton(enabled = !state.busy, onClick = {
-                            shell.value = state.copy(alternateShortcut = !state.alternateShortcut)
-                            getPreferences(MODE_PRIVATE).edit { putBoolean("alternateShortcut", !state.alternateShortcut) }
-                            updateShortcut()
-                        }) { Text(if (state.alternateShortcut) "Menu: Start + Select" else "Menu: L3 + R3") }
+                    if (state.screen == CollectionScreen.LabelPreview) {
+                        val actions = listOf("Sizing: ${state.labelDraft?.label?.fit}", "Rotate 90°", "Apply label", "Cancel")
+                        Column(Modifier.align(Alignment.CenterEnd).width(210.dp).background(Color(0xF0191817)).padding(12.dp)) {
+                            Text("Label preview", fontSize = 19.sp, color = Color(0xFFE9E2D6), modifier = Modifier.padding(8.dp))
+                            actions.forEachIndexed { index, title ->
+                                TextButton(enabled = !state.busy && (index != 2 || state.labelPreviewReady), onClick = { coordinator.labelAction(index) },
+                                    modifier = Modifier.fillMaxWidth().testTag("label-action-$index").background(
+                                        if (state.menuIndex == index) Color(0xFF34312D) else Color.Transparent)) { Text(title) }
+                            }
+                        }
                     }
-                    Row(Modifier.align(Alignment.CenterStart).padding(12.dp)) {
-                        TextButton(enabled = !state.busy, onClick = { shell.value = state.copy(selection = state.selection.move(-1)) }) { Text("‹") }
-                    }
-                    Row(Modifier.align(Alignment.CenterEnd).padding(12.dp)) {
-                        TextButton(enabled = !state.busy, onClick = { shell.value = state.copy(selection = state.selection.move(1)) }) { Text("›") }
-                    }
-                } else if (state.screen == Screen.Emulator) {
+                } else if (state.screen == CollectionScreen.Emulator) {
                     emulator?.let { view ->
-                        AndroidView(modifier = Modifier.fillMaxSize(), factory = {
-                            EmulatorHost(view) { emulatorRelease?.complete(Unit) }.also { emulatorHost = it }
-                        }, onRelease = { it.release() })
+                        AndroidView(modifier = Modifier.fillMaxSize(), factory = { EmulatorHost(view).also { emulatorHost = it } }, onRelease = { it.release() })
                     }
-                    if (status.state == SessionState.Running) {
-                        TextButton(onClick = ::openPauseMenu, modifier = Modifier.align(Alignment.TopEnd)) { Text("Menu") }
-                    }
+                    if (status.state == SessionState.Running) TextButton(onClick = coordinator::pause,
+                        modifier = Modifier.align(Alignment.TopEnd).testTag("pause")) { Text("Menu") }
                     if (status.state == SessionState.Paused) {
                         Box(Modifier.fillMaxSize().background(Color(0xCE191817)), contentAlignment = Alignment.Center) {
                             Column(Modifier.width(280.dp)) {
                                 Text("Paused", fontSize = 25.sp, color = Color(0xFFE9E2D6), modifier = Modifier.padding(12.dp))
                                 menuItems.forEachIndexed { index, title ->
-                                    TextButton(enabled = !state.busy, onClick = { menuAction(index) },
-                                        modifier = Modifier.fillMaxWidth().background(
-                                            if (index == state.menuIndex) Color(0xFF34312D) else Color.Transparent)) {
+                                    TextButton(enabled = !state.busy, onClick = { coordinator.menuAction(index) }, modifier = Modifier.fillMaxWidth()
+                                        .testTag("menu-$index").background(if (index == state.menuIndex) Color(0xFF34312D) else Color.Transparent)) {
                                         Text(title, color = Color(0xFFE9E2D6))
                                     }
                                 }
@@ -291,24 +211,45 @@ class MainActivity : ComponentActivity(), InputManager.InputDeviceListener {
                         }
                     }
                 }
-                if (state.busy && state.screen != Screen.Lifting) {
+                if (!state.loaded || state.busy && state.screen !in listOf(CollectionScreen.Inserting, CollectionScreen.Ejecting)) {
                     Text(if (status.state == SessionState.Preparing) "Preparing embedded core…" else "Working…",
                         color = Color(0xFFE9E2D6), modifier = Modifier.align(Alignment.BottomCenter).padding(18.dp))
                 }
-                state.message?.let {
-                    Text(it, color = Color(0xFFE2CFAE), modifier = Modifier.align(Alignment.BottomStart)
-                        .background(Color(0xEE191817)).padding(16.dp), fontSize = 13.sp)
-                }
+                state.message?.let { Text(it, color = Color(0xFFE2CFAE), modifier = Modifier.align(Alignment.BottomStart)
+                    .background(Color(0xEE191817)).padding(16.dp).testTag("message"), fontSize = 13.sp) }
             }
         }
     }
 
-    @Composable private fun LibraryViewport(bytes: ByteArray, selected: Int, lift: Float) {
+    @Composable private fun LibraryViewport(bytes: ByteArray, state: CollectionState) {
         var surface by remember { mutableStateOf<CartridgeSurface?>(null) }
+        var pixels by remember { mutableStateOf<List<LabelPixels?>>(List(3) { null }) }
+        val cache = remember { linkedMapOf<String, LabelPixels>() }
+        val labels = state.labels
+        LaunchedEffect(labels.map { it?.textureKey }) {
+            pixels = labels.map { label -> label?.let {
+                cache[it.textureKey] ?: try { withContext(Dispatchers.IO) { labelStore.decode(it) } }
+                catch (failure: Exception) {
+                    if (failure is CancellationException) throw failure
+                    coordinator.notify(failure.message ?: "Cannot display the label")
+                    null
+                }?.also { decoded -> cache[it.textureKey] = decoded }
+            } }
+            val needed = labels.mapNotNull { it?.textureKey }.toSet()
+            while (cache.size > 6) cache.keys.firstOrNull { it !in needed }?.let { cache.remove(it) } ?: break
+        }
+        val motion = remember { Animatable(if (state.screen == CollectionScreen.Ejecting) 1f else 0f) }
+        LaunchedEffect(state.screen, state.reducedMotion) {
+            val target = if (state.screen == CollectionScreen.Inserting && !state.reducedMotion) 1f else 0f
+            if (state.reducedMotion) motion.snapTo(target)
+            else motion.animateTo(target, tween(if (state.screen == CollectionScreen.Ejecting) 420 else 540, easing = FastOutSlowInEasing))
+        }
         AndroidView(modifier = Modifier.fillMaxSize(), factory = {
-            CartridgeSurface(it, bytes, selected, onReady = { shell.value = shell.value.copy(rendererReady = true) },
-                onReleased = { libraryRelease?.complete(Unit) }).also { surface = it; cartridgeSurface = it }
-        }, update = { it.selection = selected; it.lift = lift }, onRelease = { it.close() })
+            CartridgeSurface(it, bytes, state.selection.index,
+                onReady = { coordinator.rendererReady(state.viewportGeneration) }, onReleased = {},
+                onLabelsReady = { keys -> coordinator.labelsReady(state.viewportGeneration, keys) }, onLabelError = coordinator::notify
+            ).also { renderer -> surface = renderer; cartridgeSurface = renderer }
+        }, update = { it.selection = state.selection.index; it.insertion = motion.value; it.setLabels(pixels) }, onRelease = { it.close() })
         DisposableEffect(surface) {
             val renderer = surface
             val observer = object : DefaultLifecycleObserver {
@@ -320,25 +261,25 @@ class MainActivity : ComponentActivity(), InputManager.InputDeviceListener {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::coordinator.isInitialized) coordinator.foreground()
+        Choreographer.getInstance().removeFrameCallback(inputFrames)
+        Choreographer.getInstance().postFrameCallback(inputFrames)
+    }
     override fun onPause() {
-        input.reset()
-        // M0 deliberately ends a session on backgrounding instead of relying on EGL preservation.
-        // Resume/recreate a full session with an automatic state snapshot is an M1 hardening task.
-        if (shell.value.screen != Screen.Library) {
-            launchJob?.cancel()
-            lifecycleScope.launch {
-                operationJob?.join()
-                returnToLibrary("Session ended safely when the app left the foreground.")
-            }
-        }
+        Choreographer.getInstance().removeFrameCallback(inputFrames)
+        if (::input.isInitialized) input.reset()
+        if (::coordinator.isInitialized) coordinator.background()
         super.onPause()
     }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (!hasFocus && ::input.isInitialized) { input.reset(); if (::engine.isInitialized) openPauseMenu() }
+        if (!hasFocus && ::input.isInitialized) { input.reset(); coordinator.pause() }
     }
     override fun onDestroy() {
         getSystemService(InputManager::class.java).unregisterInputDeviceListener(this)
+        coordinator.destroy()
         engine.releaseOnDestroy()
         emulatorHost?.release()
         cartridgeSurface?.close()
@@ -346,18 +287,17 @@ class MainActivity : ComponentActivity(), InputManager.InputDeviceListener {
     }
     override fun onInputDeviceAdded(deviceId: Int) = Unit
     override fun onInputDeviceChanged(deviceId: Int) = Unit
-    override fun onInputDeviceRemoved(deviceId: Int) { input.reset(); openPauseMenu() }
+    override fun onInputDeviceRemoved(deviceId: Int) { input.reset(); coordinator.pause() }
 }
 
-@SuppressLint("ViewConstructor") // Created by Compose, never inflated from XML.
-private class EmulatorHost(view: GLRetroView, private val onReleased: () -> Unit) : FrameLayout(view.context) {
+@SuppressLint("ViewConstructor")
+private class EmulatorHost(view: GLRetroView) : FrameLayout(view.context) {
     private var released = false
     init { addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)) }
     fun release() {
         if (released) return
         released = true
-        removeAllViews() // GLSurfaceView waits for its renderer thread on detach.
-        onReleased()
+        removeAllViews() // GLSurfaceView waits for its renderer thread before the next Filament owner.
     }
     override fun onDetachedFromWindow() { super.onDetachedFromWindow(); release() }
 }

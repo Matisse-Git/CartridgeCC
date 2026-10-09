@@ -1,9 +1,11 @@
 # Architecture
 
 One Android module keeps the feasibility work reviewable. Packages separate pure navigation/session
-logic, input routing, file handling, renderer ownership and the emulator adapter. The Activity owns
-the shell and renderer handoff; native objects are never retained in a ViewModel or global UI singleton.
-Future library persistence will use Room behind a repository; M0's three slots are explicitly transient.
+logic, input routing, file handling, renderer ownership and the emulator adapter. MainActivity owns
+Android views/lifecycle; an Android-free CollectionCoordinator owns selection, operations and handoff
+decisions. Native objects are never retained in a ViewModel or global UI singleton. RoomCollectionRepository
+persists the three slots, ROM identities/source URIs, focus and accepted label recipes. Schema JSON is
+versioned under app/schemas; no destructive migration fallback is permitted.
 
 ## State and input
 
@@ -13,17 +15,21 @@ core/game setup and waits for the first real FrameRendered event. Error recovery
 session and returns through cleanup to Idle before retry. A process-wide atomic claim prevents a second
 LibretroDroid native frontend from being initialized concurrently.
 
-The shell independently tracks Library, Lifting, Handoff and Emulator, selection and busy state. The
+The coordinator independently tracks Library, Inserting, Handoff, Emulator, Ejecting and LabelPreview,
+selection, viewport generation and busy state. The
 busy flag locks input during preparation/save/ejection. It does not declare an emulator Ready state.
 `ControllerRouter` sends each event to exactly one route: Library, Gameplay, Menu or Locked. Android
 keys go to GBA port zero; sticks/HAT use a digital D-pad mapping with a 0.35 dead zone. Navigation is
-polled every UI frame: first action immediately, first repeat at 300 ms, following repeats at 110 ms.
+polled by an Activity Choreographer callback: first action immediately, first repeat at 300 ms,
+following repeats at 110 ms. X/Y invoke game/label SAF pickers only in Library; label preview routes
+D-pad/A/B to its own actions. Gameplay never receives those UI actions.
 Pause clears all previously forwarded keys/axes. No HOME interception or system-button assumptions.
 
 ## Graphics ownership
 
 Filament uses a SurfaceView/UiHelper swapchain. Its glTF loader creates three instances sharing meshes,
-textures and materials. GLB file reads use IO; every Filament/JNI resource call stays on Main. Texture
+shell textures/materials. CartridgeLabels duplicates only the named label material per visible instance
+and owns its replacement SRGB8_A8 texture. GLB/image file reads and label decoding use IO; every Filament/JNI resource call stays on Main. Texture
 resources load asynchronously and renderables are added when ready. A Choreographer callback updates
 root transforms and draws; the focus spring retargets in place. Backgrounding pauses that loop.
 
@@ -34,7 +40,8 @@ context sharing or active 3D rendering behind gameplay. Compose draws ordinary U
 
 Ejection pauses the GL thread/audio, captures SaveRAM on the emulator GL queue, writes on IO, destroys
 the native frontend, removes the GLSurfaceView and waits for detach. Filament then recreates with the
-existing selected index. Explicit host removal also completes while backgrounded; cleanup does not
+existing selected index and labels. Viewport generation rejects readiness from an old surface.
+Explicit host removal also completes while backgrounded; cleanup does not
 depend on a future Compose animation frame. Close methods are idempotent.
 
 TextureView compositing is deferred. For M0, separate SurfaceViews are the smaller correctness test.
@@ -61,14 +68,31 @@ the previous file. Save-state core-version compatibility is not encoded yet; mGB
 
 ## Lifecycle limits
 
-Activity focus loss/disconnection clears UI input and pauses gameplay. On Activity pause the shell
-ends any session after RAM persistence, removing both emulator/native resources. On destruction an
+Activity focus loss/disconnection clears UI input and pauses gameplay. On Activity pause the coordinator
+cancels an unfinished insertion, waits for in-flight save/import writes, then ends any session after RAM
+persistence. Cancellation cleanup uses NonCancellable while the Activity remains alive. On destruction an
 idempotent synchronous native release is the final safety barrier. It cannot promise saving after
-process kill, and full-state restoration after rotation/suspend is deferred. Slot assignments do not
-survive recreation in M0. These limitations are visible and require no fabricated gameplay fallback.
+process kill, and full-state restoration after rotation/suspend is deferred. Room restores assignments,
+labels and focus after recreation; an ended game can be inserted afresh. Preview drafts are not accepted
+implicitly on recreation. These limits require no fabricated gameplay fallback.
 
-ADRs record dependency, surface and storage decisions. M1 should extract the shell coordinator from
-the Activity into a tested owner without retaining Android rendering objects, after device feasibility.
+ADRs record dependency, surface, storage and label decisions. Coordinator unit tests cover background
+cancellation, concurrent-save ordering, repeated launch input, missing files and recoverable state errors.
+
+## Implemented local artwork boundary
+
+LabelStore imports bounded PNG/JPEG/WebP streams, checks type/dimensions and promotes unchanged originals
+by SHA-256. A LabelRef stores content ID, source URI, Fit/Crop and quarter-turns separately from the ROM
+identity. Accepted recipes are Room writes; preview/cancel never changes the stored label. Derivation
+produces explicit RGBA bytes at 512×256 with a charcoal Fit background. The Activity caches at most six
+derived buffers; Filament owns at most three current replacement textures/material instances and frees
+them before destroying the GLB. Mipmap generation explicitly requests GEN_MIPMAPPABLE usage.
+
+Apply is disabled until the renderer acknowledges the current recipe/generation after a rendered frame.
+Failed image decoding/upload leaves an error and keeps the saved choice. The RP5 PixelCopy test proves
+red/blue GPU labels stay independent and restore after cancellation/recreation/database reopening.
+Automatic EXIF orientation, arbitrary crop positioning, cache garbage collection and accepted-version
+undo are deferred. PNG/WebP originals are not compressed to KTX2 at runtime in this increment.
 
 ## Planned artwork and metadata boundary
 
@@ -79,9 +103,10 @@ additional media and metadata fields have independent choices and provenance.
 
 Retain original images and crop/fit recipes separately from derived GPU textures. The renderer shares
 the cartridge mesh but binds a distinct label material instance per visible game; label decoding runs
-on IO, GPU creation/destruction on Main. This is a planned change: M0's material is still shared.
+on IO, GPU creation/destruction on Main. This binding and the local-image path now exist; provider and
+metadata-candidate workflows are the next enrichment slice, prioritized by the owner.
 Cache accepted files for offline use and bound GPU texture memory rather than decoding on every move.
 
 Batch jobs take a snapshot of the selected games, honour provider rate limits, retain resumable status,
 and commit reviewed choices transactionally. Default fill-missing behaviour preserves manual choices.
-See [LABEL_SCRAPING.md](LABEL_SCRAPING.md). No unused provider/database modules are created in M0.
+See [LABEL_SCRAPING.md](LABEL_SCRAPING.md). Add only provider/data fields needed for a working scrape loop.

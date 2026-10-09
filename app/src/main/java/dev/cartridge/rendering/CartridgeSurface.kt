@@ -10,6 +10,7 @@ import com.google.android.filament.*
 import com.google.android.filament.android.UiHelper
 import com.google.android.filament.gltfio.*
 import dev.cartridge.domain.FocusSpring
+import dev.cartridge.storage.LabelPixels
 import java.nio.ByteBuffer
 import kotlin.math.abs
 
@@ -21,6 +22,8 @@ class CartridgeSurface(
     initialSelection: Int,
     private val onReady: () -> Unit,
     private val onReleased: () -> Unit,
+    private val onLabelsReady: (List<String?>) -> Unit = {},
+    private val onLabelError: (String) -> Unit = {},
 ) : SurfaceView(context), Choreographer.FrameCallback {
     private val engine: Engine
     private val renderer: Renderer
@@ -31,6 +34,7 @@ class CartridgeSurface(
     private val assetLoader: AssetLoader
     private val resourceLoader: ResourceLoader
     private val asset: FilamentAsset
+    private val labels: CartridgeLabels
     private val instances = arrayOfNulls<FilamentInstance>(3)
     private val uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
     private val light: Int
@@ -46,6 +50,14 @@ class CartridgeSurface(
     private var lastFrame = 0L
     var selection: Int = initialSelection
     var lift: Float = 0f
+    var insertion: Float = 0f
+    private var labelFailure = false
+    fun setLabels(pixels: List<LabelPixels?>) {
+        if (!closed) {
+            if (labels.desired.map { it?.key } != pixels.map { it?.key }) labelFailure = false
+            labels.desired = pixels
+        }
+    }
 
     init {
         Filament.init()
@@ -83,6 +95,7 @@ class CartridgeSurface(
         }
         check(resourceLoader.asyncBeginLoad(asset)) { "Cannot load cartridge resources" }
         asset.releaseSourceData()
+        labels = CartridgeLabels(engine, instances)
         uiHelper.renderCallback = object : UiHelper.RendererCallback {
             override fun onNativeWindowChanged(surface: Surface) {
                 swapChain?.let(engine::destroySwapChain)
@@ -127,13 +140,24 @@ class CartridgeSurface(
             if (count == 0) break
             scene.addEntities(renderables.copyOf(count))
         }
+        if (resourceLoader.asyncGetLoadProgress() >= 1f && !labelFailure) {
+            try { labels.update() }
+            catch (failure: Exception) {
+                labelFailure = true
+                android.util.Log.e("CartridgeRenderer", "Label texture preparation failed", failure)
+                onLabelError("Cannot prepare this label preview. Try another image.")
+            }
+        }
         instances.forEachIndexed { index, instance ->
             val offset = index - focus
             val emphasis = (1f - abs(offset)).coerceIn(0f, 1f)
             Matrix.setIdentityM(matrix, 0)
-            Matrix.translateM(matrix, 0, offset * 1.85f, emphasis * lift * .5f, emphasis * .12f)
-            Matrix.rotateM(matrix, 0, -12f - emphasis * lift * 25f, 1f, 0f, 0f)
-            Matrix.rotateM(matrix, 0, offset.coerceIn(-1f, 1f) * -22f + 8f, 0f, 1f, 0f)
+            val progress = insertion.coerceIn(0f, 1f)
+            val rise = (progress / .35f).coerceIn(0f, 1f) * .32f
+            val slide = ((progress - .5f) / .5f).coerceIn(0f, 1f) * 2.1f
+            Matrix.translateM(matrix, 0, offset * 1.85f, emphasis * (lift * .5f + rise - slide), emphasis * .12f)
+            Matrix.rotateM(matrix, 0, -12f - emphasis * (lift * 25f + progress * 18f), 1f, 0f, 0f)
+            Matrix.rotateM(matrix, 0, (offset.coerceIn(-1f, 1f) * -22f + 8f) * (1f - emphasis * progress), 0f, 1f, 0f)
             val scale = 22f + emphasis * 5f
             Matrix.scaleM(matrix, 0, scale, scale, scale)
             engine.transformManager.setTransform(engine.transformManager.getInstance(instance!!.root), matrix)
@@ -142,6 +166,7 @@ class CartridgeSurface(
         if (uiHelper.isReadyToRender && renderer.beginFrame(chain, frameTimeNanos)) {
             renderer.render(view)
             renderer.endFrame()
+            onLabelsReady(labels.keys)
             if (!reportedReady && resourceLoader.asyncGetLoadProgress() >= 1f) {
                 reportedReady = true
                 onReady()
@@ -156,6 +181,7 @@ class CartridgeSurface(
         uiHelper.detach()
         resourceLoader.asyncCancelLoad()
         scene.removeEntities(asset.entities)
+        labels.close()
         assetLoader.destroyAsset(asset)
         resourceLoader.destroy()
         assetLoader.destroy()

@@ -3,19 +3,23 @@
 | Milestone | Acceptance gate | Status |
 | --- | --- | --- |
 | M0 — Feasibility | APK builds; genuine GLB renders; physical controller changes state; real GBA core frames/audio; repeatable 3D↔emulator handoff | Passed on RP5, 2026-10-09; see TESTING for precise scope |
-| M1 — First loop | Persistent small GBA library, convincing template/carousel, insertion, internal play, pause/save/load/ejection, lifecycle recovery; prove local per-title label assignment on shared mesh | Partially scoped infrastructure exists; milestone not started/accepted |
+| M1 — First loop | Persistent small GBA library, convincing template/carousel, insertion, internal play, pause/save/load/ejection, lifecycle recovery; prove local per-title label assignment on shared mesh | In progress: persistent slots/labels, coordinator and ordinary lifecycle tests pass on RP5; final model/slot and longer validation pending |
 | M2 — Refinement | Polished mesh/PBR/lighting/motion, measured frame pacing and reduced motion | Planned |
-| M3 — Library | Room + SAF directories, indexing, duplicates, details/favorites; local scraped-label import and single-title/console/all-library scraping with independent candidate selection | Required; planned |
+| M3 — Library | SAF directories, indexing, duplicates, details/favorites; scrape-pack import and single-title/console/all-library scraping with independent candidate selection | Required; planned, using M1 Room and local-image foundation |
 | M4 — Layouts | Horizontal/vertical/grid reuse one data/selection/rendering system | Planned |
 | M5 — Consoles | Add one audited core/media format at a time, verified internally | Planned |
 | M6 — Environment | Optional HOME, onboarding, sleep/resume, backup and long-term stability | Planned |
 
-**Next task:** begin M1 by extracting the shell coordinator and proving safe background/suspend/recreation
-and error recovery through ordinary UI tests. Add persistent small-library slots and independent local
-label texture assignment/3D preview next. Profile longer runs: the short handoff test does not establish
-frame pacing, battery behaviour or a memory plateau. Keep the complete provider scraper in M3.
+**Next task:** per the owner's priority, prove a real API/database label search and independent candidate
+chooser on top of the persistent preview/cache path. Check Socket/Slot sources and actual flat-label
+coverage rather than substitute custom images or box art. Then finish M1's asset/insertion proof:
+polish the GBA template, establish a subtle receiving slot and verify asymmetric label UVs. Validate SaveRAM continuity using
+an original diagnostic that writes SRAM and profile longer collection/gameplay runs. Background/recreation
+tests now pass for stop-and-return behaviour; seamless suspend restoration remains later work.
+The online proof is brought forward; the complete scalable/resumable provider workflow remains M3.
+Short handoff tests do not establish a memory plateau.
 
 Label/media/metadata selection is a product priority, not an optional cosmetic extra. Implement the
-per-game texture binding proof in M1, then build local import and provider enrichment on the persistent
-library in M3. Reuse the chooser/batch pipeline for optical-disc labels when their templates and cores
+per-game texture binding and local image import in M1 (now proved), then add scrape-pack import and
+provider enrichment on the persistent library in M3. Reuse the chooser/batch pipeline for optical-disc labels when their templates and cores
 are introduced in M5; do not claim CD emulation is supported by the initial GBA milestone.

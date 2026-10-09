@@ -1,6 +1,6 @@
 # Tests and actual results
 
-## Host results — 2026-10-09
+## M0 host results — 2026-10-09
 
 Validated on Windows with Microsoft OpenJDK 21.0.8, Gradle 8.13, SDK 35, NDK 27.2.12479018 and
 SDK CMake 3.22.1. Initially no Android device was attached; physical-device results follow below.
@@ -117,12 +117,15 @@ On Windows:
 Build both APKs first, unlock/authorize the device, then use the reproducible helper:
 
 ```powershell
-.\tools\Test-Device.ps1 -Cycles 50
+.\tools\Test-Device.ps1 -Suite All -Cycles 50
 ```
 
 Pass `-Sdk C:/path/to/Android/Sdk` and optionally `-Serial <serial>` when needed. It generates the original
 probe, installs both APKs, pushes the fixture, wakes the screen, runs instrumentation and checks the
-JUnit result (ADB's process exit code alone is insufficient). Logs stay in ignored `.tools/device-test.log`.
+JUnit result (ADB's process exit code alone is insufficient). `-Suite Surface` is the default and runs
+one test; `-Suite Collection` runs the two ordinary UI tests; `-Suite All` runs all three. Logs stay in
+ignored `.tools/device-test.log`. Collection tests stub only document-picker results, then use the real
+ContentResolver, Room database, Filament and mGBA. Their database/cache is isolated from the owner's library.
 Equivalent individual commands:
 
 ```powershell
@@ -190,3 +193,36 @@ Buildability, genuine Android GLB rendering, physical controller navigation, rea
 and repeated native surface handoff pass on the RP5. The owner confirmed ordinary gameplay/audio/menu/
 save-load/eject. **M0's five technical feasibility criteria passed.** The broader lifecycle/performance
 checklist above remains M1 hardening work; this is not production-readiness acceptance.
+
+## First M1 increment results — 2026-10-09
+
+Same physical RP5/firmware as above. Version 0.1.0-m1-dev, versionCode 2. This adds Room 2.7.2,
+KSP 2.1.20-1.0.32 and the matching Room Gradle schema plugin. Both APK builds, unit tests and lint
+pass. Eleven unit tests (five domain, six coordinator) have zero failures/errors; four GLB checks pass.
+Lint has zero errors and 20 warnings, including pinned-dependency updates, orientation, arm64-only,
+debug-fixture backup and API-style suggestions. The Room plugin emits Gradle 9 deprecation notices;
+the supported/pinned build uses Gradle 8.13.
+
+Executed `Test-Device.ps1 -Suite All -Cycles 50`: **OK (3 tests)** in **30.628 s**. The native test
+retains framebuffer/input/state/error recovery and 50 surface cycles. Two new tests run ordinary
+production UI in DebugCollectionActivity with isolated on-disk Room databases:
+
+- Choose/import an original probe; insert, pause, save/load, resume, background to CREATED, return
+  and relaunch. Recreate while Running, restore the collection, cancel insertion on background,
+  retry, pause and eject. This proves stop-and-return lifecycle recovery, not seamless game restoration.
+- Assign two original diagnostic ROM identities and red/blue label images. PixelCopy of the actual
+  SurfaceView proves independent labels; Fit/Crop/rotation recipe, Activity recreation, cancel,
+  identical-ROM reimport and invalid-image recovery preserve choices. Close the database and reopen
+  it with a new Activity; stored slots, focus and recipe restore and the real red label renders.
+
+The picker response alone is stubbed with Espresso Intents; the file provider is debug-only and
+nonexported. Native emulation and rendering are never stubbed. UI tests wait for Compose before polling
+the independently clocked SurfaceView. The initial texture upload failed until GEN_MIPMAPPABLE usage
+was added, and the initial selection-pixel assertion read a stale Compose update; both were fixed and
+the final full suite rerun. Local logs/fixtures remain ignored. No new long-term PSS/pacing result is claimed.
+
+The owner manually confirmed physical X/Y label selection, controller navigation, Fit/Crop/rotation,
+label placement/application, switching cartridges and reopening persistence. Manual asymmetric scan
+orientation/fidelity across multiple images and broader controller/input/performance checks remain.
+The checklist above records M0 scope; these new tests cover a subset of its previously open lifecycle
+items, not every listed suspend/save/context-loss combination. M1 remains in progress.

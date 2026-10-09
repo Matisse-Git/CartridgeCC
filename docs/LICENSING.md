@@ -15,6 +15,9 @@ model was adopted. Cannoli/Lemuroid were references only; no frontend code was c
 | SceneView | v4.53.0 inspected, not linked | Apache-2.0; no SceneView binary in the APK |
 | AndroidX/Compose/AGP | pins in build scripts | Apache-2.0; retain required notices for distributed artifacts |
 | Kotlin/coroutines | 2.1.20 / 1.10.2 | Apache-2.0; retain required notices |
+| Room runtime/compiler/Gradle plugin | 2.7.2 | Apache-2.0 in resolved Maven POMs; runtime notices, build-tool provenance |
+| KSP build plugin | 2.1.20-1.0.32 | Apache-2.0 in resolved Maven POM; build-only code generation |
+| Compose UI test / Espresso Intents | BOM 2025.04.01 / 3.6.1 | AndroidX Apache-2.0; instrumentation-only, not production runtime |
 | Gradle wrapper | 8.13 | Apache-2.0; generated wrapper retained, distribution checksum pinned |
 | Oboe in LibretroDroid | b15f5e39c01a7ada306d959e5129620b145fb8b4 | Apache-2.0; corresponding selected source/notice included in a frontend distribution |
 | libretro-common in LibretroDroid | b0c348ea5543c4d7fb0bc479258aa6988b20c0c9 | File-level permissive licenses for the five compiled C files; preserve headers, not a guessed repository-wide license |
@@ -29,6 +32,9 @@ Inspected sources:
   [blip_buf header notice](https://github.com/mgba-emu/mgba/blob/0.10.5/src/third-party/blip_buf/blip_buf.c),
   [inih notice](https://github.com/mgba-emu/mgba/blob/0.10.5/src/third-party/inih/LICENSE.txt).
 - [Filament license](https://github.com/google/filament/blob/v1.72.1/LICENSE).
+- [Room dependencies/schema configuration](https://developer.android.com/jetpack/androidx/releases/room),
+  [KSP pinned release](https://github.com/google/ksp/releases/tag/2.1.20-1.0.32),
+  [Espresso Intents](https://developer.android.com/training/testing/espresso/intents).
 - [libretro-common compiled VFS file](https://github.com/libretro/libretro-common/blob/b0c348ea5543c4d7fb0bc479258aa6988b20c0c9/vfs/vfs_implementation.c).
 
 Preserved texts are in `docs/licenses/`. LibretroDroid's full source/submodule commits and mGBA's

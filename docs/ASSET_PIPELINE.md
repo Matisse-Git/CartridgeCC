@@ -28,6 +28,9 @@ harmonic environment and sun are temporary; there is no prefiltered studio specu
    add weighted/smooth normals appropriately, and apply transforms before export.
 4. Keep the label as its own UV-mapped material/texture region. Artwork is independent of metadata.
    One template mesh is instanced for the collection; never export a unique shell for every game.
+   Preserve the material name `Replaceable fictional label`, with exactly one label primitive per
+   instance. CartridgeLabels locates this name and replaces the gltfio `baseColorMap` binding.
+   The current UVs cover a rectangular 2:1 region facing +Z; verify asymmetric label orientation on RP5.
 5. Use glTF-compatible Principled BSDF materials: plastic metallic 0, roughness ~0.65–0.85; label
    ~0.55–0.75; plated contacts metallic ~0.8–1, roughness ~0.25–0.4. Avoid stylized dirt, scratches
    and glossy toy surfaces. Albedo is sRGB; roughness/metal/AO/normal data is linear. Pack ORM as
@@ -44,16 +47,19 @@ For reproducible headless Blender re-export of a polished `.blend`, use
 source models under `assets/source/` only when reasonably sized and required for reproduction.
 The provided export helper exports selected mesh objects and validates a nonempty selection.
 
-## Compression and future label loading
+## Compression and label loading
 
 The M0 PNG avoids another texture-tool dependency. For final assets evaluate KTX2/Basis Universal
 with the pinned gltfio runtime, test ETC2/ASTC capability on RP5, and compare GPU memory/visual quality.
-Never assume a WebP/extension provider exists. Draco/meshopt compression and runtime label replacement
-remain deferred; the separate label material/UV region is ready, but there is no label editor or game-art
-texture replacement API in M0. Avoid per-navigation texture decoding and retain the three-instance cache.
+Never assume a glTF WebP/extension provider exists. Draco/meshopt compression remains deferred. M1's
+LabelStore decodes ordinary user PNG/JPEG/WebP on IO into 512×256 RGBA; CartridgeLabels uploads distinct
+sRGB textures/material instances on Main and frees them during replacement/teardown. Fit/Crop/rotation
+recipes are stored independently from unchanged originals. At most six decoded recipes and three
+current GPU label textures are retained per viewport; navigation reuses them.
 
-The next label proof must assign different user-selected images to instances of this one mesh without
-changing adjacent games. Preserve original images; store a crop/fit/rotation recipe per selection and
-derive template-sized textures. Publish label UV orientation, aspect ratio and a mask with each template.
+The RP5 label proof assigns different original red/blue images to instances of this one mesh, reads
+actual GPU pixels, and restores accepted textures after cancel/recreation/database reopening. This
+proves independence, not the fidelity of a production scan or the orientation of asymmetric artwork.
+Publish label UV orientation, aspect ratio and a mask with each polished template.
 Future disc templates also define outer radius and centre-hole masking. Distinguish flat label artwork
 from photographs of entire media and case/box art. See [LABEL_SCRAPING.md](LABEL_SCRAPING.md).

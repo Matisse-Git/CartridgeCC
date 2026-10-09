@@ -78,3 +78,12 @@ native surface probe with framebuffer/input/save-load checks now pass on RP5. Se
   source-built mGBA core has aligned ELF segments. RP5/API 33 is the initial runtime target.
 - First build downloads source/dependencies; cold-build network restrictions and JitPack availability
   can block compilation. No runtime network permission is requested.
+
+## M1 implementation pins
+
+Room runtime/compiler/Gradle schema plugin 2.7.2 and KSP 2.1.20-1.0.32 match the existing Kotlin 2.1.20
+toolchain. Their resolved POMs identify Apache-2.0. Compose UI tests use the existing 2025.04.01 BOM;
+Espresso Intents 3.6.1 supplies picker-result stubbing only. The genuine renderer/core still execute.
+Filament 1.72.1 MaterialInstance.duplicate, RenderableManager material binding and Texture.Builder.usage
+were checked against that tag's Java source. Its default glTF ubershader exposes baseColorMap; runtime
+generated mipmaps need explicit GEN_MIPMAPPABLE usage. See ADR 0004 and M1_PROGRESS for scope/results.

@@ -1,16 +1,17 @@
 # Project Cartridge
 
 Native Android, controller-first physical-media collection with **embedded** GBA emulation.
-This repository implements an M0 feasibility slice, not the finished product. No RetroArch
+This repository implements M0 and the first M1 increment, not the finished product. No RetroArch
 installation, external emulator intents, browser renderer, commercial ROM, BIOS, or proprietary
 artwork is used.
 
-**Status:** debug APK builds; unit tests and asset checks pass. On the physical RP5, the genuine
-GLB renders, D-pad/stick navigation is user-confirmed, and 50 real Filament/mGBA handoffs passed.
-GPU pixel checks prove emulator input and visible save-state restoration; missing/invalid ROM recovery
-also passes. The owner confirmed gameplay/audio and the ordinary pause/resume/save/load/eject loop.
-**M0 feasibility passed on 2026-10-09.** Broader lifecycle/performance checks remain open; see
-[docs/TESTING.md](docs/TESTING.md).
+**Status:** M0 passed on RP5 on 2026-10-09. M1 now has Room-persisted game slots/focus, local label
+import with real 3D Fit/Crop/rotation preview, independent per-game textures, and a tested session
+coordinator. The debug APK builds; 11 unit tests, four asset checks, and three RP5 instrumentation
+tests pass, including 50 real renderer/core handoffs, ordinary UI lifecycle recovery and reopening
+labels from disk. The owner previously confirmed physical navigation, gameplay/audio and save/load.
+M1 remains in progress: the mesh and motion are engineering assets and long-duration validation
+is outstanding. See [docs/M1_PROGRESS.md](docs/M1_PROGRESS.md) and [docs/TESTING.md](docs/TESTING.md).
 
 ## Prerequisites
 
@@ -58,33 +59,42 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n dev.cartridge/.MainActivity
 ```
 
-The collection opens with three clearly named cartridge studies, all using one instanced GLB.
-Browse with D-pad left/right, left stick, or the touch arrows. Choose an uncompressed `.gba`
-document for a slot, then press A or Insert. The file picker uses SAF and requests a persistable
+The collection opens with three cartridge slots, all using one instanced GLB. Browse with D-pad
+left/right, left stick, or touch arrows. Press X / Choose .gba to assign an uncompressed `.gba`
+document to the focused slot, then A / Insert to play. The file picker uses SAF and requests a persistable
 read grant. A bounded, SHA-256-addressed working copy lives in app-private storage; the original
-document is unchanged. Slot assignments are **session-only** in M0; reselect a file after relaunch.
-SaveRAM and one save-state slot per content hash persist across sessions.
+document is unchanged. Room preserves slot assignments, labels and the selected slot across relaunch.
+Old M0 assignments were transient and must be selected once in this version. SaveRAM and one
+save-state slot per content hash persist across sessions.
+
+Press Y / Label to choose a PNG, JPEG or WebP, including an already scraped flat label image.
+Preview it on the actual cartridge, toggle Fit/Crop, rotate in 90° steps, then Apply or Cancel.
+Use D-pad up/down and A in this panel; B cancels. Reset label restores the fictional study artwork.
+Original images are cached unchanged; only accepted recipes are saved. Adjacent games retain their
+own labels. Images are limited to 12 MiB and decoded off Main into 512×256 label textures.
 
 L3 + R3 opens the app-owned pause menu; Start + Select is an alternate configurable combination.
 Back also pauses. D-pad up/down selects menu actions; A activates and B resumes. Android gameplay
 A/B go directly to the corresponding Libretro A/B; verify Retroid's selected button-layout mode.
 The first button of a two-button shortcut may reach the game before the second is pressed.
 
-The lift is an M0 surface-transition cue. Final insertion/ejection choreography, label assignment,
-Room indexing, details, other layouts, and HOME registration are not implemented.
+Insertion now lifts, aligns and slides the cartridge over 540 ms; ejection reverses it over 420 ms.
+Motion off bypasses both. A receiving slot, production model/materials, directory scanning, details,
+online scraping, bulk/candidate selection, other layouts and HOME registration remain planned.
 Backgrounding ends the current session after saving RAM; full session sleep/resume comes later.
 
 ## Engineering record
 
 - [Technical plan and feasibility blockers](docs/TECHNICAL_PLAN.md)
 - [Product and UX scope](docs/PRODUCT.md)
-- [Required label import, candidate choice and bulk scraping](docs/LABEL_SCRAPING.md) (planned)
+- [Label import, candidate choice and bulk scraping](docs/LABEL_SCRAPING.md) (local image import implemented; online/bulk planned)
 - [Architecture and lifecycle](docs/ARCHITECTURE.md)
 - [Milestones](docs/ROADMAP.md)
 - [Asset pipeline](docs/ASSET_PIPELINE.md)
 - [Tests and actual results](docs/TESTING.md)
 - [License audit and distribution obligations](docs/LICENSING.md)
 - [M0 report and created files](docs/M0_REPORT.md)
+- [M1 progress and changed files](docs/M1_PROGRESS.md)
 
 LibretroDroid is GPL-3.0-or-later. Shipping this integration requires a GPL-compatible distribution
 plan and complete corresponding source. See the audit before distributing; no project-wide

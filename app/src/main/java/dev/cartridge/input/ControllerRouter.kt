@@ -16,6 +16,8 @@ class ControllerRouter(
     private val pause: () -> Unit,
     private val gameKey: (Int, Int) -> Unit,
     private val gameMotion: (Float, Float) -> Unit,
+    private val chooseGame: () -> Unit = {},
+    private val chooseLabel: () -> Unit = {},
 ) {
     var mode = InputMode.Library
         set(value) { if (field != value) reset(); field = value }
@@ -50,6 +52,8 @@ class ControllerRouter(
         if (down && event.repeatCount == 0) when (code) {
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_ENTER -> select()
             KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> back()
+            KeyEvent.KEYCODE_BUTTON_X -> if (mode == InputMode.Library) chooseGame()
+            KeyEvent.KEYCODE_BUTTON_Y -> if (mode == InputMode.Library) chooseLabel()
         }
         return true
     }

@@ -1,7 +1,8 @@
 param(
     [string]$Sdk = (Join-Path $PSScriptRoot '../.tools/sdk'),
     [string]$Serial,
-    [ValidateRange(1, 50)][int]$Cycles = 3
+    [ValidateRange(1, 50)][int]$Cycles = 3,
+    [ValidateSet('Surface', 'Collection', 'All')][string]$Suite = 'Surface'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -30,11 +31,17 @@ try {
     Invoke-DeviceAdb -Arguments @('push', '.tools/probe/cartridge-probe.gba', '/data/local/tmp/cartridge-probe.gba')
     Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', '/data/local/tmp/cartridge-probe.gba', 'files/cartridge-probe.gba')
     Invoke-DeviceAdb -Arguments @('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
+    $testClass = switch ($Suite) {
+        'Surface' { 'dev.cartridge.SurfaceHandoffTest' }
+        'Collection' { 'dev.cartridge.CollectionUiTest' }
+        'All' { 'dev.cartridge.SurfaceHandoffTest,dev.cartridge.CollectionUiTest' }
+    }
+    $expectedTests = switch ($Suite) { 'Surface' { 1 }; 'Collection' { 2 }; 'All' { 3 } }
     $result = Invoke-DeviceAdb -Arguments @('shell', 'am', 'instrument', '-w', '-r', '-e', 'cycles', "$Cycles", '-e', 'class',
-        'dev.cartridge.SurfaceHandoffTest', 'dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner')
+        $testClass, 'dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner')
     $result | Set-Content -LiteralPath '.tools/device-test.log'
     $result
     # am instrument can exit zero even when a JUnit assertion fails. Check its result explicitly.
-    if ($result -notmatch '(?m)^OK \(1 test\)\s*$') { throw 'Device test failed; see .tools/device-test.log.' }
+    if ($result -notmatch "(?m)^OK \($expectedTests tests?\)\s*$") { throw 'Device test failed; see .tools/device-test.log.' }
     Invoke-DeviceAdb -Arguments @('shell', 'am', 'start', '-n', 'dev.cartridge/.MainActivity')
 } finally { Pop-Location }
