@@ -1,6 +1,7 @@
 package dev.cartridge.session
 
 import dev.cartridge.domain.Selection
+import dev.cartridge.domain.CollectionLayout
 import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.EmulationEngine
 import dev.cartridge.library.*
@@ -34,12 +35,13 @@ data class CollectionState(
     val query: LibraryQuery = LibraryQuery(),
     val historyWarning: String? = null,
     val lastLabelAppliedTo: String? = null,
+    val layout: CollectionLayout = CollectionLayout.Horizontal,
 ) {
     val selectedGame get() = slots[selection.index]
     val title get() = selectedGame?.title ?: if (allGames.isNotEmpty()) "No matching games" else "Your collection is empty"
-    val labels get() = slots.subList(windowStart, (windowStart + 3).coerceAtMost(slots.size)).map { game ->
+    val labels get() = slots.subList(windowStart, (windowStart + layout.visibleCount).coerceAtMost(slots.size)).map { game ->
         if (game?.id == labelDraft?.gameId && labelDraft != null) labelDraft.label else game?.label }
-    val windowStart get() = (selection.index - 1).coerceIn(0, (slots.size - 3).coerceAtLeast(0))
+    val windowStart get() = layout.windowStart(selection.index, slots.size)
 }
 
 /** Main-thread ports return only after the old GPU owner has synchronously detached/flushed. */
@@ -56,10 +58,12 @@ class CollectionCoordinator(
     private val scope: CoroutineScope,
     reducedMotion: Boolean = false,
     alternateShortcut: Boolean = false,
+    layout: CollectionLayout = CollectionLayout.Horizontal,
+    private val onLayoutChanged: (CollectionLayout) -> Unit = {},
     private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
     private val wallMillis: () -> Long = System::currentTimeMillis,
 ) {
-    private val mutableState = MutableStateFlow(CollectionState(reducedMotion = reducedMotion, alternateShortcut = alternateShortcut))
+    private val mutableState = MutableStateFlow(CollectionState(reducedMotion = reducedMotion, alternateShortcut = alternateShortcut, layout = layout))
     val state = mutableState.asStateFlow()
     private var actionJob: Job? = null
     private var focusJob: Job? = null
@@ -179,11 +183,17 @@ class CollectionCoordinator(
             mutableState.value = current.copy(labelPreviewReady = true)
         }
     }
+    fun navigateSpatial(x: Int, y: Int) {
+        val current = state.value
+        if (current.screen != CollectionScreen.Library) return
+        val target = current.layout.move(current.selection.index, current.selection.count, x, y)
+        if (target != current.selection.index) navigate(target - current.selection.index)
+    }
     fun navigate(delta: Int) {
         if (destroyed || !foreground || state.value.busy || !state.value.loaded) return
         val current = state.value
         if (current.screen == CollectionScreen.LibraryMenu) {
-            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 6))
+            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 7))
         } else if (current.screen == CollectionScreen.Details) {
             mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 5))
         } else if (current.screen == CollectionScreen.LabelPreview || engine.status.value.state == SessionState.Paused) {
@@ -246,14 +256,19 @@ class CollectionCoordinator(
             3 -> query(state.value.query.copy(sort = LibrarySort.entries[(state.value.query.sort.ordinal + 1) % LibrarySort.entries.size]))
             4 -> query(state.value.query.copy(favoritesOnly = !state.value.query.favoritesOnly))
             5 -> query(LibraryQuery())
+            7 -> settings(layout = state.value.layout.next())
         }
     }
     private suspend fun refreshLibrary() {
         val snapshot = repository.initialize()
         applySnapshot(snapshot, forceFocus = true)
     }
-    fun settings(reducedMotion: Boolean = state.value.reducedMotion, alternateShortcut: Boolean = state.value.alternateShortcut) {
-        if (!state.value.busy) mutableState.value = state.value.copy(reducedMotion = reducedMotion, alternateShortcut = alternateShortcut)
+    fun settings(reducedMotion: Boolean = state.value.reducedMotion, alternateShortcut: Boolean = state.value.alternateShortcut, layout: CollectionLayout = state.value.layout) {
+        if (!state.value.busy) {
+            val changed = layout != state.value.layout
+            mutableState.value = state.value.copy(reducedMotion = reducedMotion, alternateShortcut = alternateShortcut, layout = layout)
+            if (changed) onLayoutChanged(layout)
+        }
     }
     fun notify(message: String) { if (!destroyed) mutableState.value = state.value.copy(message = message) }
 

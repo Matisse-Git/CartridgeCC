@@ -97,3 +97,6 @@ Offline scrape packs add original ZIP/JSON/import/helper code only, using Androi
 APIs. No commercial pack or artwork is committed/bundled. Private imported candidates keep the source
 provider/licence/URL; internal local URLs do not grant redistribution rights. The PC helper never includes
 ROM bytes. Provider/GPL release obligations remain, including for a user-exported redistributable pack.
+
+M4 adds original layout/input/rendering code and isolated original artwork/homebrew tests. It adopts
+no new dependency or media asset. Existing complete-source and provider/image release gates apply.

@@ -19,6 +19,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -49,6 +51,7 @@ import dev.cartridge.library.*
 import dev.cartridge.rendering.CartridgeSurface
 import dev.cartridge.rendering.CollectionAssets
 import dev.cartridge.domain.MediaMotion
+import dev.cartridge.domain.CollectionLayout
 import dev.cartridge.session.*
 import dev.cartridge.scraping.*
 import dev.cartridge.storage.*
@@ -94,6 +97,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     protected open fun persistDirectoryPermission(uri: Uri) {
         contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
+    protected open fun presentationPreferences() = getPreferences(MODE_PRIVATE)
     private val menuItems = listOf("Resume", "Save state", "Load state", "Eject to collection")
     private val inputFrames = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
@@ -116,7 +120,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         }
         engine = LibretroEngine(this, lifecycleScope)
         labelStore = createLabelStore()
-        val preferences = getPreferences(MODE_PRIVATE)
+        val preferences = presentationPreferences()
         soundEnabled = preferences.getBoolean("mediaSound", false)
         autoScan = preferences.getBoolean("autoScan", true)
         mediaSound = MediaSound(this)
@@ -125,7 +129,9 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         coordinator = CollectionCoordinator(engine, repository, object : RendererHandoff {
             override fun releaseLibrary() { cartridgeSurface?.close(); cartridgeSurface = null }
             override fun releaseEmulator() { emulatorHost?.release(); emulatorHost = null }
-        }, lifecycleScope, preferences.getBoolean("reducedMotion", false), preferences.getBoolean("alternateShortcut", false))
+        }, lifecycleScope, preferences.getBoolean("reducedMotion", false), preferences.getBoolean("alternateShortcut", false),
+            layout = runCatching { CollectionLayout.valueOf(preferences.getString("layout", "Horizontal")!!) }.getOrDefault(CollectionLayout.Horizontal),
+            onLayoutChanged = { layout -> preferences.edit { putString("layout", layout.name) }; if (::input.isInitialized) input.reset() })
         scraper = ScrapeCoordinator(PackAwareProvider(createArtworkProvider(), packStore), repository, labelStore, File(filesDir, "roms"), lifecycleScope, createScrapeJournal(), createScrapePreferences(), choosePack = { choosePack?.invoke() }) { game, label ->
             if (coordinator.state.value.allGames.any { it.id == game.id }) coordinator.previewScrapedLabel(game, label)
             else { coordinator.notify("This game is no longer in the collection"); scraper.previewFinished() }
@@ -145,7 +151,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 val scrape = scraper.state.value
                 if (scrape.visible && scrape.page == ScrapePage.Metadata) scrape.candidate?.metadata?.keys?.elementAtOrNull(scrape.focus)?.let(scraper::variant)
                 else if (scrape.visible && scrape.page == ScrapePage.Targets) scraper.pickAll(scrape.pickedIds.size != scrape.availableGames.size)
-            }, cancelOperation = coordinator::cancelScan, details = coordinator::details, favorite = coordinator::favorite)
+            }, cancelOperation = coordinator::cancelScan, details = coordinator::details, favorite = coordinator::favorite, navigateLibrary = coordinator::navigateSpatial)
         getSystemService(InputManager::class.java).registerInputDeviceListener(this, null)
         lifecycleScope.launch {
             var previousScreen = CollectionScreen.Library
@@ -188,7 +194,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             0 -> showOverlay(LibraryOverlay.None)
             1 -> { showOverlay(LibraryOverlay.None); chooseDirectory?.invoke() }
             2, 3 -> { showOverlay(LibraryOverlay.None); scanDirectory(null, verifyAll = index == 3) }
-            4 -> { autoScan = !autoScan; getPreferences(MODE_PRIVATE).edit { putBoolean("autoScan", autoScan) } }
+            4 -> { autoScan = !autoScan; presentationPreferences().edit { putBoolean("autoScan", autoScan) } }
             5 -> showOverlay(LibraryOverlay.Search)
             6 -> { showOverlay(LibraryOverlay.None); coordinator.query(coordinator.state.value.query.copy(search = "")) }
             else -> roots.getOrNull(index - 7)?.let { root ->
@@ -317,7 +323,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                             listOfNotNull(if (state.selectedGame?.favorite == true) "★" else null, if (state.query.favoritesOnly) "Favorites" else null,
                                 state.query.search.takeIf(String::isNotEmpty)?.let { "Search: $it" }, if (state.query.sort != LibrarySort.Added) state.query.sort.title else null).joinToString(" · "), fontSize = 12.sp)
                         Text(if (state.screen == CollectionScreen.LabelPreview) "↑ ↓ Choose   ·   A Apply action   ·   B Cancel"
-                            else "← → Browse   ·   A Insert   ·   R1 Details   ·   L1 Favorite   ·   Y Scrape   ·   B Collection   ·   ${if (state.selectedGame == null) 0 else state.selection.index + 1} / ${state.slots.count { it != null }}",
+                            else "${when (state.layout) { CollectionLayout.Horizontal -> "← →"; CollectionLayout.Vertical -> "↑ ↓"; CollectionLayout.Grid -> "← ↑ ↓ →" }} Browse   ·   A Insert   ·   R1 Details   ·   L1 Favorite   ·   Y Scrape   ·   B Collection   ·   ${if (state.selectedGame == null) 0 else state.selection.index + 1} / ${state.slots.count { it != null }}",
                             fontSize = 12.sp, color = Color(0xFF9C968B), modifier = Modifier.padding(top = 8.dp))
                     }
                     if (state.screen == CollectionScreen.Library) {
@@ -338,16 +344,16 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                                 TextButton(enabled = !state.busy, onClick = {
                                     val next = !state.reducedMotion
                                     coordinator.settings(reducedMotion = next)
-                                    getPreferences(MODE_PRIVATE).edit { putBoolean("reducedMotion", next) }
+                                    presentationPreferences().edit { putBoolean("reducedMotion", next) }
                                 }, modifier = Modifier.testTag("motion-setting")) { Text(if (state.reducedMotion) "Motion off" else "Motion on") }
                                 TextButton(enabled = !state.busy, onClick = {
                                     soundEnabled = !soundEnabled
-                                    getPreferences(MODE_PRIVATE).edit { putBoolean("mediaSound", soundEnabled) }
+                                    presentationPreferences().edit { putBoolean("mediaSound", soundEnabled) }
                                 }) { Text(if (soundEnabled) "Sound on" else "Sound off") }
                                 TextButton(enabled = !state.busy, onClick = {
                                     val next = !state.alternateShortcut
                                     coordinator.settings(alternateShortcut = next)
-                                    getPreferences(MODE_PRIVATE).edit { putBoolean("alternateShortcut", next) }
+                                    presentationPreferences().edit { putBoolean("alternateShortcut", next) }
                                 }, modifier = Modifier.testTag("shortcut-setting")) { Text(if (state.alternateShortcut) "Menu: Start + Select" else "Menu: L3 + R3") }
                                 TextButton(enabled = !state.busy, onClick = { scanDirectory(null) }, modifier = Modifier.testTag("rescan")) { Text("Rescan") }
                                 TextButton(enabled = !state.busy && state.loaded, onClick = coordinator::openLibraryMenu, modifier = Modifier.testTag("collection-menu")) { Text("Collection") }
@@ -359,7 +365,9 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                         TextButton(enabled = !state.busy, onClick = { coordinator.navigate(1) }, modifier = Modifier.align(Alignment.CenterEnd).testTag("next")) { Text("›") }
                     }
                     if (state.screen == CollectionScreen.LibraryMenu) {
-                        Column(Modifier.align(Alignment.CenterEnd).width(280.dp).background(Color(0xF0191817)).padding(12.dp)) {
+                        val menuScroll = rememberScrollState()
+                        LaunchedEffect(state.menuIndex) { menuScroll.animateScrollTo(if (state.menuIndex >= 4) menuScroll.maxValue else 0) }
+                        Column(Modifier.align(Alignment.CenterEnd).width(280.dp).background(Color(0xF0191817)).verticalScroll(menuScroll).padding(12.dp)) {
                             Text("Collection", fontSize = 19.sp, modifier = Modifier.padding(8.dp))
                             Text("Removal keeps ROMs, saves and artwork. Rescan skips removed entries; Add .gba restores them.", fontSize = 12.sp, modifier = Modifier.padding(8.dp))
                             listOf("Back to collection", "Remove selected entry", "Undo last removal", "Sort: ${state.query.sort.title}",
@@ -369,6 +377,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                                         .background(if (state.menuIndex == index) Color(0xFF34312D) else Color.Transparent)) { Text(title) }
                             }
                             LibraryAction("Folders & search", state.menuIndex == 6, "library-manager-open", !state.busy, ::openLibraryManager)
+                            LibraryAction("View: ${state.layout.title}", state.menuIndex == 7, "layout-setting", !state.busy) { coordinator.settings(layout = state.layout.next()) }
                         }
                     }
                     if (state.screen == CollectionScreen.LabelPreview) {
@@ -443,7 +452,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 }?.also { decoded -> cache[it.textureKey] = decoded }
             } }
             val needed = labels.mapNotNull { it?.textureKey }.toSet()
-            while (cache.size > 6) cache.keys.firstOrNull { it !in needed }?.let { cache.remove(it) } ?: break
+            while (cache.size > state.layout.visibleCount * 2) cache.keys.firstOrNull { it !in needed }?.let { cache.remove(it) } ?: break
         }
         val motion = remember { Animatable(if (state.screen == CollectionScreen.Ejecting) 1f else 0f) }
         LaunchedEffect(state.screen, state.reducedMotion) {
@@ -457,9 +466,9 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 onLabelsReady = { first, keys -> coordinator.labelsReady(state.viewportGeneration, keys, first) }, onLabelError = coordinator::notify
             ).also { renderer -> surface = renderer; cartridgeSurface = renderer }
         }, update = {
-            it.selection = state.selection.index; it.windowStart = state.windowStart; it.collectionCount = state.selection.count; it.insertion = motion.value
+            it.layout = state.layout; it.selection = state.selection.index; it.windowStart = state.windowStart; it.collectionCount = state.selection.count; it.insertion = motion.value
             it.reducedMotion = state.reducedMotion
-            it.setLabels(if (pixels.map { pixel -> pixel?.key } == labels.map { label -> label?.textureKey }) pixels else List(3) { null })
+            it.setLabels(if (pixels.map { pixel -> pixel?.key } == labels.map { label -> label?.textureKey }) pixels else List(labels.size) { null })
         }, onRelease = { it.close() })
         val suspended = state.screen == CollectionScreen.Details || libraryOverlay != LibraryOverlay.None || scrapeVisible
         DisposableEffect(surface, suspended) {

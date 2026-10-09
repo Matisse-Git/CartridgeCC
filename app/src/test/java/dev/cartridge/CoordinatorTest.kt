@@ -303,4 +303,27 @@ class CoordinatorTest {
         reopened.destroy()
     }
 
+    @Test fun layoutsShareIdentityNavigationAndGridPreviewAcknowledgements() = runTest {
+        val library = Library()
+        repeat(18) { library.add(library.one.copy(id = (it + 1).toString(16).padStart(64, '0'))) }
+        val saved = mutableListOf<dev.cartridge.domain.CollectionLayout>()
+        val coordinator = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope, onLayoutChanged = saved::add)
+        runCurrent()
+        val identity = coordinator.state.value.selectedGame!!.id
+        coordinator.settings(layout = dev.cartridge.domain.CollectionLayout.Grid); runCurrent()
+        assertEquals(identity, coordinator.state.value.selectedGame!!.id)
+        coordinator.navigateSpatial(0, 1); runCurrent(); assertEquals(4, coordinator.state.value.selection.index)
+        coordinator.navigate(15); runCurrent()
+        assertEquals(12, coordinator.state.value.windowStart); assertEquals(8, coordinator.state.value.labels.size)
+        val label = LabelRef("e".repeat(64)); coordinator.previewLabel { label }; runCurrent()
+        coordinator.labelsReady(0, List(9) { if (it == 7) label.textureKey else null }, firstIndex = 12)
+        assertTrue(coordinator.state.value.labelPreviewReady)
+        coordinator.cancelLabel(); runCurrent()
+        coordinator.settings(layout = dev.cartridge.domain.CollectionLayout.Vertical); runCurrent()
+        coordinator.navigateSpatial(-1, -1); runCurrent(); assertEquals(18, coordinator.state.value.selection.index)
+        assertEquals(listOf(dev.cartridge.domain.CollectionLayout.Grid, dev.cartridge.domain.CollectionLayout.Vertical), saved)
+        assertEquals(18, library.snapshots.value.selectedSlot)
+        coordinator.destroy()
+    }
+
 }

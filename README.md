@@ -1,7 +1,7 @@
 # Project Cartridge
 
 Native Android, controller-first physical-media collection with **embedded** GBA emulation.
-This repository implements M0, focused M1/M2 increments and active M3 library management, not the finished product. No RetroArch
+This repository implements M0, focused M1/M2/M3 increments and shared M4 layouts, not the finished product. No RetroArch
 installation, external emulator intents or browser renderer is used. No commercial ROM, BIOS or
 proprietary artwork is bundled; users can scrape artwork into their private collection.
 
@@ -9,7 +9,7 @@ proprietary artwork is bundled; users can scrape artwork into their private coll
 scraping, independent media/metadata choices, 3D Fit/Crop/rotation preview and a tested session
 coordinator. Folder imports now grow the collection and saved scrape batches resume after reopening.
 Battery saves now restore before gameplay and checkpoint during play/pause. Both APKs build;
-34 unit tests and eight asset checks pass. Twenty-one RP5 tests cover real native
+37 unit tests and eight asset checks pass. Twenty-three RP5 tests cover real native
 handoffs, ordinary UI recovery, independent labels, schema migrations, folder imports and resumed scraping; a separate
 live API test passes. The owner confirmed physical navigation, gameplay/audio, save/load and local labels.
 M2 refinement is implemented: refined GBA mesh/PBR, original studio reflections, receiving slot,
@@ -68,8 +68,9 @@ adb shell am start -n dev.cartridge/.MainActivity
 
 The empty collection shows one study cartridge and grows as games are imported. **Tools** opens the
 touch shelf for imports/scraping, motion/sound/shortcut preferences and collection actions. It starts
-closed; controller shortcuts work independently. At most three visible instances
-reuse one GLB, regardless of collection size. Browse with D-pad left/right, left stick, or touch arrows.
+closed; controller shortcuts work independently. B → Collection → View cycles Horizontal, Vertical and Grid while keeping your selected game.
+Three objects in the carousels or up to nine in the grid reuse one bounded GLB pool. D-pad/stick
+follow the spatial axes; touch arrows move sequentially. The preference survives reopening.
 Press X / Add .gba to add an uncompressed `.gba`
 document or focus its existing entry, then A / Insert to play. The picker uses SAF and requests a persistable
 read grant. A bounded, SHA-256-addressed working copy lives in app-private storage; the original
@@ -127,7 +128,7 @@ The first button of a two-button shortcut may reach the game before the second i
 Insertion lifts, aligns and slides the cartridge into a small physical receiving slot over 540 ms;
 ejection reverses it over 420 ms. Motion off bypasses both and snaps carousel selection. Optional
 original contact sound defaults off. Final manual art direction,
-disc media, other layouts and HOME registration remain planned.
+disc media and HOME registration remain planned; all three collection layouts are implemented.
 Backgrounding ends the current session after saving RAM; full session sleep/resume comes later.
 
 ## M3 library controls
@@ -169,6 +170,7 @@ sleep/reboot/performance gates remain open; the active roadmap continues through
 - [M2 refinement and physical presentation results](docs/M2_PROGRESS.md)
 - [M3 library management and validation](docs/M3_PROGRESS.md)
 - [M3 selected scraping, preferences, fast review and undo](docs/M3_SCRAPE_REVIEW.md)
+- [M4 shared collection views](docs/M4_PROGRESS.md)
 - [Tests and actual results](docs/TESTING.md)
 - [License audit and distribution obligations](docs/LICENSING.md)
 - [M0 report and created files](docs/M0_REPORT.md)

@@ -24,6 +24,7 @@ class DebugCollectionActivity : MainActivity() {
     override fun createLabelStore() = LabelStore(File(filesDir, "m1-test-labels"))
     override fun createArtworkProvider() = testProvider ?: super.createArtworkProvider()
     override fun createScrapeJournal() = FileScrapeJournal(File(filesDir, "${intent.getStringExtra("testDatabase")}-scrape"))
+    override fun presentationPreferences() = getSharedPreferences("${intent.getStringExtra("testDatabase")}-presentation", MODE_PRIVATE)
     override fun createPackStore() = dev.cartridge.scraping.ScrapePackStore(File(filesDir, "${intent.getStringExtra("testDatabase")}-packs"))
     override fun createScrapePreferences() = dev.cartridge.scraping.SharedScrapePreferences(this, "${intent.getStringExtra("testDatabase")}-preferences")
     override fun persistDirectoryPermission(uri: Uri) {

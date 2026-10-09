@@ -665,3 +665,34 @@ Reproduce with required Gradle/asset commands, then `Test-Device.ps1 -Serial <se
 `-Suite All -Cycles 3`. SCRAPE_PACK_FORMAT defines limits and the PC helper. M3 functional slices are
 implemented; very large actual collections, revoked/reboot SAF grants, storage-failure injection and
 shared sustained hardware gates remain open. Continue to M4 under the owner's through-M6 authorization.
+
+## M4 layouts — version 11, 2026-10-10
+
+Required Gradle tasks/build/test APK/lint pass; **37 host tests**, **eight asset checks**, lint 0 errors /
+24 warnings. The final RP5 All suite passed **23/23 in 138.594 s**, `-Cycles 3`. Earlier `-Cycles 50`
+passed the native fifty-handoff assertion and 22/23 tests; the remaining collection-menu overflow was
+fixed before the final run. Version 11 is installed/launched on the same Android 13/RP5 firmware.
+
+Two new RP5 cases cover twelve original homebrew games/labels and a separate 500-original-record
+collection. They verify three layouts, focus/layout persistence, actual GLB label preview/pixels,
+internal gameplay/pause/eject, D-pad navigation to the scrollable View action and synthetic stick
+dead zone/held repeat/reversal. The scale case makes 240 rapid moves and recreates the nine-instance
+pool with bounded 3/9-label windows. Its PSS sample was 236,859 → 258,807 KiB, a short process sample
+that includes accumulated test/native allocations, not a memory-plateau or distinct-artwork claim.
+
+The original-art SurfaceFlinger benchmark now runs 54 seconds. Presentation p95: rest **16.752500**,
+horizontal rapid movement **16.742135**, insertion/ejection **16.741823**, vertical **16.748073**,
+nine-object grid **16.744531 ms**. Samples: 540/1,140/300/420/540 frames; zero intervals exceeding
+1.5 refresh periods in those windows. CPU submission p95 1.732031 ms; 3,241/3,241 submissions. The
+unchanged p95 acceptance threshold remains 1.5 refresh periods. Startup, sustained gameplay, thermal
+behavior, 500 distinct label textures and input-to-photon latency are not established by this test.
+
+Failures corrected: neutral stick/key releases between frame polls now reset repeat immediately;
+the collection menu scrolls within the screen, follows controller focus and orders actions consistently.
+Touch tests scroll to actual off-screen actions. No behavior assertions or thresholds were removed.
+Debug presentation preferences are isolated per fixture database, preserving owner settings.
+
+Reproduce with required Gradle/asset commands, then `Test-Device.ps1 -Serial <serial> -Suite Layout`
+or `-Suite All -Cycles 3`; fifty handoffs use `-Cycles 50`. See M4_PROGRESS/ADR 0012. Physical owner
+layout/stick review, dense distinct artworks, sustained grid profiling and shared sleep/reboot/storage/
+controller-disconnection/thermal/audio gates remain open. M5 is the next active engineering increment.

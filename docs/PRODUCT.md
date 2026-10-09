@@ -165,3 +165,10 @@ ROM hashes match; reviewed candidates retain original source/region/language/pro
 preferred-label preview, separate metadata/media selection, missing-only merge, resume and undo apply.
 Packs contain no ROMs/BIOS/saves; importing never changes membership or launches network calls. Unknown
 formats/unsafe paths/oversized or altered images are rejected. See SCRAPE_PACK_FORMAT/ADR 0011.
+## M4 collection views
+
+Horizontal remains the default. B → Collection → View cycles Horizontal, Vertical and Grid and saves
+the preference. Focus, accepted labels, metadata, filters, saves and launch behavior are shared. Grid
+has three columns, no horizontal row wrapping and a clamped partial final row. D-pad/left stick follow
+the view's spatial axes; touch arrows advance sequentially. Nine reusable genuine 3D objects bound
+rendering independently of collection size. Reduced motion applies to every layout.

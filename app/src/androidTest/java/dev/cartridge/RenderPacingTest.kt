@@ -15,7 +15,7 @@ class RenderPacingTest {
     @Test fun originalStudioCarouselAndInsertionPresentAtTheDeviceRefreshRate() {
         ActivityScenario.launch(CollectionProfileActivity::class.java).use { scenario ->
             var start = 0L
-            val deadline = System.nanoTime()+55_000_000_000L
+            val deadline = System.nanoTime()+75_000_000_000L
             while (start == 0L && System.nanoTime() < deadline) {
                 scenario.onActivity { assertNull(it.failure); start = it.startedNanos }
                 Thread.sleep(50)
@@ -41,7 +41,8 @@ class RenderPacingTest {
             }
             assertTrue("Profile did not finish", finished)
             assertTrue(refresh > 0)
-            for ((name, range) in listOf("rest" to (500L..9_500L), "rapid navigation" to (10_500L..29_500L), "insertion/ejection" to (30_500L..35_500L))) {
+            for ((name, range) in listOf("rest" to (500L..9_500L), "rapid navigation" to (10_500L..29_500L), "insertion/ejection" to (30_500L..35_500L),
+                "vertical navigation" to (36_500L..43_500L), "nine-object grid navigation" to (44_500L..53_500L))) {
                 val phase = presents.filter { (it-start)/1_000_000 in range }
                 assertTrue("No real presentation samples for $name", phase.size > 100)
                 val intervals = phase.zipWithNext { a,b -> (b-a)/1_000_000.0 }

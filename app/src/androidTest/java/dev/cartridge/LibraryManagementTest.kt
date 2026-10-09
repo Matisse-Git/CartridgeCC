@@ -82,8 +82,8 @@ class LibraryManagementTest {
                 scenario.recreate()
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 scenario.onActivity { assertEquals(second, it.coordinator.state.value.selectedGame!!.id); assertTrue(it.coordinator.state.value.query.favoritesOnly); assertEquals("2002", it.coordinator.state.value.selectedGame!!.metadata["year"]!!.value) }
-                ui.tool("collection-menu").performClick(); ui.onNodeWithTag("library-manager-open").performClick()
-                ui.onNodeWithTag("library-action-5").performClick()
+                ui.tool("collection-menu").performClick(); ui.onNodeWithTag("library-manager-open").performScrollTo().performClick()
+                ui.onNodeWithTag("library-action-5").performScrollTo().performClick()
                 ui.onNodeWithTag("library-search-text").performTextReplacement("no match")
                 ui.onNodeWithTag("library-search-apply").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame == null }

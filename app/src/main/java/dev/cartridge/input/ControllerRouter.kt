@@ -24,13 +24,16 @@ class ControllerRouter(
     private val cancelOperation: () -> Unit = {},
     private val details: () -> Unit = {},
     private val favorite: () -> Unit = {},
+    private val navigateLibrary: ((Int, Int) -> Unit)? = null,
 ) {
     var mode = InputMode.Library
         set(value) { if (field != value) reset(); field = value }
     var pauseShortcut = setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_THUMBR)
     private val held = mutableSetOf<Int>()
-    private val repeat = AxisRepeater()
-    private var axis = 0f
+    private val horizontalRepeat = AxisRepeater()
+    private val verticalRepeat = AxisRepeater()
+    private var axisX = 0f
+    private var axisY = 0f
     private var shortcutLatched = false
     private val directions = setOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
         KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN)
@@ -52,6 +55,12 @@ class ControllerRouter(
         if (event.action != KeyEvent.ACTION_DOWN && event.action != KeyEvent.ACTION_UP) return true
         val down = event.action == KeyEvent.ACTION_DOWN
         if (down) held.add(code) else held.remove(code)
+        if (!down) {
+            if (code in setOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT) &&
+                held.none { it == KeyEvent.KEYCODE_DPAD_LEFT || it == KeyEvent.KEYCODE_DPAD_RIGHT } && abs(axisX) < .35f) horizontalRepeat.reset()
+            if (code in setOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN) &&
+                held.none { it == KeyEvent.KEYCODE_DPAD_UP || it == KeyEvent.KEYCODE_DPAD_DOWN } && abs(axisY) < .35f) verticalRepeat.reset()
+        }
         if (held.intersect(pauseShortcut).isEmpty()) shortcutLatched = false
         if (mode == InputMode.Gameplay) {
             if (!shortcutLatched && held.containsAll(pauseShortcut)) {
@@ -86,21 +95,30 @@ class ControllerRouter(
         if (mode == InputMode.Gameplay) {
             fun digital(value: Float) = if (abs(value) < .35f) 0f else if (value > 0) 1f else -1f
             gameMotion(digital(if (hatX != 0f) hatX else x), digital(if (hatY != 0f) hatY else y))
-        } else axis = if (mode == InputMode.Menu) (if (hatY != 0f) hatY else y)
-            else (if (hatX != 0f) hatX else x)
+        } else {
+            axisX = if (hatX != 0f) hatX else x; axisY = if (hatY != 0f) hatY else y
+            // A neutral event can arrive between frame polls. Release immediately so the next
+            // stick/key press starts a fresh repeat, even when it follows in the same frame.
+            if (abs(axisX) < .35f && held.none { it == KeyEvent.KEYCODE_DPAD_LEFT || it == KeyEvent.KEYCODE_DPAD_RIGHT }) horizontalRepeat.reset()
+            if (abs(axisY) < .35f && held.none { it == KeyEvent.KEYCODE_DPAD_UP || it == KeyEvent.KEYCODE_DPAD_DOWN }) verticalRepeat.reset()
+        }
         return true
     }
     fun tick(nowMillis: Long) {
         if (mode != InputMode.Library && mode != InputMode.Menu) return
-        val negative = if (mode == InputMode.Library) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_UP
-        val positive = if (mode == InputMode.Library) KeyEvent.KEYCODE_DPAD_RIGHT else KeyEvent.KEYCODE_DPAD_DOWN
-        val value = when {
+        fun axis(negative: Int, positive: Int, analog: Float) = when {
             positive in held && negative !in held -> 1f
             negative in held && positive !in held -> -1f
-            else -> axis
+            else -> analog
         }
-        val delta = repeat.poll(value, nowMillis)
-        if (delta != 0) navigate(delta)
+        val y = axis(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, axisY)
+        val dy = verticalRepeat.poll(y, nowMillis)
+        if (mode == InputMode.Menu) { if (dy != 0) navigate(dy); return }
+        val x = axis(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, axisX)
+        val dx = horizontalRepeat.poll(x, nowMillis)
+        if (dx != 0 || dy != 0) {
+            if (navigateLibrary != null) navigateLibrary.invoke(dx, dy) else if (dx != 0) navigate(dx)
+        }
     }
-    fun reset() { held.clear(); axis = 0f; repeat.reset(); shortcutLatched = false }
+    fun reset() { held.clear(); axisX = 0f; axisY = 0f; horizontalRepeat.reset(); verticalRepeat.reset(); shortcutLatched = false }
 }

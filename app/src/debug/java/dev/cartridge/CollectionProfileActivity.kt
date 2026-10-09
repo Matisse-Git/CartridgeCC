@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import dev.cartridge.rendering.CartridgeSurface
 import dev.cartridge.rendering.CollectionAssets
+import dev.cartridge.domain.CollectionLayout
 import kotlinx.coroutines.*
 
 /** Original study labels only. Measures the real renderer without touching the owner's library. */
@@ -51,6 +52,14 @@ class CollectionProfileActivity : ComponentActivity() {
                                 renderer.selection = 1
                                 val phase = (elapsed-30_000)%960
                                 renderer.insertion = if (phase < 540) phase/540f else 1f-(phase-540)/420f
+                            }
+                            elapsed < 44_000 -> {
+                                renderer.insertion = 0f; renderer.layout = CollectionLayout.Vertical
+                                renderer.selection = intArrayOf(0,1,2,1)[((elapsed-36_000)/150%4).toInt()]
+                            }
+                            elapsed < 54_000 -> {
+                                renderer.layout = CollectionLayout.Grid; renderer.collectionCount = 9
+                                renderer.selection = ((elapsed-44_000)/150%9).toInt()
                             }
                             else -> { renderer.insertion = 0f; finished = true }
                         }

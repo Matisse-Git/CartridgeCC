@@ -9,11 +9,11 @@ internal class CartridgeLabels(private val engine: Engine, private val instances
     private data class Binding(val renderable: Int, val primitive: Int, val original: MaterialInstance,
         var replacement: MaterialInstance? = null, var texture: Texture? = null, var key: String? = null)
     private var bindings: List<Binding>? = null
-    var desired: List<LabelPixels?> = List(3) { null }
-        set(value) { require(value.size == 3); field = value }
+    var desired: List<LabelPixels?> = List(instances.size) { null }
+        set(value) { require(value.size == instances.size); field = value }
     private val sampler = TextureSampler(TextureSampler.MinFilter.LINEAR_MIPMAP_LINEAR,
         TextureSampler.MagFilter.LINEAR, TextureSampler.WrapMode.CLAMP_TO_EDGE)
-    val keys get() = bindings?.map { it.key } ?: List(3) { null }
+    val keys get() = bindings?.map { it.key } ?: List(instances.size) { null }
 
     fun update() {
         if (bindings == null && desired.all { it == null }) return
@@ -67,6 +67,6 @@ internal class CartridgeLabels(private val engine: Engine, private val instances
             binding.texture?.let(engine::destroyTexture)
         }
         bindings = null
-        desired = List(3) { null }
+        desired = List(instances.size) { null }
     }
 }

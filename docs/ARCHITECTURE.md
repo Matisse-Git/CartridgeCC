@@ -237,3 +237,14 @@ fall back to network on missing candidate files/corrected searches. ScrapeCoordi
 existing hashes and replaces queue progress only after a successful matching import; accepted Room data
 is untouched until explicit review. Valid cancelled/unmatched bundles may retain unreferenced files.
 No new library/native integration or change to GPU ownership; see ADR 0011.
+
+## M4 layouts
+
+ADR 0012 supersedes the earlier fixed three-instance description. CollectionLayout owns spatial
+movement and bounded windows over the same canonical/query projection. All layouts share the session
+coordinator and nine-instance GLB pool: three active in Horizontal/Vertical, nine in Grid. Labels and
+acknowledgements map through windowStart; the decode cache is bounded to twice the visible count.
+Presentation preferences persist layout independently of Room focus/query. Grid uses three columns
+and springs its row centre; view changes snap previous spring positions without changing game identity.
+ControllerRouter routes two axes only to library movement; menus and gameplay retain their own paths.
+Neutral stick/key release resets repetition before the next frame. GPU surface handoff is unchanged.

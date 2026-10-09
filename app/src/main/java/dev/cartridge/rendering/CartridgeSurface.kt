@@ -12,6 +12,7 @@ import com.google.android.filament.gltfio.*
 import com.google.android.filament.utils.KTX1Loader
 import com.google.android.filament.utils.Utils
 import dev.cartridge.domain.FocusSpring
+import dev.cartridge.domain.CollectionLayout
 import dev.cartridge.domain.MediaMotion
 import dev.cartridge.storage.LabelPixels
 import java.nio.ByteBuffer
@@ -40,13 +41,17 @@ class CartridgeSurface(
     private val asset: FilamentAsset
     private val receiver: FilamentAsset
     private val labels: CartridgeLabels
-    private val instances = arrayOfNulls<FilamentInstance>(3)
+    private val instances = arrayOfNulls<FilamentInstance>(9)
     private val uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
     private val light: Int
     private val indirectLight: IndirectLight
     private val reflections: Texture
     private val choreographer = Choreographer.getInstance()
     private val spring = FocusSpring(initialSelection.toFloat())
+    private val gridSpring = FocusSpring(0f)
+    private var previousLayout = CollectionLayout.Horizontal
+    var layout: CollectionLayout = CollectionLayout.Horizontal
+    internal val poolCapacity get() = instances.size
     private val matrix = FloatArray(16)
     private val renderables = IntArray(128)
     private var swapChain: SwapChain? = null
@@ -156,7 +161,9 @@ class CartridgeSurface(
         choreographer.postFrameCallback(this)
         val dt = if (lastFrame == 0L) 1f / 60 else (frameTimeNanos - lastFrame) / 1_000_000_000f
         lastFrame = frameTimeNanos
+        if (layout != previousLayout) { spring.snapTo(selection.toFloat()); gridSpring.snapTo(layout.gridCenter(selection, collectionCount)); previousLayout = layout }
         val focus = if (reducedMotion) spring.snapTo(selection.toFloat()) else spring.step(selection.toFloat(), dt)
+        val gridCenter = if (reducedMotion) gridSpring.snapTo(layout.gridCenter(selection, collectionCount)) else gridSpring.step(layout.gridCenter(selection, collectionCount), dt)
         resourceLoader.asyncUpdateLoad()
         receiverLoader.asyncUpdateLoad()
         while (true) {
@@ -178,17 +185,22 @@ class CartridgeSurface(
             }
         }
         instances.forEachIndexed { index, instance ->
-            val offset = index + windowStart - focus
-            val emphasis = (1f - abs(offset)).coerceIn(0f, 1f)
+            val global = index + windowStart
+            val offset = global - focus
+            val selected = global == selection
+            val emphasis = if (layout == CollectionLayout.Grid) if (selected) 1f else 0f else (1f - abs(offset)).coerceIn(0f, 1f)
             Matrix.setIdentityM(matrix, 0)
-            val selected = index + windowStart == selection
             val pose = MediaMotion.pose(if (selected && !reducedMotion) insertion else 0f)
-            // Inactive pool instances live beyond the far clip; no singular zero-scale transforms.
-            Matrix.translateM(matrix, 0, offset * 1.85f * (1f - pose.alignment), emphasis * lift * .5f + pose.height,
-                if (index + windowStart < collectionCount) emphasis * .12f else -100f)
+            val x = when (layout) { CollectionLayout.Horizontal -> offset * 1.85f; CollectionLayout.Vertical -> 0f; CollectionLayout.Grid -> (global % 3 - 1) * 1.35f }
+            val y = when (layout) { CollectionLayout.Horizontal -> 0f; CollectionLayout.Vertical -> -offset * 1.30f; CollectionLayout.Grid -> (gridCenter - global / 3) * .85f }
+            val visible = index < layout.visibleCount && global < collectionCount
+            Matrix.translateM(matrix, 0, x * (1f - pose.alignment), y * (1f - pose.alignment) + emphasis * lift * .5f + pose.height,
+                if (visible) emphasis * .12f else -100f)
             Matrix.rotateM(matrix, 0, (-10f - emphasis * lift * 25f) * (1f - pose.alignment), 1f, 0f, 0f)
-            Matrix.rotateM(matrix, 0, (offset.coerceIn(-1f, 1f) * -22f + 8f) * (1f - pose.alignment), 0f, 1f, 0f)
-            val scale = 22f + (emphasis + (1f - emphasis) * pose.alignment) * 5f
+            val angle = if (layout == CollectionLayout.Grid) (global % 3 - 1) * -8f else offset.coerceIn(-1f, 1f) * -22f + 8f
+            Matrix.rotateM(matrix, 0, angle * (1f - pose.alignment), 0f, 1f, 0f)
+            val restScale = if (layout == CollectionLayout.Grid) 16f + emphasis * 2f else 22f + emphasis * 5f
+            val scale = restScale + (27f - restScale) * pose.alignment
             Matrix.scaleM(matrix, 0, scale, scale, scale)
             engine.transformManager.setTransform(engine.transformManager.getInstance(instance!!.root), matrix)
         }
@@ -203,7 +215,7 @@ class CartridgeSurface(
             renderer.render(view)
             renderer.endFrame()
             submitted = true
-            onLabelsReady(windowStart, labels.keys)
+            onLabelsReady(windowStart, labels.keys.take(layout.visibleCount))
             if (!reportedReady && resourceLoader.asyncGetLoadProgress() >= 1f && receiverLoader.asyncGetLoadProgress() >= 1f) {
                 reportedReady = true
                 onReady()
