@@ -20,4 +20,3 @@ interface EmulationEngine {
     suspend fun persistSaveRam()
     suspend fun configure(options: Map<String, String>)
 }
-

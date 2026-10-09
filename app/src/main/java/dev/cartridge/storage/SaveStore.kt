@@ -24,4 +24,3 @@ class SaveStore(private val directory: File) {
     }
     fun read(id: String, kind: String): ByteArray? = file(id, kind).takeIf { it.exists() }?.readBytes()
 }
-

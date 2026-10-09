@@ -40,4 +40,3 @@ class FocusSpring(var position: Float = 0f) {
         return position
     }
 }
-
