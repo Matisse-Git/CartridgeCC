@@ -12,7 +12,7 @@ class SaveStore(private val directory: File) {
     private val lock = locks.computeIfAbsent(directory.canonicalPath) { Any() }
     private fun file(id: String, kind: String): File {
         require(id.matches(Regex("[a-f0-9]{64}"))) { "Invalid game identifier" }
-        require(kind in setOf("sram", "state"))
+        require(kind in setOf("sram", "rtc", "state"))
         check(directory.isDirectory || directory.mkdirs()) { "Cannot create save directory" }
         return File(directory, "$id.$kind")
     }
@@ -47,6 +47,7 @@ class SaveStore(private val directory: File) {
     }
     private fun limit(kind: String): Int = when (kind) {
         "sram" -> 128 * 1024
+        "rtc" -> 4096
         "state" -> 16 * 1024 * 1024
         else -> throw IllegalArgumentException("Invalid save kind")
     }

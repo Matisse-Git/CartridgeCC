@@ -1,11 +1,12 @@
 package dev.cartridge.emulation
 
 import dev.cartridge.domain.SessionState
+import dev.cartridge.domain.GameSystem
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
 
 data class EngineStatus(val state: SessionState = SessionState.Idle, val error: String? = null, val saveWarning: String? = null)
-data class GameRequest(val rom: File, val id: String)
+data class GameRequest(val rom: File, val id: String, val system: GameSystem = GameSystem.GBA)
 
 interface EmulationEngine {
     val status: StateFlow<EngineStatus>

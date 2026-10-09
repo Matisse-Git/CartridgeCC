@@ -696,3 +696,7 @@ Reproduce with required Gradle/asset commands, then `Test-Device.ps1 -Serial <se
 or `-Suite All -Cycles 3`; fifty handoffs use `-Cycles 50`. See M4_PROGRESS/ADR 0012. Physical owner
 layout/stick review, dense distinct artworks, sustained grid profiling and shared sleep/reboot/storage/
 controller-disconnection/thermal/audio gates remain open. M5 is the next active engineering increment.
+
+## M5 actual results — 2026-10-10
+
+Version 12: both APKs build; 40 host tests, ten structural asset tests, lint (zero errors) and all three Khronos GLB validations (zero errors/warnings) pass. Focused GB/GBC tests pass in 10.807 s. Full RP5 suite: OK (25 tests), 148.971 s, three handoffs; a preceding longer run passed 50 handoffs but found two obsolete scraper test indices, subsequently corrected and verified. Native masked save-buffer and live RTC synchronization were required for immediate post-state-load checkpoints. GB/GBC original diagnostics prove frame pixels, A input, state, battery cold boot and halted MBC3 RTC restoration. No commercial ROM/BIOS/logo is bundled. See M5_PROGRESS for scope, commands and remaining real-cartridge/peripheral/RTC-drift gates.

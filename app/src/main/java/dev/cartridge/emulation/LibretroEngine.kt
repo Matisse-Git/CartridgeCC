@@ -43,6 +43,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     private var errorJob: Job? = null
     private var checkpointJob: Job? = null
     private var lastWrittenRam: ByteArray? = null
+    private var lastWrittenRtc: ByteArray? = null
     private var corePath = ""
     private val pressed = mutableSetOf<Int>()
     private var ownsNative = false
@@ -67,7 +68,9 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 check(core.isFile) { "The packaged arm64 mGBA core is missing" }
                 corePath = core.absolutePath
                 val savedRam = withContext(Dispatchers.IO) { saves.read(game.id, "sram") }
+                val savedRtc = withContext(Dispatchers.IO) { saves.read(game.id, "rtc") }
                 lastWrittenRam = savedRam
+                lastWrittenRtc = savedRtc
                 val data = GLRetroViewData(context).apply {
                     coreFilePath = core.absolutePath
                     gameFilePath = game.rom.absolutePath
@@ -129,6 +132,9 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                             restored.size >= savedRam.size && savedRam.indices.all { restored[it] == savedRam[it] }
                         }
                     }) { "The core rejected the stored battery save. The original file was kept." }
+                }
+                if (savedRtc != null && savedRtc.isNotEmpty()) {
+                    check(onGl { SaveBridge.restore(corePath, savedRtc, 1) }) { "The core rejected the cartridge clock save. The original file was kept." }
                 }
                 session.registry.currentState = Lifecycle.State.RESUMED
                 withTimeout(15_000) { ready.await() }
@@ -224,10 +230,14 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     }
     /** Called under the session mutex; capture happens between frames on the core's own GL thread. */
     private suspend fun writeBatterySave() {
-        val bytes = onGl { SaveBridge.read(corePath) }
+        val (bytes, rtc) = onGl { SaveBridge.read(corePath) to SaveBridge.read(corePath, 1) }
         if (bytes.isNotEmpty() && lastWrittenRam?.contentEquals(bytes) != true) {
             withContext(Dispatchers.IO) { saves.write(game!!.id, "sram", bytes) }
             lastWrittenRam = bytes
+        }
+        if (rtc.isNotEmpty() && lastWrittenRtc?.contentEquals(rtc) != true) {
+            withContext(Dispatchers.IO) { saves.write(game!!.id, "rtc", rtc) }
+            lastWrittenRtc = rtc
         }
         mutableStatus.value = status.value.copy(saveWarning = null)
     }

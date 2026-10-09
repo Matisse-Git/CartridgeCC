@@ -156,7 +156,7 @@ remain available for explicit replacement. One previous artwork/metadata operati
 undone after reopening, through review or Details. It does not rewind saves/history/ROMs/favorites.
 Opaque review pages pause collection rendering. A hidden batch target's actual 3D preview restores the
 saved filter/focus after apply/cancel/recreation. No network resume or unattended acceptance on launch.
-GBA is the only supported console; disc labels/templates and multi-console scopes remain future work.
+M5 adds GB/GBC and shared selectable console scopes; disc labels/templates remain future work.
 
 ## M3 offline packs
 
@@ -172,3 +172,7 @@ the preference. Focus, accepted labels, metadata, filters, saves and launch beha
 has three columns, no horizontal row wrapping and a clamped partial final row. D-pad/left stick follow
 the view's spatial axes; touch arrows advance sequentially. Nine reusable genuine 3D objects bound
 rendering independently of collection size. Reduced motion applies to every layout.
+
+## M5 additional systems
+
+SAF imports, per-game templates and API scraping now support GBA, GB and GBC. Choose consoles selects any subset; All games includes all three. The tall GB/GBC shell uses independent 512×448 labels. Native SRAM/RTC and state-buffer synchronization are verified with original diagnostics; see M5_PROGRESS.

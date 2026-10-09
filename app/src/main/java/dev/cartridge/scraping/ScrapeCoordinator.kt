@@ -1,13 +1,14 @@
 package dev.cartridge.scraping
 
 import dev.cartridge.library.*
+import dev.cartridge.domain.GameSystem
 import dev.cartridge.storage.LabelStore
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 
-enum class ScrapePage { Scope, Targets, Preferences, Matches, Review, Artwork, Metadata }
+enum class ScrapePage { Scope, Targets, Consoles, Preferences, Matches, Review, Artwork, Metadata }
 enum class ScrapeOutcome { Pending, Applied, Skipped }
 data class ScrapeEntry(val game: LibraryGame, val query: String, val matches: List<GameCandidate> = emptyList(),
     val error: String? = null, val searched: Boolean = false, val corrected: Boolean = false, val outcome: ScrapeOutcome = ScrapeOutcome.Pending, val local: Boolean = false)
@@ -16,11 +17,12 @@ data class ScrapeState(val visible: Boolean = false, val page: ScrapePage = Scra
     val busy: Boolean = false, val focus: Int = 0, val progress: String? = null, val message: String? = null,
     val metadataChoices: Map<String, Int> = emptyMap(), val checkedFields: Set<String> = emptySet(), val ready: Boolean = true,
     val preferences: ScrapePreferences = ScrapePreferences(), val availableGames: List<LibraryGame> = emptyList(),
-    val pickedIds: Set<String> = emptySet()) {
+    val pickedIds: Set<String> = emptySet(), val pickedSystems: Set<GameSystem> = emptySet()) {
     val current get() = entries.getOrNull(index)
+    val consoles get() = availableGames.map { it.system }.distinct().sortedBy { it.ordinal }
 }
 
-/** Reviewed GBA queue. Provider results never auto-overwrite accepted choices. */
+/** Reviewed multi-system queue. Provider results never auto-overwrite accepted choices. */
 class ScrapeCoordinator(
     val provider: ArtworkProvider,
     private val repository: CollectionRepository,
@@ -64,10 +66,21 @@ class ScrapeCoordinator(
         begin(if (single) listOfNotNull(selected) else available)
     }
     fun pickPack() { if (!state.value.busy && state.value.ready) choosePack() }
+    fun consoles() {
+        if (!state.value.busy) mutableState.value = state.value.copy(page = ScrapePage.Consoles, focus = 0,
+            pickedSystems = state.value.pickedSystems.intersect(state.value.consoles.toSet()).ifEmpty { setOfNotNull(selected?.system) })
+    }
+    fun pickConsole(system: GameSystem) { if (!state.value.busy) mutableState.value = state.value.copy(
+        pickedSystems = if (system in state.value.pickedSystems) state.value.pickedSystems - system else state.value.pickedSystems + system) }
+    fun pickAllConsoles(all: Boolean) { if (!state.value.busy) mutableState.value = state.value.copy(pickedSystems = if (all) state.value.consoles.toSet() else emptySet()) }
+    fun beginConsoles() {
+        val targets = available.filter { it.system in state.value.pickedSystems }
+        if (targets.isEmpty()) message("Choose at least one console with games") else begin(targets)
+    }
     fun importPack(import: suspend () -> ScrapePack) = action {
         val pack = import()
         val games = repository.initialize().slots.filterNotNull().distinctBy { it.id }
-        val entries = games.mapNotNull { game -> pack.games[game.id]?.let { ScrapeEntry(game, game.title, it, searched = true, local = true) } }
+        val entries = games.mapNotNull { game -> pack.games[game.id]?.filter { it.platform == game.system.title }?.takeIf { it.isNotEmpty() }?.let { ScrapeEntry(game, game.title, it, searched = true, local = true) } }
         require(entries.isNotEmpty()) { "No ROM hashes in this pack match your collection. Import its games first." }
         journal.reset()
         entries.forEach { journal.saveMatches(it.game.id, it.matches) }
@@ -77,7 +90,7 @@ class ScrapeCoordinator(
     }
     private fun begin(targets: List<LibraryGame>) {
         if (state.value.busy || !state.value.ready) return
-        if (targets.isEmpty()) { message("Add a GBA game before scraping"); return }
+        if (targets.isEmpty()) { message("Add a game before scraping"); return }
         mutableState.value = ScrapeState(visible = true, page = ScrapePage.Matches,
             entries = targets.distinctBy { it.id }.map { ScrapeEntry(it, cleanTitle(it.title)) }, preferences = state.value.preferences, availableGames = available)
         action { journal.reset(); journal.save(state.value); searchCurrentEntry() }
@@ -115,7 +128,7 @@ class ScrapeCoordinator(
     fun searchCurrent() = action {
         val entry = state.value.current ?: return@action
         require(!entry.local) { "Offline pack candidates are fixed. Import a different pack to change them." }
-        val matches = provider.search(entry.query) // Explicit title correction must not reapply a ROM hash guess.
+        val matches = provider.search(entry.query, system = entry.game.system) // Explicit title correction must not reapply a ROM hash guess.
         journal.saveMatches(entry.game.id, matches)
         updateEntry { it.copy(matches = matches, error = null, searched = true) }
         mutableState.value = state.value.copy(page = ScrapePage.Matches, focus = 0, candidate = null)
@@ -127,8 +140,8 @@ class ScrapeCoordinator(
         require(!entry.local) { "Saved pack candidates are missing. Import the pack again." }
         mutableState.value = state.value.copy(progress = "Searching ${index + 1} / ${state.value.entries.size}: ${entry.game.title}")
         val result = try {
-            val file = withContext(ioDispatcher) { if (entry.corrected) null else File(roms, "${entry.game.id}.gba").takeIf(File::isFile) }
-            val matches = provider.search(entry.query, file)
+            val file = withContext(ioDispatcher) { if (entry.corrected) null else File(roms, "${entry.game.id}.${entry.game.system.extension}").takeIf(File::isFile) }
+            val matches = provider.search(entry.query, file, entry.game.system)
             journal.saveMatches(entry.game.id, matches)
             // Other titles' candidates stay on disk, not in a growing batch-wide RAM list.
             entry.copy(matches = if (index == state.value.index) matches else emptyList(), searched = true, error = null)
@@ -279,7 +292,7 @@ class ScrapeCoordinator(
         if (state.value.busy) { cancel(); return }
         mutableState.value = when (state.value.page) {
             ScrapePage.Scope -> state.value.copy(visible = false)
-            ScrapePage.Targets, ScrapePage.Preferences -> state.value.copy(page = ScrapePage.Scope, focus = 0)
+            ScrapePage.Targets, ScrapePage.Consoles, ScrapePage.Preferences -> state.value.copy(page = ScrapePage.Scope, focus = 0)
             ScrapePage.Matches -> state.value.copy(page = ScrapePage.Scope, focus = 0)
             ScrapePage.Review -> state.value.copy(page = ScrapePage.Matches, candidate = null, focus = 0)
             ScrapePage.Artwork -> state.value.copy(page = ScrapePage.Review, focus = 0)
@@ -291,9 +304,11 @@ class ScrapeCoordinator(
         if (state.value.busy) return
         val focus = state.value.focus
         when (state.value.page) {
-            ScrapePage.Scope -> when (focus) { 0 -> chooseScope(true); 1, 2 -> chooseScope(false); 3 -> resumeBatch(); 4 -> targets(); 5 -> missingLabels(); 6 -> preferencePage(); 7 -> pickPack(); else -> back() }
+            ScrapePage.Scope -> when (focus) { 0 -> chooseScope(true); 1 -> consoles(); 2 -> chooseScope(false); 3 -> resumeBatch(); 4 -> targets(); 5 -> missingLabels(); 6 -> preferencePage(); 7 -> pickPack(); else -> back() }
             ScrapePage.Targets -> when (focus) { 0 -> beginPicked(); 1 -> pickAll(true); 2 -> pickAll(false)
                 else -> available.getOrNull(focus - 3)?.let { pick(it.id) } ?: back() }
+            ScrapePage.Consoles -> when (focus) { 0 -> beginConsoles(); 1 -> pickAllConsoles(true); 2 -> pickAllConsoles(false)
+                else -> state.value.consoles.getOrNull(focus - 3)?.let(::pickConsole) ?: back() }
             ScrapePage.Preferences -> when (focus) { 0 -> cyclePreference(true); 1 -> cyclePreference(false); else -> back() }
             ScrapePage.Review -> when (focus) { 0 -> preferredLabel(); 1 -> fillMissingMetadata(); 2 -> browseArtwork(); 3 -> metadata(); 4 -> next(); 5 -> undo(); else -> back() }
             ScrapePage.Matches -> when {
@@ -318,6 +333,7 @@ class ScrapeCoordinator(
     private fun actionCount() = when (state.value.page) {
         ScrapePage.Scope -> 9
         ScrapePage.Targets -> available.size + 4
+        ScrapePage.Consoles -> state.value.consoles.size + 4
         ScrapePage.Preferences -> 3
         ScrapePage.Review -> 7
         ScrapePage.Matches -> (state.value.current?.matches?.size ?: 0) + 3

@@ -5,6 +5,7 @@ import android.graphics.*
 import android.net.Uri
 import dev.cartridge.library.LabelFit
 import dev.cartridge.library.LabelRef
+import dev.cartridge.domain.GameSystem
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -58,7 +59,7 @@ class LabelStore(private val directory: File) {
             return LabelRef(id, sourceUri = source)
         } finally { temporary.delete() }
     }
-    fun decode(label: LabelRef): LabelPixels {
+    fun decode(label: LabelRef, system: GameSystem = GameSystem.GBA): LabelPixels {
         val file = original(label.assetId)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, bounds)
@@ -68,7 +69,7 @@ class LabelStore(private val directory: File) {
         val source = checkNotNull(BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply {
             inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888
         })) { "Cannot decode the label" }
-        val target = Bitmap.createBitmap(512, 256, Bitmap.Config.ARGB_8888)
+        val target = Bitmap.createBitmap(512, system.labelHeight, Bitmap.Config.ARGB_8888)
         try {
             val rotatedWidth = if (label.quarterTurns % 2 == 0) source.width else source.height
             val rotatedHeight = if (label.quarterTurns % 2 == 0) source.height else source.width
@@ -88,7 +89,7 @@ class LabelStore(private val directory: File) {
                 bytes.put((pixel shr 16).toByte()).put((pixel shr 8).toByte()).put(pixel.toByte()).put(255.toByte())
             }
             bytes.flip()
-            return LabelPixels(label.textureKey, target.width, target.height, bytes)
+            return LabelPixels(label.textureKey(system), target.width, target.height, bytes)
         } finally { source.recycle(); target.recycle() }
     }
 }

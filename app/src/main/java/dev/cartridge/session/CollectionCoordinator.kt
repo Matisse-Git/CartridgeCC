@@ -3,6 +3,7 @@ package dev.cartridge.session
 import dev.cartridge.domain.Selection
 import dev.cartridge.domain.CollectionLayout
 import dev.cartridge.domain.SessionState
+import dev.cartridge.domain.GameSystem
 import dev.cartridge.emulation.EmulationEngine
 import dev.cartridge.library.*
 import kotlinx.coroutines.*
@@ -42,6 +43,7 @@ data class CollectionState(
     val labels get() = slots.subList(windowStart, (windowStart + layout.visibleCount).coerceAtMost(slots.size)).map { game ->
         if (game?.id == labelDraft?.gameId && labelDraft != null) labelDraft.label else game?.label }
     val windowStart get() = layout.windowStart(selection.index, slots.size)
+    val systems get() = slots.subList(windowStart, (windowStart + layout.visibleCount).coerceAtMost(slots.size)).map { it?.system ?: GameSystem.GBA }
 }
 
 /** Main-thread ports return only after the old GPU owner has synchronously detached/flushed. */
@@ -179,7 +181,7 @@ class CollectionCoordinator(
     fun labelsReady(generation: Int, keys: List<String?>, firstIndex: Int = 0) {
         val current = state.value
         if (generation == current.viewportGeneration && current.labelDraft != null && !current.labelPreviewReady &&
-            keys.getOrNull(current.selection.index - firstIndex) == current.labelDraft.label.textureKey) {
+            keys.getOrNull(current.selection.index - firstIndex) == current.labelDraft.label.textureKey(current.selectedGame?.system ?: GameSystem.GBA)) {
             mutableState.value = current.copy(labelPreviewReady = true)
         }
     }
@@ -275,7 +277,7 @@ class CollectionCoordinator(
     fun insert() {
         val selected = state.value
         if (!foreground || !selected.loaded || selected.screen != CollectionScreen.Library || !selected.rendererReady) return
-        val game = selected.selectedGame ?: return notify("Choose a .gba file for this cartridge first.")
+        val game = selected.selectedGame ?: return notify("Choose a game file for this cartridge first.")
         runAction(isLaunch = true) {
             mutableState.value = state.value.copy(screen = CollectionScreen.Inserting, message = null)
             coroutineScope {

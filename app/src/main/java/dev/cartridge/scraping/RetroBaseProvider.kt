@@ -20,7 +20,7 @@ class RetroBaseProvider(private val cache: File) : ArtworkProvider {
     private val base = "https://retrobase-collection.com/api/public/v1"
     private fun encode(value: String) = URLEncoder.encode(value, "UTF-8")
 
-    override suspend fun search(query: String, rom: File?): List<GameCandidate> = withContext(Dispatchers.IO) {
+    override suspend fun search(query: String, rom: File?, system: dev.cartridge.domain.GameSystem): List<GameCandidate> = withContext(Dispatchers.IO) {
         require(query.trim().length in 2..180) { "Enter a title between 2 and 180 characters" }
         val exact = if (rom?.isFile == true) {
             val digest = MessageDigest.getInstance("SHA-1")
@@ -29,15 +29,15 @@ class RetroBaseProvider(private val cache: File) : ArtworkProvider {
                 while (true) { coroutineContext.ensureActive(); val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
             }
             val hash = digest.digest().joinToString("") { "%02x".format(it) }
-            val response = json("$base/lookup?sha1=$hash&size=${rom.length()}&platform=Game+Boy+Advance", allowMissing = true)
-            response?.optJSONObject("data")?.optJSONObject("game")?.let { parseGame(it, response.optJSONObject("meta"), true) }
+            val response = json("$base/lookup?sha1=$hash&size=${rom.length()}&platform=${encode(system.title)}", allowMissing = true)
+            response?.optJSONObject("data")?.optJSONObject("game")?.let { parseGame(it, response.optJSONObject("meta"), true, system) }
         } else null
-        val response = json("$base/games?search=${encode(query.trim())}&platform=Game+Boy+Advance&limit=30")
+        val response = json("$base/games?search=${encode(query.trim())}&platform=${encode(system.title)}&limit=30")
         val array = response?.optJSONArray("data")
         val choices = buildList {
             exact?.let(::add)
             if (array != null) repeat(array.length()) { index ->
-                array.optJSONObject(index)?.let { parseGame(it, response.optJSONObject("meta")) }?.let(::add)
+                array.optJSONObject(index)?.let { parseGame(it, response.optJSONObject("meta"), system = system) }?.let(::add)
             }
         }.distinctBy { it.id }
         choices.sortedWith(compareByDescending<GameCandidate> { it.exactHash }
@@ -45,9 +45,9 @@ class RetroBaseProvider(private val cache: File) : ArtworkProvider {
             .thenByDescending { it.artwork.any(ArtworkCandidate::isLabel) })
     }
 
-    internal fun parseGame(game: JSONObject, meta: JSONObject?, exact: Boolean = false): GameCandidate? {
+    internal fun parseGame(game: JSONObject, meta: JSONObject?, exact: Boolean = false, system: dev.cartridge.domain.GameSystem = dev.cartridge.domain.GameSystem.GBA): GameCandidate? {
         val platform = game.optJSONObject("platform")?.optString("name").orEmpty()
-        if (platform != "Game Boy Advance") return null
+        if (platform != system.title) return null
         val id = game.optString("id")
         if (!id.matches(Regex("[a-f0-9-]{36}"))) return null
         val regional = game.optJSONObject("names")

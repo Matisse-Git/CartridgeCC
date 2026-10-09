@@ -7,6 +7,7 @@ import dev.cartridge.library.CollectionRepository
 import dev.cartridge.library.DirectoryRepository
 import dev.cartridge.library.LibraryGame
 import dev.cartridge.library.IndexedDocument
+import dev.cartridge.domain.GameSystem
 import kotlinx.coroutines.*
 import java.io.File
 import kotlin.coroutines.coroutineContext
@@ -57,7 +58,7 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
                         val documentId = it.getString(0); val name = it.getString(1).orEmpty()
                         if (it.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) {
                             pending.add(documentId to depth + 1)
-                        } else if (name.endsWith(".gba", true)) {
+                        } else if (GameSystem.supports(name)) {
                             withContext(Dispatchers.Main) { progress("Scanning $name · $added added · $duplicates duplicates · $failed failed") }
                             try {
                                 val uri = DocumentsContract.buildDocumentUriUsingTree(tree, documentId)
@@ -65,16 +66,16 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
                                 val bytes = if (it.isNull(3)) -1 else it.getLong(3)
                                 val modified = if (it.isNull(4)) 0 else it.getLong(4)
                                 val old = indexed[uri.toString()]
-                                val cached = old?.let { entry -> File(roms, "${entry.gameId}.gba") }
+                                val cached = old?.let { entry -> GameSystem.entries.map { File(roms, "${entry.gameId}.${it.extension}") }.firstOrNull(File::isFile) }
                                 if (!verifyAll && old != null && bytes > 0 && modified > 0 &&
                                     old.bytes == bytes && old.modified == modified && cached?.isFile == true && cached.length() == bytes) {
-                                    if (repository.add(LibraryGame(old.gameId, name.substringBeforeLast('.'), uri.toString()))) added++ else duplicates++
+                                    if (repository.add(LibraryGame(old.gameId, name.substringBeforeLast('.'), uri.toString(), system = GameSystem.entries.first { it.extension == cached.extension }))) added++ else duplicates++
                                     directories.index(old.copy(missing = false)); unchanged++
                                     continue
                                 }
                                 val taskContext = coroutineContext
                                 val game = importer.import(uri) { taskContext.ensureActive() }
-                                if (repository.add(LibraryGame(game.request.id, game.title, uri.toString()))) added++ else duplicates++
+                                if (repository.add(LibraryGame(game.request.id, game.title, uri.toString(), system = game.request.system))) added++ else duplicates++
                                 directories.index(IndexedDocument(tree.toString(), uri.toString(), game.request.id, bytes, modified))
                             } catch (exception: Exception) {
                                 if (exception is CancellationException) throw exception

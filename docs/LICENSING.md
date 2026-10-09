@@ -100,3 +100,5 @@ ROM bytes. Provider/GPL release obligations remain, including for a user-exporte
 
 M4 adds original layout/input/rendering code and isolated original artwork/homebrew tests. It adopts
 no new dependency or media asset. Existing complete-source and provider/image release gates apply.
+
+M5 enables GB/GBC source in the same hash-pinned MPL-2.0 mGBA 0.10.5 archive; dependencies/licenses remain unchanged. The original mgba_frontend.c.in wrapper includes the unchanged upstream frontend and adds save-mask/RTC synchronization. Distribute this wrapper, pinned source and build instructions with complete corresponding source under the existing GPL-compatible distribution plan. Tall GLB, label, grain and SM83/GBX diagnostics are original generated works; probes remain ignored/private, outside APK assets. No ROM, BIOS, boot logo or commercial artwork is included.

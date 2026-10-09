@@ -129,3 +129,7 @@ game collection live outside the far clip, with padded label buffers. The visibl
 by global index; six derived buffers remain the cache cap. The RP5 test reads blue pixels on game six,
 persists its recipe and enters/exits real internal gameplay without allocating a model per library item.
 This is a bounded rendering proof, not a hundreds-of-games frame-pacing measurement.
+
+## M5 tall GB/GBC template
+
+`python tools/generate_gb_cartridge.py` creates original `gb_cartridge.glb`: 473,164 bytes, 6,866 triangles, four PBR materials; 54×65×8.5 mm, +Y up/+Z label, top-left UV. Recessed label printing is 512×448 (8:7) with the same named replaceable primitive. The original orbital-survey print and grain maps are embedded. GB and GBC currently share this development shell; it is not a final artist-polished shape. Ten structural tests and all three GLBs pass official validation. Nine slots each reuse GBA/tall instances, with at most nine active labels and bounded aspect-specific decode cache.

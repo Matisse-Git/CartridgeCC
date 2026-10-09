@@ -50,9 +50,9 @@ class FileScrapeJournal(private val directory: File) : ScrapeJournal {
     }
     override suspend fun load(): ScrapeState? = withContext(Dispatchers.IO) { guard.mutex.withLock {
         val root = read(File(directory, "manifest.json"))?.let(::JSONObject) ?: return@withLock null
-        require(root.getInt("version") in 1..2) { "Unknown saved scrape format" }
+        require(root.getInt("version") in 1..3) { "Unknown saved scrape format" }
         val entries = root.getJSONArray("entries").objects().map { item ->
-            ScrapeEntry(LibraryGame(item.getString("id"), item.getString("title"), item.getString("source")),
+            ScrapeEntry(LibraryGame(item.getString("id"), item.getString("title"), item.getString("source"), system = dev.cartridge.domain.GameSystem.valueOf(item.optString("system", "GBA"))),
                 item.getString("query"), error = item.optString("error").takeIf { it.isNotEmpty() && it != "null" },
                 searched = item.getBoolean("searched"), corrected = item.optBoolean("corrected"),
                 outcome = ScrapeOutcome.valueOf(item.optString("outcome", "Pending")), local = item.optBoolean("local"))
@@ -70,9 +70,9 @@ class FileScrapeJournal(private val directory: File) : ScrapeJournal {
         withContext(NonCancellable + Dispatchers.IO) { guard.mutex.withLock {
             if (sequence < guard.savedSequence) return@withLock
             val entries = JSONArray().apply { state.entries.forEach { entry -> put(JSONObject()
-                .put("id", entry.game.id).put("title", entry.game.title).put("source", entry.game.sourceUri)
+                .put("id", entry.game.id).put("title", entry.game.title).put("source", entry.game.sourceUri).put("system", entry.game.system.name)
                 .put("query", entry.query).put("error", entry.error).put("searched", entry.searched).put("corrected", entry.corrected).put("outcome", entry.outcome.name).put("local", entry.local)) } }
-            write(File(directory, "manifest.json"), JSONObject().put("version", 2).put("index", state.index).put("entries", entries).toString())
+            write(File(directory, "manifest.json"), JSONObject().put("version", 3).put("index", state.index).put("entries", entries).toString())
             guard.savedSequence = sequence
         } }
     }

@@ -1,6 +1,6 @@
 # Project Cartridge
 
-Native Android, controller-first physical-media collection with **embedded** GBA emulation.
+Native Android, controller-first physical-media collection with **embedded** GBA, GB and GBC emulation.
 This repository implements M0, focused M1/M2/M3 increments and shared M4 layouts, not the finished product. No RetroArch
 installation, external emulator intents or browser renderer is used. No commercial ROM, BIOS or
 proprietary artwork is bundled; users can scrape artwork into their private collection.
@@ -9,7 +9,7 @@ proprietary artwork is bundled; users can scrape artwork into their private coll
 scraping, independent media/metadata choices, 3D Fit/Crop/rotation preview and a tested session
 coordinator. Folder imports now grow the collection and saved scrape batches resume after reopening.
 Battery saves now restore before gameplay and checkpoint during play/pause. Both APKs build;
-37 unit tests and eight asset checks pass. Twenty-three RP5 tests cover real native
+40 unit tests and ten asset checks pass. Twenty-three RP5 tests cover real native
 handoffs, ordinary UI recovery, independent labels, schema migrations, folder imports and resumed scraping; a separate
 live API test passes. The owner confirmed physical navigation, gameplay/audio, save/load and local labels.
 M2 refinement is implemented: refined GBA mesh/PBR, original studio reflections, receiving slot,
@@ -71,7 +71,7 @@ touch shelf for imports/scraping, motion/sound/shortcut preferences and collecti
 closed; controller shortcuts work independently. B → Collection → View cycles Horizontal, Vertical and Grid while keeping your selected game.
 Three objects in the carousels or up to nine in the grid reuse one bounded GLB pool. D-pad/stick
 follow the spatial axes; touch arrows move sequentially. The preference survives reopening.
-Press X / Add .gba to add an uncompressed `.gba`
+Press X / Add game to add an uncompressed `.gba`, `.gb` or `.gbc`
 document or focus its existing entry, then A / Insert to play. The picker uses SAF and requests a persistable
 read grant. A bounded, SHA-256-addressed working copy lives in app-private storage; the original
 document is unchanged. Room preserves slot assignments, labels and the selected slot across relaunch.
@@ -88,14 +88,13 @@ completed imports. Legacy repeated assignments collapse on startup by hash; iden
 different ROM content stay separate. **B / Collection → Remove selected entry** hides the game while
 keeping ROMs, saves and artwork. Rescan respects removal. **Undo last removal** restores its position
 in the current Activity session; after reopening, **X / Add .gba** restores a hidden game and its data.
-Only uncompressed GBA files are supported. Scans stop with an error at 10,000 entries or 16 levels;
+Uncompressed .gba, .gb and .gbc files are supported. Scans stop with an error at 10,000 entries or 16 levels;
 invalid files are reported while valid siblings continue. Originals are never changed or deleted.
 
-Press **Y / Scrape** for the main artwork workflow. Choose This title, GBA collection, All games,
+Press **Y / Scrape** for the main artwork workflow. Choose This title, Choose consoles, All games,
 Choose games, or Games missing labels. A toggles selected titles; X selects all/clears. Region & language
 saves your preferred label/title region and description language. Preferences rank all alternatives;
-they do not hide options or accept choices. GBA/all cover the same canonical collection until other
-systems are supported, including games hidden by collection filters.
+they do not hide options or accept choices. Console selection covers any imported GBA/GB/GBC subset; All games includes games hidden by collection filters.
 
 The current title is searched first. Choose a RetroBase match, preview its preferred flat label on the
 real cartridge, then Fill missing metadata or Next. Existing label/metadata choices stay protected.
@@ -118,7 +117,7 @@ Press Select / Image for optional local PNG, JPEG or WebP import, including an a
 Preview it on the actual cartridge, toggle Fit/Crop, rotate in 90° steps, then Apply or Cancel.
 Use D-pad up/down and A in this panel; B cancels. Reset label restores the fictional study artwork.
 Original images are cached unchanged; only accepted recipes are saved. Adjacent games retain their
-own labels. Images are limited to 12 MiB and decoded off Main into 512×256 label textures.
+own labels. Images are limited to 12 MiB and decoded off Main into 512×256 GBA or 512×448 GB/GBC label textures.
 
 L3 + R3 opens the app-owned pause menu; Start + Select is an alternate configurable combination.
 Back also pauses. D-pad up/down selects menu actions; A activates and B resumes. Android gameplay
@@ -179,3 +178,5 @@ sleep/reboot/performance gates remain open; the active roadmap continues through
 LibretroDroid is GPL-3.0-or-later. Shipping this integration requires a GPL-compatible distribution
 plan and complete corresponding source. See the audit before distributing; no project-wide
 commercial licensing decision has been made by this feasibility work.
+
+M5 GB/GBC implementation and verification are documented in [M5_PROGRESS](docs/M5_PROGRESS.md) and ADR 0013.

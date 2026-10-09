@@ -39,7 +39,7 @@ class ScrapeUiTest {
             listOf(red, box), "https://example.invalid/one", "Original fixture")
         val two = one.copy(id = "two", title = "Orbit Field Japan", metadata = linkedMapOf("title" to listOf("Orbit Field Japan"),
             "developer" to listOf("Studio B")), artwork = listOf(blue, box), sourceUrl = "https://example.invalid/two")
-        override suspend fun search(query: String, rom: File?) = listOf(one, two)
+        override suspend fun search(query: String, rom: File?, system: dev.cartridge.domain.GameSystem) = listOf(one, two)
         override suspend fun image(candidate: ArtworkCandidate): ByteArray {
             val bitmap = Bitmap.createBitmap(512, 256, Bitmap.Config.ARGB_8888)
             bitmap.eraseColor(if (candidate == blue) Color.BLUE else Color.RED)
@@ -91,7 +91,7 @@ class ScrapeUiTest {
                 ui.onNodeWithTag("scrape-back").performClick() // Review.
                 ui.onNodeWithTag("scrape-list").performScrollToNode(hasTestTag("review-match"))
                 ui.onNodeWithTag("review-match").performClick()
-                ui.onNodeWithTag("scrape-action-1").performClick()
+                ui.onNodeWithTag("scrape-action-1").performClick() // Second provider match.
                 await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.page == ScrapePage.Review }
                 ui.onNodeWithTag("review-media").performClick()
                 ui.onNodeWithTag("scrape-action-0").performClick()

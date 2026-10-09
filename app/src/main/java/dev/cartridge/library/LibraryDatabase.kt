@@ -21,6 +21,7 @@ data class GameRecord(
     @ColumnInfo(defaultValue = "0") val favorite: Boolean = false,
     @ColumnInfo(defaultValue = "0") val playMs: Long = 0,
     @ColumnInfo(defaultValue = "0") val lastPlayed: Long = 0,
+    @ColumnInfo(defaultValue = "'GBA'") val system: String = "GBA",
 )
 
 @Entity(tableName = "slots", foreignKeys = [ForeignKey(entity = GameRecord::class,
@@ -56,7 +57,7 @@ data class SlotRow(val slot: Int, val selectedSlot: Int, val id: String?, val ti
     val sourceUri: String?, val labelAssetId: String?, val labelFit: String?, val labelQuarterTurns: Int?, val labelSourceUri: String?,
     val labelProvenance: String?, val metadataJson: String?, val mediaJson: String?,
     val favorite: Boolean?, val playMs: Long?, val lastPlayed: Long?, val sort: String, val favoritesOnly: Boolean, val search: String,
-    val canUndoEnrichment: Boolean)
+    val canUndoEnrichment: Boolean, val system: String?)
 
 @Dao
 interface LibraryDao {
@@ -79,8 +80,8 @@ interface LibraryDao {
     suspend fun missing(tree: String, document: String)
     @Query("SELECT * FROM slots ORDER BY slot") suspend fun slots(): List<SlotRecord>
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertGame(game: GameRecord)
-    @Query("UPDATE games SET title = :title, sourceUri = :uri WHERE id = :id")
-    suspend fun updateSource(id: String, title: String, uri: String)
+    @Query("UPDATE games SET title = :title, sourceUri = :uri, system = :system WHERE id = :id")
+    suspend fun updateSource(id: String, title: String, uri: String, system: String)
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertSlot(slot: SlotRecord)
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertState(state: CollectionRecord)
     @Query("UPDATE slots SET gameId = :id WHERE slot = :slot") suspend fun assign(slot: Int, id: String)
@@ -112,10 +113,13 @@ interface LibraryDao {
     suspend fun read(): List<SlotRow>
 }
 
-@Database(entities = [GameRecord::class, SlotRecord::class, CollectionRecord::class, DirectoryRecord::class, RemovedGameRecord::class, IndexedDocument::class, EnrichmentUndo::class], version = 6, exportSchema = true)
+@Database(entities = [GameRecord::class, SlotRecord::class, CollectionRecord::class, DirectoryRecord::class, RemovedGameRecord::class, IndexedDocument::class, EnrichmentUndo::class], version = 7, exportSchema = true)
 abstract class LibraryDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
     companion object {
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) { db.execSQL("ALTER TABLE games ADD COLUMN system TEXT NOT NULL DEFAULT 'GBA'") }
+        }
         val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE enrichment_undo (gameId TEXT NOT NULL PRIMARY KEY, labelAssetId TEXT, labelFit TEXT NOT NULL, labelQuarterTurns INTEGER NOT NULL, labelSourceUri TEXT, labelProvenance TEXT, metadataJson TEXT, mediaJson TEXT, FOREIGN KEY(gameId) REFERENCES games(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
@@ -156,7 +160,7 @@ abstract class LibraryDatabase : RoomDatabase() {
         @Volatile private var instance: LibraryDatabase? = null
         fun get(context: Context): LibraryDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, LibraryDatabase::class.java, "library.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build().also { instance = it }
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7).build().also { instance = it }
         }
     }
 }

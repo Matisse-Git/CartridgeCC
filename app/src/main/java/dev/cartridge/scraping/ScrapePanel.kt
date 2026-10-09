@@ -32,7 +32,7 @@ import kotlin.math.max
                 }
                 TextButton(onClick = coordinator::back, modifier = Modifier.testTag("scrape-back")) { Text(if (state.busy) "Cancel" else "Back") }
             }
-            if (state.page !in setOf(ScrapePage.Scope, ScrapePage.Targets, ScrapePage.Preferences)) state.current?.let {
+            if (state.page !in setOf(ScrapePage.Scope, ScrapePage.Targets, ScrapePage.Consoles, ScrapePage.Preferences)) state.current?.let {
                 Text("${state.index + 1} / ${state.entries.size} · ${it.game.title} · ${state.entries.count { entry -> entry.outcome == ScrapeOutcome.Applied }} applied · ${state.entries.count { entry -> entry.outcome == ScrapeOutcome.Skipped }} skipped", modifier = Modifier.padding(vertical = 8.dp)) }
             if (state.busy || !state.ready) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(state.progress ?: "Working…", fontSize = 12.sp) }
             state.message?.let { Text(it, color = Color(0xFFE2CFAE), modifier = Modifier.padding(vertical = 8.dp).testTag("scrape-message")) }
@@ -59,7 +59,7 @@ import kotlin.math.max
                 when (state.page) {
                     ScrapePage.Scope -> {
                         item { Action("This title", 0, state) { coordinator.chooseScope(true) } }
-                        item { Action("GBA collection", 1, state) { coordinator.chooseScope(false) } }
+                        item { Action("Choose consoles…", 1, state, coordinator::consoles) }
                         item { Action("All games", 2, state) { coordinator.chooseScope(false) } }
                         item { Action(if (state.entries.isEmpty()) "No saved batch" else "Resume saved batch · ${state.index + 1} / ${state.entries.size}", 3, state, coordinator::resumeBatch) }
                         item { Action("Choose games…", 4, state, coordinator::targets) }
@@ -67,6 +67,16 @@ import kotlin.math.max
                         item { Action("Region & language", 6, state, coordinator::preferencePage) }
                         item { Action("Import scrape pack…", 7, state, coordinator::pickPack) }
                         item { Action("Close", 8, state, coordinator::back) }
+                    }
+                    ScrapePage.Consoles -> {
+                        item { Action("Search selected consoles", 0, state, coordinator::beginConsoles) }
+                        item { Action("Select all", 1, state) { coordinator.pickAllConsoles(true) } }
+                        item { Action("Clear selection", 2, state) { coordinator.pickAllConsoles(false) } }
+                        itemsIndexed(state.consoles, key = { _, system -> system.name }) { index, system ->
+                            Action("${if (system in state.pickedSystems) "✓ " else ""}${system.title} · ${state.availableGames.count { it.system == system }} games",
+                                index + 3, state) { coordinator.pickConsole(system) }
+                        }
+                        item { Action("Back", state.consoles.size + 3, state, coordinator::back) }
                     }
                     ScrapePage.Targets -> {
                         item { Action("Search ${state.pickedIds.size} selected games", 0, state, coordinator::beginPicked) }

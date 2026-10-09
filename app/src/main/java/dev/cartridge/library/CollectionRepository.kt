@@ -1,6 +1,7 @@
 package dev.cartridge.library
 
 import dev.cartridge.emulation.GameRequest
+import dev.cartridge.domain.GameSystem
 import kotlinx.coroutines.flow.Flow
 
 enum class LabelFit { Fit, Crop }
@@ -8,10 +9,12 @@ data class LabelRef(val assetId: String, val fit: LabelFit = LabelFit.Fit, val q
     val sourceUri: String? = null, val provenance: AssetProvenance? = null) {
     init { require(assetId.matches(Regex("[a-f0-9]{64}"))); require(quarterTurns in 0..3) }
     val textureKey: String get() = "$assetId:${fit.name}:$quarterTurns"
+    fun textureKey(system: GameSystem) = if (system == GameSystem.GBA) textureKey else "$textureKey:${system.labelHeight}"
 }
 data class LibraryGame(val id: String, val title: String, val sourceUri: String, val label: LabelRef? = null,
     val metadata: Map<String, MetadataValue> = emptyMap(), val media: Map<String, MediaSelection> = emptyMap(),
-    val favorite: Boolean = false, val playMs: Long = 0, val lastPlayed: Long = 0, val canUndoEnrichment: Boolean = false) {
+    val favorite: Boolean = false, val playMs: Long = 0, val lastPlayed: Long = 0, val canUndoEnrichment: Boolean = false,
+    val system: GameSystem = GameSystem.GBA) {
     init { require(id.matches(Regex("[a-f0-9]{64}"))) }
 }
 data class LibrarySnapshot(val slots: List<LibraryGame?> = listOf(null), val selectedSlot: Int = 0,

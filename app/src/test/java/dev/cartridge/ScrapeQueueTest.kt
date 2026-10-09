@@ -48,13 +48,31 @@ class ScrapeQueueTest {
     private class Provider : ArtworkProvider {
         override val name = "Original fixture"
         var calls = 0
+        val systems = mutableListOf<dev.cartridge.domain.GameSystem>()
         var gate: CompletableDeferred<Unit>? = null
-        override suspend fun search(query: String, rom: File?): List<GameCandidate> {
-            calls++; gate?.await()
-            return listOf(GameCandidate("one", query, "Game Boy Advance", listOf(query),
+        override suspend fun search(query: String, rom: File?, system: dev.cartridge.domain.GameSystem): List<GameCandidate> {
+            calls++; systems += system; gate?.await()
+            return listOf(GameCandidate("one", query, system.title, listOf(query),
                 linkedMapOf("title" to listOf(query), "year" to listOf("2002")), emptyList(), "https://example.invalid", "Original fixture"))
         }
         override suspend fun image(candidate: ArtworkCandidate) = error("No images in queue tests")
+    }
+    @Test fun selectedConsolesPublishOnlyTheirHashesAndSearchTheCorrectPlatform() = runTest {
+        val repository = Repository(); val provider = Provider()
+        val gb = repository.one.copy(system = dev.cartridge.domain.GameSystem.GB)
+        val gbc = repository.two.copy(system = dev.cartridge.domain.GameSystem.GBC)
+        val gba = repository.one.copy(id = "d".repeat(64), title = "Other GBA")
+        repository.snapshots.value = LibrarySnapshot(listOf(gb, gbc, gba))
+        val scraper = ScrapeCoordinator(provider, repository, LabelStore(File("unused")), File("unused"), backgroundScope,
+            ioDispatcher = StandardTestDispatcher(testScheduler)) { _, _ -> error("No preview") }
+        runCurrent(); scraper.open(listOf(gb, gbc, gba), gb); scraper.consoles(); scraper.pickConsole(gbc.system)
+        scraper.beginConsoles()
+        assertEquals(listOf(gb.id, gbc.id), scraper.state.value.entries.map { it.game.id })
+        runCurrent(); assertEquals(listOf(gb.system), provider.systems)
+        scraper.next(); runCurrent(); assertEquals(listOf(gb.system, gbc.system), provider.systems)
+        scraper.query("Corrected color title"); scraper.searchCurrent(); runCurrent()
+        assertEquals(gbc.system, provider.systems.last()); assertEquals(0, repository.writes)
+        scraper.destroy()
     }
     @Test fun consoleQueueDeduplicatesGamesAndNeverOverwritesAcceptedChoices() = runTest {
         val repository = Repository(); val provider = Provider()
@@ -112,7 +130,7 @@ class ScrapeQueueTest {
         val provider = object : ArtworkProvider {
             override val name = "Original selected fixture"
             var calls = 0
-            override suspend fun search(query: String, rom: File?): List<GameCandidate> {
+            override suspend fun search(query: String, rom: File?, system: dev.cartridge.domain.GameSystem): List<GameCandidate> {
                 calls++
                 assertEquals(listOf(repository.two.id), journal.load()!!.entries.map { it.game.id })
                 return listOf(GameCandidate("match", query, "Game Boy Advance", listOf(query),

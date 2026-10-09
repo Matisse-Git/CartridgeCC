@@ -55,7 +55,7 @@ class ScrapePackStore(private val directory: File) {
                 require(hash.matches(Regex("[a-f0-9]{64}"))) { "Invalid ROM hash" }
                 val matches = game.getJSONArray("matches").objects(16).map { match ->
                     val platform = match.text("platform", "Game Boy Advance", 80)
-                    require(platform == "Game Boy Advance") { "This pack contains an unsupported system" }
+                    require(dev.cartridge.domain.GameSystem.entries.any { it.title == platform }) { "This pack contains an unsupported system" }
                     val title = match.text("title", "", 180); require(title.isNotBlank()) { "Missing candidate title" }
                     val metadata = linkedMapOf<String, List<String>>(); val tags = linkedMapOf<String, List<MetadataTags>>()
                     match.optJSONObject("metadata")?.let { values -> values.keys().forEach { field ->
@@ -106,6 +106,6 @@ class ScrapePackStore(private val directory: File) {
 /** Local URLs can only read validated private packs. All online calls retain the audited provider. */
 class PackAwareProvider(private val online: ArtworkProvider, private val packs: ScrapePackStore) : ArtworkProvider {
     override val name get() = online.name
-    override suspend fun search(query: String, rom: File?) = online.search(query, rom)
+    override suspend fun search(query: String, rom: File?, system: dev.cartridge.domain.GameSystem) = online.search(query, rom, system)
     override suspend fun image(candidate: ArtworkCandidate) = if (candidate.url.startsWith("cartridge-pack://")) packs.image(candidate.url) else online.image(candidate)
 }

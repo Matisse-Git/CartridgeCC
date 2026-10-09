@@ -151,6 +151,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 val scrape = scraper.state.value
                 if (scrape.visible && scrape.page == ScrapePage.Metadata) scrape.candidate?.metadata?.keys?.elementAtOrNull(scrape.focus)?.let(scraper::variant)
                 else if (scrape.visible && scrape.page == ScrapePage.Targets) scraper.pickAll(scrape.pickedIds.size != scrape.availableGames.size)
+                else if (scrape.visible && scrape.page == ScrapePage.Consoles) scraper.pickAllConsoles(scrape.pickedSystems.size != scrape.consoles.size)
             }, cancelOperation = coordinator::cancelScan, details = coordinator::details, favorite = coordinator::favorite, navigateLibrary = coordinator::navigateSpatial)
         getSystemService(InputManager::class.java).registerInputDeviceListener(this, null)
         lifecycleScope.launch {
@@ -238,7 +239,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 val taskContext = coroutineContext
                 val game = RomImporter(contentResolver, File(filesDir, "roms")).import(uri) { taskContext.ensureActive() }
                 require(expected == null || expected == game.request.id) { "Choose the same ROM content to recover this entry. Its labels and saves were kept." }
-                LibraryGame(game.request.id, game.title, uri.toString())
+                LibraryGame(game.request.id, game.title, uri.toString(), system = game.request.system)
             }
         }
         lifecycleScope.launch {
@@ -333,7 +334,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                         if (toolsVisible) Column(Modifier.align(Alignment.TopCenter).padding(top = 56.dp)
                             .background(Color(0xEE191817)).padding(8.dp)) {
                             Row {
-                                TextButton(enabled = !state.busy && state.loaded, onClick = { chooseGame?.invoke() }, modifier = Modifier.testTag("choose-game")) { Text("Add .gba") }
+                                TextButton(enabled = !state.busy && state.loaded, onClick = { chooseGame?.invoke() }, modifier = Modifier.testTag("choose-game")) { Text("Add game") }
                                 TextButton(enabled = !state.busy && state.loaded, onClick = { chooseDirectory?.invoke() }, modifier = Modifier.testTag("choose-folder")) { Text("Folder") }
                                 TextButton(enabled = !state.busy && state.loaded, onClick = ::openScraper, modifier = Modifier.testTag("scrape")) { Text("Scrape") }
                                 TextButton(enabled = !state.busy && state.selectedGame != null, onClick = { chooseLabel?.invoke() }, modifier = Modifier.testTag("choose-label")) { Text("Image") }
@@ -369,7 +370,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                         LaunchedEffect(state.menuIndex) { menuScroll.animateScrollTo(if (state.menuIndex >= 4) menuScroll.maxValue else 0) }
                         Column(Modifier.align(Alignment.CenterEnd).width(280.dp).background(Color(0xF0191817)).verticalScroll(menuScroll).padding(12.dp)) {
                             Text("Collection", fontSize = 19.sp, modifier = Modifier.padding(8.dp))
-                            Text("Removal keeps ROMs, saves and artwork. Rescan skips removed entries; Add .gba restores them.", fontSize = 12.sp, modifier = Modifier.padding(8.dp))
+                            Text("Removal keeps ROMs, saves and artwork. Rescan skips removed entries; Add game restores them.", fontSize = 12.sp, modifier = Modifier.padding(8.dp))
                             listOf("Back to collection", "Remove selected entry", "Undo last removal", "Sort: ${state.query.sort.title}",
                                 if (state.query.favoritesOnly) "Show all games" else "Show favorites", "Reset filters & sort").forEachIndexed { index, title ->
                                 TextButton(enabled = !state.busy && (index != 1 || state.selectedGame != null) && (index != 2 || state.removedEntry != null),
@@ -442,16 +443,18 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         var pixels by remember { mutableStateOf<List<LabelPixels?>>(List(3) { null }) }
         val cache = remember { linkedMapOf<String, LabelPixels>() }
         val labels = state.labels
-        LaunchedEffect(labels.map { it?.textureKey }) {
-            pixels = labels.map { label -> label?.let {
-                cache[it.textureKey] ?: try { withContext(Dispatchers.IO) { labelStore.decode(it) } }
+        val systems = state.systems
+        val keys = labels.mapIndexed { index, label -> label?.textureKey(systems[index]) }
+        LaunchedEffect(keys) {
+            pixels = labels.mapIndexed { index, label -> label?.let {
+                cache[keys[index]] ?: try { withContext(Dispatchers.IO) { labelStore.decode(it, systems[index]) } }
                 catch (failure: Exception) {
                     if (failure is CancellationException) throw failure
                     coordinator.notify(failure.message ?: "Cannot display the label")
                     null
-                }?.also { decoded -> cache[it.textureKey] = decoded }
+                }?.also { decoded -> cache[decoded.key] = decoded }
             } }
-            val needed = labels.mapNotNull { it?.textureKey }.toSet()
+            val needed = keys.filterNotNull().toSet()
             while (cache.size > state.layout.visibleCount * 2) cache.keys.firstOrNull { it !in needed }?.let { cache.remove(it) } ?: break
         }
         val motion = remember { Animatable(if (state.screen == CollectionScreen.Ejecting) 1f else 0f) }
@@ -466,9 +469,9 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 onLabelsReady = { first, keys -> coordinator.labelsReady(state.viewportGeneration, keys, first) }, onLabelError = coordinator::notify
             ).also { renderer -> surface = renderer; cartridgeSurface = renderer }
         }, update = {
-            it.layout = state.layout; it.selection = state.selection.index; it.windowStart = state.windowStart; it.collectionCount = state.selection.count; it.insertion = motion.value
+            it.systems = systems; it.layout = state.layout; it.selection = state.selection.index; it.windowStart = state.windowStart; it.collectionCount = state.selection.count; it.insertion = motion.value
             it.reducedMotion = state.reducedMotion
-            it.setLabels(if (pixels.map { pixel -> pixel?.key } == labels.map { label -> label?.textureKey }) pixels else List(labels.size) { null })
+            it.setLabels(if (pixels.map { pixel -> pixel?.key } == keys) pixels else List(labels.size) { null })
         }, onRelease = { it.close() })
         val suspended = state.screen == CollectionScreen.Details || libraryOverlay != LibraryOverlay.None || scrapeVisible
         DisposableEffect(surface, suspended) {

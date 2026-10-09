@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-enum { SAVE_RAM = 0, MAX_GBA_SAVE = 128 * 1024 }; // Public Libretro memory ABI.
+enum { SAVE_RAM = 0, RTC = 1, MAX_CART_SAVE = 128 * 1024 }; // Public Libretro memory ABI.
 typedef struct { void* handle; void* bytes; size_t size; } CoreMemory;
 
 static void fail(JNIEnv* env, const char* message) {
@@ -14,7 +14,8 @@ static void fail(JNIEnv* env, const char* message) {
 }
 
 // GL-thread only. NOLOAD references the existing core; never initializes a second instance.
-static bool openMemory(JNIEnv* env, jstring path, CoreMemory* memory) {
+static bool openMemory(JNIEnv* env, jstring path, CoreMemory* memory, unsigned kind) {
+    if (kind != SAVE_RAM && kind != RTC) { fail(env, "Unsupported cartridge memory"); return false; }
     if (!path) { fail(env, "Missing core path"); return false; }
     const char* utf = (*env)->GetStringUTFChars(env, path, NULL);
     if (!utf) return false;
@@ -26,19 +27,27 @@ static bool openMemory(JNIEnv* env, jstring path, CoreMemory* memory) {
     if (!getSize || !getData) {
         dlclose(memory->handle); fail(env, "The core has no Libretro save memory ABI"); return false;
     }
-    memory->size = getSize(SAVE_RAM);
-    memory->bytes = getData(SAVE_RAM);
-    if (memory->size > MAX_GBA_SAVE || (memory->size && !memory->bytes)) {
-        dlclose(memory->handle); fail(env, "Invalid GBA save memory"); return false;
+    void (*syncSavedata)(void) = (void (*)(void))dlsym(memory->handle, "cartridge_mgba_sync_savedata");
+    if (!syncSavedata) { dlclose(memory->handle); fail(env, "The core cannot synchronize battery memory"); return false; }
+    syncSavedata();
+    memory->size = getSize(kind);
+    memory->bytes = getData(kind);
+    if ((kind != SAVE_RAM && kind != RTC) || memory->size > (kind == RTC ? 4096 : MAX_CART_SAVE) || (memory->size && !memory->bytes)) {
+        dlclose(memory->handle); fail(env, "Invalid cartridge save memory"); return false;
     }
     return true;
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_dev_cartridge_emulation_SaveBridge_read(JNIEnv* env, jobject receiver, jstring path) {
+Java_dev_cartridge_emulation_SaveBridge_read(JNIEnv* env, jobject receiver, jstring path, jint kind) {
     (void)receiver;
     CoreMemory memory = {0};
-    if (!openMemory(env, path, &memory)) return NULL;
+    if (!openMemory(env, path, &memory, (unsigned)kind)) return NULL;
+    if (kind == RTC && memory.size) {
+        void (*syncRtc)(bool) = (void (*)(bool))dlsym(memory.handle, "cartridge_mgba_sync_rtc");
+        if (!syncRtc) { dlclose(memory.handle); fail(env, "The packaged core has no RTC synchronization extension"); return NULL; }
+        syncRtc(false);
+    }
     jbyteArray result = (*env)->NewByteArray(env, (jsize)memory.size);
     if (result && memory.size) (*env)->SetByteArrayRegion(env, result, 0, (jsize)memory.size, memory.bytes);
     dlclose(memory.handle);
@@ -46,13 +55,17 @@ Java_dev_cartridge_emulation_SaveBridge_read(JNIEnv* env, jobject receiver, jstr
 }
 
 JNIEXPORT jboolean JNICALL
-Java_dev_cartridge_emulation_SaveBridge_restore(JNIEnv* env, jobject receiver, jstring path, jbyteArray saved) {
+Java_dev_cartridge_emulation_SaveBridge_restore(JNIEnv* env, jobject receiver, jstring path, jbyteArray saved, jint kind) {
     (void)receiver;
     CoreMemory memory = {0};
-    if (!openMemory(env, path, &memory)) return JNI_FALSE;
+    if (!openMemory(env, path, &memory, (unsigned)kind)) return JNI_FALSE;
     jsize size = saved ? (*env)->GetArrayLength(env, saved) : 0;
-    bool accepted = size > 0 && (size_t)size <= memory.size;
+    bool accepted = size > 0 && (size_t)size <= memory.size && (kind != RTC || (size_t)size == memory.size);
     if (accepted) (*env)->GetByteArrayRegion(env, saved, 0, size, memory.bytes);
+    if (accepted && kind == RTC) {
+        void (*syncRtc)(bool) = (void (*)(bool))dlsym(memory.handle, "cartridge_mgba_sync_rtc");
+        if (syncRtc) syncRtc(true); else { accepted = false; fail(env, "The core cannot restore the clock"); }
+    }
     dlclose(memory.handle);
     return accepted && !(*env)->ExceptionCheck(env) ? JNI_TRUE : JNI_FALSE;
 }
@@ -61,7 +74,7 @@ JNIEXPORT jbyteArray JNICALL
 Java_dev_cartridge_emulation_SaveBridge_captureState(JNIEnv* env, jobject receiver, jstring path) {
     (void)receiver;
     CoreMemory memory = {0};
-    if (!openMemory(env, path, &memory)) return NULL;
+    if (!openMemory(env, path, &memory, SAVE_RAM)) return NULL;
     size_t (*getSize)(void) = (size_t (*)(void))dlsym(memory.handle, "retro_serialize_size");
     bool (*serialize)(void*, size_t) = (bool (*)(void*, size_t))dlsym(memory.handle, "retro_serialize");
     if (!getSize || !serialize) { dlclose(memory.handle); fail(env, "The core has no state serialization ABI"); return NULL; }

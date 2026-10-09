@@ -13,7 +13,7 @@ Only public documentation/source was inspected. No third-party frontend code, ke
 
 The live test queries metadata and media URLs; it does not bundle or download commercial images.
 Regional aliases matter: the provider's primary name can be Chinese while US/EU aliases supply the
-English title. The parser ranks exact aliases, accepts GBA records only and preserves alternatives.
+English title. The parser ranks exact aliases, accepts the requested GBA/GB/GBC platform only and preserves alternatives.
 Only the advertised HTTPS object-storage host is allowed for image fetching; redirects are rejected.
 
 [RetroBase's legal notice](https://retrobase-collection.com/legal) leaves the final data license pending
@@ -22,4 +22,6 @@ No commercial artwork is committed or bundled. Accepted references retain provid
 region, timestamp and license status; public distribution remains gated by LICENSING.
 
 Coverage is per record, not a promise of labels for every game. No flat-label match leaves the current
-label intact. Disc scraping/templates and full-library jobs remain future work; this app still plays GBA only.
+label intact. Disc scraping/templates and full-library jobs remain future work; M5 internally plays GBA/GB/GBC.
+
+M5 rechecked the public OpenAPI/platform catalog on 2026-10-10. Exact names are Game Boy, Game Boy Color, Game Boy Advance. Tetris GB exposes regional flat support-texture URLs; GBC Zelda search includes a world label on one record and no label on another. Each request now carries its game platform, including corrected searches and resumed queue entries. Coverage and artwork rights remain independent of API availability.

@@ -11,7 +11,8 @@ import java.io.File
 
 /** Read-only, own-UID SAF fixture: nested originals, a duplicate, an invalid ROM and a non-ROM. */
 class FixtureTreeProvider : DocumentsProvider() {
-    private val ids = (0..5).map { "g$it" }.toSet() + setOf("root", "nested", "duplicate", "invalid", "readme")
+    private val ids = (0..5).map { "g$it" }.toSet() + setOf("root", "nested", "duplicate", "invalid", "readme", "m5-gba", "m5-gb", "m5-gbc")
+    private fun name(id: String) = if (id.startsWith("m5-")) "$id.${id.removePrefix("m5-")}" else "$id.gba"
     override fun onCreate() = true
     override fun queryRoots(projection: Array<out String>?): Cursor = MatrixCursor(projection ?: arrayOf(Root.COLUMN_ROOT_ID,
         Root.COLUMN_DOCUMENT_ID, Root.COLUMN_TITLE, Root.COLUMN_FLAGS)).apply {
@@ -22,7 +23,7 @@ class FixtureTreeProvider : DocumentsProvider() {
         val folder = id == "root" || id == "nested"
         cursor.addRow(cursor.columnNames.map { when (it) {
             Document.COLUMN_DOCUMENT_ID -> id
-            Document.COLUMN_DISPLAY_NAME -> when { folder -> id; id == "readme" -> "readme.txt"; else -> "$id.gba" }
+            Document.COLUMN_DISPLAY_NAME -> when { folder -> id; id == "readme" -> "readme.txt"; else -> name(id) }
             Document.COLUMN_MIME_TYPE -> if (folder) Document.MIME_TYPE_DIR else "application/octet-stream"
             Document.COLUMN_FLAGS -> 0
             Document.COLUMN_SIZE -> if (folder) 0L else file(id).length()
@@ -33,12 +34,12 @@ class FixtureTreeProvider : DocumentsProvider() {
     override fun queryDocument(documentId: String, projection: Array<out String>?): Cursor = MatrixCursor(projection ?: columns).also { append(it, documentId) }
     override fun queryChildDocuments(parentDocumentId: String, projection: Array<out String>?, sortOrder: String?): Cursor = MatrixCursor(projection ?: columns).also { cursor ->
         if (parentDocumentId == "nested" && failNested) throw java.io.FileNotFoundException("Original fixture folder unavailable")
-        val children = when (parentDocumentId) { "root" -> listOf("g0", "g1", "g2", "g3", "nested", "invalid", "readme"); "nested" -> listOf("g4", "g5", "duplicate"); else -> error("Unknown fixture folder") }
+        val children = when (parentDocumentId) { "root" -> listOf("g0", "g1", "g2", "g3", "nested", "invalid", "readme", "m5-gba", "m5-gb", "m5-gbc"); "nested" -> listOf("g4", "g5", "duplicate"); else -> error("Unknown fixture folder") }
         children.filter { it == "nested" || file(it).isFile }.forEach { append(cursor, it) }
     }
     private fun file(id: String): File {
         require(id in ids && id !in setOf("root", "nested"))
-        return File(checkNotNull(context).filesDir, "m1-tree/$id.gba")
+        return File(checkNotNull(context).filesDir, "m1-tree/${name(id)}")
     }
     override fun openDocument(documentId: String, mode: String, signal: CancellationSignal?): ParcelFileDescriptor {
         require(mode == "r")

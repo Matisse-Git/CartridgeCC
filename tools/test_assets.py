@@ -133,5 +133,32 @@ class CartridgeAssetTest(unittest.TestCase):
         self.assertLess(len(raw), 600*1024)
 
 
+class TallCartridgeAssetTest(unittest.TestCase):
+    def load(self):
+        raw = MODEL.with_name('gb_cartridge.glb').read_bytes()
+        magic, version, length = struct.unpack_from('<III', raw)
+        self.assertEqual((0x46546C67, 2, len(raw)), (magic, version, length))
+        size = struct.unpack_from('<I', raw, 12)[0]
+        reader = CartridgeAssetTest()
+        reader.doc = json.loads(raw[20:20+size]); reader.binary = raw[28+size:]
+        return reader
+    def test_tall_geometry_has_valid_normals_indices_and_physical_thickness(self):
+        reader = self.load()
+        reader.test_all_buffer_ranges_and_indices_are_valid(); reader.test_normals_and_triangle_winding_agree()
+        points=[]
+        for p in reader.doc['meshes'][0]['primitives']:
+            xyz,_=reader.values(p['attributes']['POSITION']); points.extend(zip(xyz[::3],xyz[1::3],xyz[2::3]))
+        bounds=[max(p[n] for p in points)-min(p[n] for p in points) for n in range(3)]
+        self.assertTrue(.053<bounds[0]<.057 and .064<bounds[1]<.070 and .008<bounds[2]<.010)
+    def test_tall_pbr_and_label_contract_has_correct_aspect_and_orientation(self):
+        reader=self.load(); reader.test_refined_geometry_and_material_budget(); reader.test_label_is_embedded_and_replaceable_material()
+        p=next(p for p in reader.doc['meshes'][0]['primitives'] if p['material']==2)
+        xyz,_=reader.values(p['attributes']['POSITION']); uv,_=reader.values(p['attributes']['TEXCOORD_0'])
+        points=list(zip(xyz[::3],xyz[1::3],xyz[2::3],uv[::2],uv[1::2]))
+        self.assertTrue(all(0<=p[3]<=1 and 0<=p[4]<=1 for p in points))
+        self.assertLess(max(points,key=lambda p:p[1])[4],min(points,key=lambda p:p[1])[4])
+        image=reader.doc['bufferViews'][reader.doc['images'][0]['bufferView']]
+        self.assertEqual((512,448), struct.unpack_from('>II',reader.binary,image['byteOffset']+16))
+
 if __name__ == '__main__':
     unittest.main()

@@ -66,7 +66,7 @@ class ScrapePackTest {
         File(context.filesDir, "m1-fixtures").mkdirs(); File(context.filesDir, "m1-fixtures/original-pack.zip").writeBytes(pack())
         val noNetwork = object : ArtworkProvider {
             override val name = "Network must not be used"
-            override suspend fun search(query: String, rom: File?): List<GameCandidate> = error("Pack review must stay offline")
+            override suspend fun search(query: String, rom: File?, system: dev.cartridge.domain.GameSystem): List<GameCandidate> = error("Pack review must stay offline")
             override suspend fun image(candidate: ArtworkCandidate): ByteArray = error("Pack images must stay offline")
         }
         DebugCollectionActivity.testProvider = noNetwork

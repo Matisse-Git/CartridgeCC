@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
 import dev.cartridge.emulation.GameRequest
+import dev.cartridge.domain.GameSystem
 import dev.cartridge.storage.RomImporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -46,9 +47,9 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
     override suspend fun assign(slot: Int, game: LibraryGame) {
         require(slot >= 0)
         database.withTransaction {
-            dao.insertGame(GameRecord(game.id, game.title, game.sourceUri))
+            dao.insertGame(GameRecord(game.id, game.title, game.sourceUri, system = game.system.name))
             // Reimporting identical content preserves the game's accepted label.
-            dao.updateSource(game.id, game.title, game.sourceUri)
+            dao.updateSource(game.id, game.title, game.sourceUri, game.system.name)
             dao.unhide(game.id)
             val ids = dao.slots().mapNotNull { it.gameId }.toMutableList()
             val existing = ids.indexOf(game.id)
@@ -63,8 +64,8 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
         if (!restoreRemoved && game.id in dao.removedIds()) return@withTransaction false
         if (restoreRemoved) dao.unhide(game.id)
         val slots = dao.slots()
-        dao.insertGame(GameRecord(game.id, game.title, game.sourceUri))
-        dao.updateSource(game.id, game.title, game.sourceUri)
+        dao.insertGame(GameRecord(game.id, game.title, game.sourceUri, system = game.system.name))
+        dao.updateSource(game.id, game.title, game.sourceUri, game.system.name)
         if (slots.any { it.gameId == game.id }) false else {
             val position = slots.firstOrNull { it.gameId == null }?.slot ?: ((slots.lastOrNull()?.slot ?: -1) + 1)
             dao.insertSlot(SlotRecord(position))
@@ -166,19 +167,19 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
     override suspend fun facts(gameId: String): LibraryFacts = withContext(Dispatchers.IO) {
         val sources = dao.sources(gameId)
         val saves = File(context.filesDir, "saves")
-        LibraryFacts(File(roms, "$gameId.gba").isFile,
+        LibraryFacts(File(roms, "$gameId.${GameSystem.valueOf(checkNotNull(dao.game(gameId)).system).extension}").isFile,
             when { sources.isEmpty() -> "Original not checked by a folder scan"
                 sources.all { it.missing } -> "Original missing at last complete scan"
                 else -> "Original found at last scan" },
             File(saves, "$gameId.sram").lastModified(), File(saves, "$gameId.state").lastModified())
     }
     override suspend fun gameRequest(game: LibraryGame): GameRequest = withContext(Dispatchers.IO) {
-        val file = File(roms, "${game.id}.gba")
+        val file = File(roms, "${game.id}.${game.system.extension}")
         if (!file.isFile) {
             val restored = RomImporter(context.contentResolver, roms).import(Uri.parse(game.sourceUri))
-            check(restored.request.id == game.id) { "The original game changed. Choose the .gba file again." }
+            check(restored.request.id == game.id) { "The original game changed. Choose the same ROM file again." }
         }
-        GameRequest(file, game.id)
+        GameRequest(file, game.id, game.system)
     }
     private fun snapshot(rows: List<SlotRow>): LibrarySnapshot {
         val bySlot = rows.associateBy { it.slot }
@@ -189,7 +190,7 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
                 LibraryGame(it, metadata["title"]?.value ?: row.title ?: "Untitled game", row.sourceUri.orEmpty(),
                     row.labelAssetId?.let { asset -> LabelRef(asset, LabelFit.valueOf(row.labelFit ?: "Fit"), row.labelQuarterTurns ?: 0,
                         row.labelSourceUri, LibraryJson.provenance(row.labelProvenance)) }, metadata, LibraryJson.media(row.mediaJson),
-                    row.favorite ?: false, row.playMs ?: 0, row.lastPlayed ?: 0, row.canUndoEnrichment)
+                    row.favorite ?: false, row.playMs ?: 0, row.lastPlayed ?: 0, row.canUndoEnrichment, GameSystem.valueOf(row.system ?: "GBA"))
             }
         } }, rows.firstOrNull()?.selectedSlot?.coerceIn(0, count - 1) ?: 0,
             rows.firstOrNull()?.let { LibraryQuery(LibrarySort.valueOf(it.sort), it.favoritesOnly, it.search) } ?: LibraryQuery())

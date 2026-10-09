@@ -248,3 +248,7 @@ Presentation preferences persist layout independently of Room focus/query. Grid 
 and springs its row centre; view changes snap previous spring positions without changing game identity.
 ControllerRouter routes two axes only to library movement; menus and gameplay retain their own paths.
 Neutral stick/key release resets repetition before the next frame. GPU surface handoff is unchanged.
+
+## M5 systems and cartridge memory
+
+Room schema 7 and GameSystem carry GBA/GB/GBC identities through importer, cache extension, request, scraping and journal v3. The same nine-slot viewport owns GBA and tall instances (18 bounded meshes), draws one format per slot and decodes aspect-specific labels. GB/GBC use source-built mGBA with M_CORE_GB enabled. The original frontend wrapper synchronizes pending battery masks and live MBC3 RTC registers before bounded JNI SAVE_RAM/RTC reads. Restore happens before the first frame; user state load checkpoints restored memory immediately. See ADR 0013.

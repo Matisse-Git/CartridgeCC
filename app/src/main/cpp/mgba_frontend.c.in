@@ -1,0 +1,42 @@
+/* Original integration extension over the exact hash-pinned MPL-2.0 mGBA translation unit.
+ * The fetched source stays unchanged. This file and build instructions form corresponding source.
+ */
+#include "@mgba_SOURCE_DIR@/src/platform/libretro/libretro.c"
+
+/* A state restore temporarily masks the battery VFile. Commit its pending writeback
+ * before the frontend copies SAVE_RAM; otherwise an immediate pause can save stale bytes.
+ * These functions are from the pinned core, and run only between frames on its GL thread.
+ */
+__attribute__((visibility("default")))
+void cartridge_mgba_sync_savedata(void) {
+    if (!core) return;
+#ifdef M_CORE_GB
+    if (core->platform(core) == mPLATFORM_GB) {
+        struct GB* gb = core->board;
+        if (gb->sramMaskWriteback) GBSavedataUnmask(gb);
+    }
+#endif
+#ifdef M_CORE_GBA
+    if (core->platform(core) == mPLATFORM_GBA) {
+        struct GBASavedata* data = &((struct GBA*) core->board)->memory.savedata;
+        if (data->maskWriteback) GBASavedataUnmask(data);
+    }
+#endif
+}
+
+/* Libretro's RTC memory is a save-file suffix, not the live GB clock registers.
+ * Sync it explicitly at checkpoint/restore boundaries on the core's own GL thread.
+ */
+__attribute__((visibility("default")))
+void cartridge_mgba_sync_rtc(bool restore) {
+#ifdef M_CORE_GB
+    if (core && core->platform(core) == mPLATFORM_GB) {
+        struct GB* gb = core->board;
+        if (gb->memory.mbcType == GB_MBC3_RTC) {
+            if (restore) GBMBCRTCRead(gb); else GBMBCRTCWrite(gb);
+        }
+    }
+#else
+    (void)restore;
+#endif
+}

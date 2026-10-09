@@ -27,7 +27,7 @@ internal fun playLabel(ms: Long): String = if (ms < 60_000) "${ms / 1000} second
         Row(Modifier.fillMaxSize().padding(28.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 Text(game.title, fontSize = 27.sp, modifier = Modifier.testTag("details-title"))
-                Text("Game Boy Advance", fontSize = 13.sp, modifier = Modifier.padding(vertical = 8.dp))
+                Text(game.system.title, fontSize = 13.sp, modifier = Modifier.padding(vertical = 8.dp))
                 listOf("year", "developer", "publisher", "genre", "description").forEach { field ->
                     Text(field.replaceFirstChar(Char::uppercase), color = Color(0xFF9C968B), fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
                     Text(game.metadata[field]?.value ?: "Not set", fontSize = 15.sp, modifier = Modifier.testTag("details-$field"))

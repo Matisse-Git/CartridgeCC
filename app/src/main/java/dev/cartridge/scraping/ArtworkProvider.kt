@@ -14,6 +14,6 @@ data class GameCandidate(val id: String, val title: String, val platform: String
 /** Providers return choices. Only explicit reviewed selections are accepted by the library. */
 interface ArtworkProvider {
     val name: String
-    suspend fun search(query: String, rom: File? = null): List<GameCandidate>
+    suspend fun search(query: String, rom: File? = null, system: dev.cartridge.domain.GameSystem = dev.cartridge.domain.GameSystem.GBA): List<GameCandidate>
     suspend fun image(candidate: ArtworkCandidate): ByteArray
 }

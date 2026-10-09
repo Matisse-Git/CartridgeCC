@@ -18,8 +18,14 @@ foreach(feature BUILD_QT BUILD_SDL BUILD_SHARED BUILD_STATIC BUILD_GL BUILD_GLES
 endforeach()
 set(DISABLE_DEPS ON CACHE BOOL "" FORCE)
 set(SKIP_LIBRARY ON CACHE BOOL "" FORCE)
-set(M_CORE_GB OFF CACHE BOOL "" FORCE)
+set(M_CORE_GB ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(mgba)
+# Compile the unchanged upstream frontend through an original RTC synchronization extension.
+get_target_property(cartridge_core_sources mgba_libretro SOURCES)
+list(REMOVE_ITEM cartridge_core_sources "${mgba_SOURCE_DIR}/src/platform/libretro/libretro.c")
+set_property(TARGET mgba_libretro PROPERTY SOURCES "${cartridge_core_sources}")
+configure_file(mgba_frontend.c.in "${CMAKE_CURRENT_BINARY_DIR}/cartridge_mgba_frontend.c" @ONLY)
+target_sources(mgba_libretro PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/cartridge_mgba_frontend.c")
 # Android packages native libraries whose filename begins with lib.
 set_target_properties(mgba_libretro PROPERTIES PREFIX "lib")
 target_link_options(mgba_libretro PRIVATE "-Wl,-z,max-page-size=16384")

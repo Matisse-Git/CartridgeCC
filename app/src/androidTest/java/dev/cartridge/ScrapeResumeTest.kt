@@ -26,7 +26,7 @@ class ScrapeResumeTest {
         override val name = "Original resumable fixture"
         val calls = mutableListOf<String>()
         var gate: CompletableDeferred<Unit>? = CompletableDeferred()
-        override suspend fun search(query: String, rom: File?): List<GameCandidate> {
+        override suspend fun search(query: String, rom: File?, system: dev.cartridge.domain.GameSystem): List<GameCandidate> {
             calls += query
             if (calls.size == 1) beforeFirstRequest()
             if (query.contains("two")) gate?.await()
@@ -67,7 +67,7 @@ class ScrapeResumeTest {
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame != null }
                 choose("probe-two.gba")
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame != null }
-                ui.onNodeWithTag("scrape").performClick(); ui.onNodeWithTag("scrape-action-1").performClick()
+                ui.onNodeWithTag("scrape").performClick(); ui.onNodeWithTag("scrape-action-2").performClick() // All games.
                 await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.current?.searched == true }
                 assertEquals(1, provider.calls.size) // Review is available before searching the second title.
                 ui.onNodeWithTag("scrape-action-0").performClick()

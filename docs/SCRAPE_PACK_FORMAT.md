@@ -50,7 +50,7 @@ Example manifest (replace ROM hash and image checksum; fictional data only):
 Supported metadata: title/year/developer/publisher/genre/description, each a list of up to 16 objects
 with value and optional source region/language. Media: support-texture (flat label), support-2D,
 box-2D, ss/screenshot, sstitle, wheel. Multiple game matches and regions remain choices. Box art cannot
-become a flat label implicitly. `assets: []`/`media: []` permit metadata-only packs. Currently GBA only.
+become a flat label implicitly. `assets: []`/`media: []` permit metadata-only packs. Platforms Game Boy Advance, Game Boy and Game Boy Color are supported; each candidate must match its existing game system.
 
 Limits: compressed stream 128 MiB, expanded total 256 MiB, 2,048 ZIP entries, 1-MiB manifest,
 1,024 declared assets, 1,000 game records, 16 matches/game, 64 media/match, 12 MiB/image,

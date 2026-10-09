@@ -7,10 +7,10 @@
 | M2 — Refinement | Polished mesh/PBR/lighting/motion, measured frame pacing and reduced motion | Implemented increment; owner review/sustained validation open: refined GLB/PBR, original studio IBL, receiving slot, phased motion, optional sound and full reduced motion; physical results in M2_PROGRESS |
 | M3 — Library | SAF directories, indexing, duplicates, details/favorites; scrape-pack import and single-title/console/all-library scraping with independent candidate selection | Active by owner request: directories/automatic incremental scans, details/local metadata, persistent favorites/sort/search and Running-only history implemented. Selected/missing-label scopes, saved region/language ranking, current-title-first review, fill-missing protection and persistent enrichment undo implemented; offline reviewed scrape packs implemented; large-library/grant/storage-failure validation remains open |
 | M4 — Layouts | Horizontal/vertical/grid reuse one data/selection/rendering system | Implemented; 37 host / 23 RP5 tests pass, nine-object grid presentation profiled; owner/sustained gates open (M4_PROGRESS) |
-| M5 — Consoles | Add one audited core/media format at a time, verified internally | Planned |
+| M5 — Consoles | Add one audited core/media format at a time, verified internally | GB/GBC implemented and focused RP5 native tests pass; scope and gates in M5_PROGRESS |
 | M6 — Environment | Optional HOME, onboarding, sleep/resume, backup and long-term stability | Planned |
 
-**Active task:** M5 audited additional systems, following the verified M4 shared layouts. Keep M1 longer stability/sleep/reboot and M2 artistic/sustained
+**Active task:** M6 console environment, after shared M4 layouts and audited M5 GB/GBC. Keep M1 longer stability/sleep/reboot and M2 artistic/sustained
 profiling gates open. See M3_PROGRESS and ADR 0009 for identity-preserving views, incremental
 indexing, metadata/details and history. M3_SCRAPE_REVIEW and ADR 0010 cover the faster current-title
 review, selected scopes, saved preferences, protected fill-missing and undo. The earlier deferred UX
