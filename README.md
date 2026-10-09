@@ -79,7 +79,7 @@ Old M0 assignments were transient and must be selected once in this version. Sav
 save-state slot per content hash persist across sessions. Battery bytes restore before the first
 emulated frame and checkpoint when changed every 15 seconds during play, on pause/state operations
 and ejection. A save warning remains visible until a successful retry; sudden termination can still
-lose changes since the latest completed checkpoint. Automatic full-state resume is not implemented.
+lose changes since the latest completed checkpoint. Automatic session checkpoints are separate from manual states; wake restores paused and cold launch offers Resume session.
 
 Press **Start / Folder** to import a GBA directory and its subfolders through SAF. Read permissions and
 multiple roots persist. New content hashes append; duplicates keep accepted
@@ -128,7 +128,7 @@ Insertion lifts, aligns and slides the cartridge into a small physical receiving
 ejection reverses it over 420 ms. Motion off bypasses both and snaps carousel selection. Optional
 original contact sound defaults off. Final manual art direction,
 disc media and HOME registration remain planned; all three collection layouts are implemented.
-Backgrounding ends the current session after saving RAM; full session sleep/resume comes later.
+Backgrounding saves a completed state and releases the current session. Same-Activity wake restores paused; cold launch offers Resume session in Tools or Console settings.
 
 ## M3 library controls
 
@@ -182,3 +182,5 @@ commercial licensing decision has been made by this feasibility work.
 M5 GB/GBC implementation and verification are documented in [M5_PROGRESS](docs/M5_PROGRESS.md) and ADR 0013.
 
 M6 version 13 adds first-run setup, Console settings (B → Collection or Tools), separate menu/gameplay controller choices, supported core options and optional Android HOME eligibility. Paused gameplay offers Settings and Controller. HOME is initially disabled; Android asks you to choose the default. See [M6_PROGRESS](docs/M6_PROGRESS.md).
+
+Version 14 adds checksum/core-bound session recovery and a real frozen pause frame; see M6_PROGRESS and ADR 0015.

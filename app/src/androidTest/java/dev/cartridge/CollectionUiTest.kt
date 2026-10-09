@@ -178,8 +178,8 @@ class CollectionUiTest {
             scenario.moveToState(Lifecycle.State.CREATED)
             await(scenario) { it.engine.status.value.state == SessionState.Idle && !it.coordinator.state.value.busy }
             scenario.moveToState(Lifecycle.State.RESUMED)
-            await(scenario) { it.coordinator.state.value.screen == CollectionScreen.Library && it.coordinator.state.value.rendererReady }
-            ui.tool("insert").performClick()
+            await(scenario) { it.engine.status.value.state == SessionState.Paused && !it.coordinator.state.value.busy }
+            ui.onNodeWithTag("menu-0").performClick()
             await(scenario) { it.engine.status.value.state == SessionState.Running && !it.coordinator.state.value.busy }
             scenario.recreate()
             await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }

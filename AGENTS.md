@@ -51,3 +51,5 @@
   physical/rights gates explicitly. Do not stop at a plan or mark untested milestones complete.
 - Cartridge v1 packs use exact existing ROM hashes, verified images and bounded generated staging paths.
   Never extract ZIP names directly or let local candidates fall back to network. Keep drafts separate.
+
+- SessionStore publishes a completed generation last; keep manual/battery saves separate. Restore requires a compatible core revision, size and hash. Key emulator hosts by view identity; native readiness requires real video callbacks. Pause-frame imagery must come from PixelCopy of actual gameplay, with no active emulator loop behind the menu. A cold Activity test is not a process-kill or reboot test.

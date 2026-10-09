@@ -1,7 +1,24 @@
 /* Original integration extension over the exact hash-pinned MPL-2.0 mGBA translation unit.
  * The fetched source stays unchanged. This file and build instructions form corresponding source.
  */
+#define retro_set_video_refresh cartridge_mgba_original_set_video_refresh
 #include "@mgba_SOURCE_DIR@/src/platform/libretro/libretro.c"
+#undef retro_set_video_refresh
+
+/* LibretroDroid may report FrameRendered after a timing step ran zero core frames. */
+static retro_video_refresh_t cartridge_video;
+static uint64_t cartridge_video_frames;
+static void cartridge_video_refresh(const void* data, unsigned width, unsigned height, size_t pitch) {
+    if (data) ++cartridge_video_frames;
+    cartridge_video(data, width, height, pitch);
+}
+RETRO_API void retro_set_video_refresh(retro_video_refresh_t callback) {
+    cartridge_video = callback;
+    cartridge_video_frames = 0;
+    cartridge_mgba_original_set_video_refresh(cartridge_video_refresh);
+}
+__attribute__((visibility("default")))
+uint64_t cartridge_mgba_video_frames(void) { return cartridge_video_frames; }
 
 /* A state restore temporarily masks the battery VFile. Commit its pending writeback
  * before the frontend copies SAVE_RAM; otherwise an immediate pause can save stale bytes.

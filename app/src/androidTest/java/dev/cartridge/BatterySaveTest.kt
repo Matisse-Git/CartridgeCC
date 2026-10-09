@@ -62,7 +62,8 @@ class BatterySaveTest {
         await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Running }
     }
     private fun pause(scenario: ActivityScenario<DebugCollectionActivity>) {
-        ui.onNodeWithTag("pause").performClick()
+        var paused = false; scenario.onActivity { paused = it.engine.status.value.state == SessionState.Paused }
+        if (!paused) ui.onNodeWithTag("pause").performClick()
         await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Paused }
     }
     private fun eject(scenario: ActivityScenario<DebugCollectionActivity>) {
@@ -74,6 +75,11 @@ class BatterySaveTest {
         ui.waitUntil(8_000) {
             val pixel = CompletableFuture<Int>()
             scenario.onActivity {
+                it.engine.frozenFrame.value?.let { frame ->
+                    if (it.engine.status.value.state == SessionState.Paused) {
+                        pixel.complete(frame.getPixel(frame.width / 2, frame.height / 2)); return@onActivity
+                    }
+                }
                 val view = checkNotNull(it.engine.surface.value)
                 val bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
                 val x = view.width / 2; val y = view.height / 2
@@ -107,7 +113,9 @@ class BatterySaveTest {
             it.moveToState(Lifecycle.State.CREATED)
             await(it) { it.engine.status.value.state == SessionState.Idle && !it.coordinator.state.value.busy }
             it.moveToState(Lifecycle.State.RESUMED)
-            await(it) { it.coordinator.state.value.rendererReady }
+            await(it) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Paused }
+            color(it, green = true)
+            eject(it) // Clear automatic session; subsequent cold boot proves battery data independently.
             insert(it); color(it, green = true)
             pause(it)
             val rejected = CompletableFuture<Boolean>()
@@ -141,7 +149,7 @@ class BatterySaveTest {
             assertTrue(save.mkdir()) // Only this unique test game's destination; never owner's saves.
             pause(it)
             it.onActivity { activity -> assertNotNull(activity.engine.status.value.saveWarning) }
-            ui.onNodeWithTag("message").assertTextContains("Battery save could not be written", substring = true)
+            ui.onNodeWithTag("message").assertTextContains("Save checkpoint could not be written", substring = true)
             assertTrue(save.isDirectory); assertTrue(save.delete())
             ui.onNodeWithTag("menu-0").performClick()
             await(it) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Running }

@@ -19,6 +19,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -28,6 +29,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -94,6 +97,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     private var noticeText by mutableStateOf("")
     private var noticeIndex = 0
     private lateinit var repository: CollectionRepository
+    private lateinit var sessionStore: SessionStore
     internal val collectionSurface get() = cartridgeSurface
     protected open fun createRepository(): CollectionRepository = RoomCollectionRepository(this)
     protected open fun createLabelStore(): LabelStore = LabelStore(File(filesDir, "labels"))
@@ -106,6 +110,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     }
     protected open fun presentationPreferences() = getPreferences(MODE_PRIVATE)
     protected open fun showFirstRunSetup() = true
+    protected open fun createSessionStore() = SessionStore(File(filesDir, "session-checkpoint"))
     private val menuItems = listOf("Resume", "Save state", "Load state", "Eject to collection", "Game settings", "Controller")
     private val inputFrames = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
@@ -126,7 +131,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
-        engine = LibretroEngine(this, lifecycleScope, coreOptions = { consoleSettings.coreOptions() })
+        sessionStore = createSessionStore()
+        engine = LibretroEngine(this, lifecycleScope, coreOptions = { consoleSettings.coreOptions() }, sessionStore = sessionStore)
         labelStore = createLabelStore()
         val preferences = presentationPreferences()
         consoleSettings = ConsolePreferences(preferences).read()
@@ -141,7 +147,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             override fun releaseEmulator() { emulatorHost?.release(); emulatorHost = null }
         }, lifecycleScope, preferences.getBoolean("reducedMotion", false), preferences.getBoolean("alternateShortcut", false),
             layout = runCatching { CollectionLayout.valueOf(preferences.getString("layout", "Horizontal")!!) }.getOrDefault(CollectionLayout.Horizontal),
-            onLayoutChanged = { layout -> preferences.edit { putString("layout", layout.name) }; if (::input.isInitialized) input.reset() })
+            onLayoutChanged = { layout -> preferences.edit { putString("layout", layout.name) }; if (::input.isInitialized) input.reset() }, sessionStore = sessionStore)
         scraper = ScrapeCoordinator(PackAwareProvider(createArtworkProvider(), packStore), repository, labelStore, File(filesDir, "roms"), lifecycleScope, createScrapeJournal(), createScrapePreferences(), choosePack = { choosePack?.invoke() }) { game, label ->
             if (coordinator.state.value.allGames.any { it.id == game.id }) coordinator.previewScrapedLabel(game, label)
             else { coordinator.notify("This game is no longer in the collection"); scraper.previewFinished() }
@@ -219,7 +225,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         ConsolePage.Setup -> listOf("Choose game folder", "Controller", "Continue to collection")
         ConsolePage.Settings -> listOf("Back", "Controller", "Game settings", if (coordinator.state.value.reducedMotion) "Motion: Off" else "Motion: On",
             if (soundEnabled) "Media sound: On" else "Media sound: Off", if (homeEnabled) "HOME candidate: On" else "HOME candidate: Off",
-            "Choose Android default home", "First-run setup", "About & licences")
+            "Choose Android default home", "First-run setup", "About & licences", "Resume saved session", "Discard saved session")
         ConsolePage.Controllers -> listOf("Back", if (consoleSettings.swapMenuButtons) "Menu select: B / back: A" else "Menu select: A / back: B",
             if (consoleSettings.swapGameButtons) "Gameplay A/B: Swapped" else "Gameplay A/B: Direct",
             if (consoleSettings.swapShoulders) "Gameplay L/R: Swapped" else "Gameplay L/R: Direct",
@@ -250,6 +256,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 6 -> try { HomeRegistration(this).apply { enable(true); homeEnabled = true }.requestIntent().let(::startActivity) }
                     catch (failure: Exception) { coordinator.notify("Android home settings unavailable: ${failure.message}") }
                 7 -> openConsole(ConsolePage.Setup); 8 -> openConsole(ConsolePage.Notices)
+                9 -> { consoleBack(); coordinator.resumeSavedSession() }
+                10 -> { consoleBack(); coordinator.discardResume() }
             }
             ConsolePage.Controllers -> when(index) {
                 0 -> consoleBack(); 1 -> changeConsole(consoleSettings.copy(swapMenuButtons = !consoleSettings.swapMenuButtons))
@@ -372,6 +380,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         val status by engine.status.collectAsStateWithLifecycle()
         val scrape by scraper.state.collectAsStateWithLifecycle()
         val emulator by engine.surface.collectAsStateWithLifecycle()
+        val frozenFrame by engine.frozenFrame.collectAsStateWithLifecycle()
         var glb by remember { mutableStateOf<CollectionAssets?>(null) }
         var toolsVisible by rememberSaveable { mutableStateOf(false) }
         LaunchedEffect(state.loaded) {
@@ -455,6 +464,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                                 TextButton(enabled = !state.busy && state.loaded, onClick = coordinator::openLibraryMenu, modifier = Modifier.testTag("collection-menu")) { Text("Collection") }
                                 TextButton(enabled = !state.busy && state.selectedGame != null, onClick = coordinator::details, modifier = Modifier.testTag("details")) { Text("Details") }
                                 TextButton(enabled = !state.busy, onClick = { openConsole(ConsolePage.Settings) }, modifier = Modifier.testTag("console-settings")) { Text("Settings") }
+                                if (state.resumeSession != null) TextButton(enabled = !state.busy, onClick = coordinator::resumeSavedSession,
+                                    modifier = Modifier.testTag("resume-session")) { Text("Resume session") }
                             }
                         }
                         if (state.scanning) TextButton(onClick = coordinator::cancelScan, modifier = Modifier.align(Alignment.Center).testTag("cancel-scan")) { Text("Cancel scan") }
@@ -491,11 +502,14 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                     }
                 } else if (state.screen == CollectionScreen.Emulator) {
                     emulator?.let { view ->
-                        AndroidView(modifier = Modifier.fillMaxSize(), factory = { EmulatorHost(view).also { emulatorHost = it } }, onRelease = { it.release() })
+                        key(view) {
+                            AndroidView(modifier = Modifier.fillMaxSize(), factory = { EmulatorHost(view).also { emulatorHost = it } }, onRelease = { it.release() })
+                        }
                     }
                     if (status.state == SessionState.Running) TextButton(onClick = coordinator::pause,
                         modifier = Modifier.align(Alignment.TopEnd).testTag("pause")) { Text("Menu") }
                     if (status.state == SessionState.Paused) {
+                        frozenFrame?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
                         Box(Modifier.fillMaxSize().background(Color(0xCE191817)), contentAlignment = Alignment.Center) {
                             Column(Modifier.width(280.dp)) {
                                 Text("Paused", fontSize = 25.sp, color = Color(0xFFE9E2D6), modifier = Modifier.padding(12.dp))

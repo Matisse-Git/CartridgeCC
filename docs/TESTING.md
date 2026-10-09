@@ -704,3 +704,9 @@ Version 12: both APKs build; 40 host tests, ten structural asset tests, lint (ze
 ## M6 setup/settings actual results — 2026-10-10
 
 Version 13 builds both APKs with 42 host tests and lint passing. Environment suite: OK (2 tests), 6.381 s on the connected RP5. Setup/recreation, persistent independent mappings, native GB button behavior and paused/startup core variables, notices, and optional HOME resolver eligibility pass. The test restores the previous alias setting and never launches the chooser or changes the default role. Default HOME selection and reboot require an owner choice. Sleep/backup/stability work is still active.
+
+## M6 recovery actual results — 2026-10-10
+
+Version 14 builds both APKs with 44 host tests and lint passing. Focused Recovery suite: OK (1 test), 8.366 seconds. It proves original GB execution/frame identity after synthetic background, actual Android screen sleep/wake (PowerManager interactive false), paused native output capture, cold Activity launch and integrity-failure recovery/discard. The device is awakened in finally. This is not a reboot or abrupt-process-death result. It found/fixed released AndroidView reuse, upstream timing-only FrameRendered readiness and paused SurfaceView buffer loss. Full-state generations have unit coverage for replacement, invalid input preservation, corruption, path and core-revision rejection.
+
+2026-10-10, M6 recovery v14: full RP5 suite passed all 28 tests with `-Cycles 50`, 182.603 seconds. Focused recovery passed in 8.366 seconds with real screen sleep/wake. Host tests: 44; lint and both APKs pass. Abrupt process termination, reboot and sustained stability remain separate tests.

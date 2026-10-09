@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import java.io.File
 
 data class EngineStatus(val state: SessionState = SessionState.Idle, val error: String? = null, val saveWarning: String? = null)
-data class GameRequest(val rom: File, val id: String, val system: GameSystem = GameSystem.GBA)
+data class GameRequest(val rom: File, val id: String, val system: GameSystem = GameSystem.GBA, val resumeState: ByteArray? = null)
 
 interface EmulationEngine {
     val status: StateFlow<EngineStatus>
@@ -20,4 +20,5 @@ interface EmulationEngine {
     suspend fun loadState()
     suspend fun persistSaveRam()
     suspend fun configure(options: Map<String, String>)
+    suspend fun checkpointSession() = Unit
 }

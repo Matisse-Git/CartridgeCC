@@ -256,3 +256,7 @@ Room schema 7 and GameSystem carry GBA/GB/GBC identities through importer, cache
 ## M6 shell preferences
 
 ConsolePreferences carries supported controller and core choices independently of Room identity. ControllerRouter detects physical shortcuts before gameplay remapping. Core variables initialize through GLRetroViewData and current updates use the session mutex/GL queue. ConsolePanel pauses collection rendering, never emulation behind an active panel. HomeRegistration only enables eligibility and creates the Android-owned role/settings intent; MainActivity is singleTask. Notice assets derive from versioned docs/licenses at build time. See ADR 0014.
+
+## M6 session recovery
+
+SessionStore publishes checksum/version-bound completed state generations separately from manual saves. LibretroEngine checkpoints state after battery/RTC and restores before the first actual core video frames; JNI video callback count supplements pinned lifecycle setup barriers. The coordinator serializes background checkpoint/stop/release and fresh-view paused restoration. Cold startup offers recovery from the collection. The AndroidView is keyed by GLRetroView identity, preventing a stopped Compose collector from reusing a released host. Actual presented pixels are retained as one optional pause bitmap while Android’s paused surface releases buffers. See ADR 0015.

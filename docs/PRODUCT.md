@@ -180,3 +180,7 @@ SAF imports, per-game templates and API scraping now support GBA, GB and GBC. Ch
 ## M6 console settings
 
 An empty first collection has skippable setup; existing owners go straight to their games. Controller and core settings are app-owned and persist. Menu/gameplay A/B choices are independent. Optional HOME mode uses Android’s default chooser with an initially disabled alias. Matching licence notices are visible in-app. See M6_PROGRESS for implemented behavior and remaining sleep/backup/stability work.
+
+## M6 session recovery
+
+Sleep/wake restores the game paused, with an actual frozen gameplay frame. Cold opening still enters the collection and offers Resume session. Save state and the automatic session are independent. Ejection clears the automatic session after successful save/stop; Discard keeps battery/manual saves. A failed or incompatible checkpoint reports a concise error and returns to the collection. Sudden termination can lose progress since the last completed checkpoint.

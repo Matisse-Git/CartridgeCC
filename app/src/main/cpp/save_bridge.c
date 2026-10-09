@@ -2,6 +2,7 @@
 #include <dlfcn.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 enum { SAVE_RAM = 0, RTC = 1, MAX_CART_SAVE = 128 * 1024 }; // Public Libretro memory ABI.
 typedef struct { void* handle; void* bytes; size_t size; } CoreMemory;
@@ -14,6 +15,22 @@ static void fail(JNIEnv* env, const char* message) {
 }
 
 // GL-thread only. NOLOAD references the existing core; never initializes a second instance.
+JNIEXPORT jlong JNICALL
+Java_dev_cartridge_emulation_SaveBridge_frameCount(JNIEnv* env, jobject receiver, jstring path) {
+    (void)receiver;
+    if (!path) { fail(env, "Missing core path"); return 0; }
+    const char* utf = (*env)->GetStringUTFChars(env, path, NULL);
+    if (!utf) return 0;
+    void* handle = dlopen(utf, RTLD_NOW | RTLD_NOLOAD);
+    (*env)->ReleaseStringUTFChars(env, path, utf);
+    if (!handle) { fail(env, "The emulator core is not loaded"); return 0; }
+    uint64_t (*count)(void) = (uint64_t (*)(void))dlsym(handle, "cartridge_mgba_video_frames");
+    jlong frames = count ? (jlong)count() : 0;
+    if (!count) fail(env, "The core cannot report video readiness");
+    dlclose(handle);
+    return frames;
+}
+
 static bool openMemory(JNIEnv* env, jstring path, CoreMemory* memory, unsigned kind) {
     if (kind != SAVE_RAM && kind != RTC) { fail(env, "Unsupported cartridge memory"); return false; }
     if (!path) { fail(env, "Missing core path"); return false; }

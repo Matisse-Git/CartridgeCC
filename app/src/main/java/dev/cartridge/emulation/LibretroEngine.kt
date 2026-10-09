@@ -1,9 +1,12 @@
 package dev.cartridge.emulation
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
+import android.view.PixelCopy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -14,6 +17,7 @@ import com.swordfish.libretrodroid.Variable
 import dev.cartridge.domain.SessionMachine
 import dev.cartridge.domain.SessionState
 import dev.cartridge.storage.SaveStore
+import dev.cartridge.storage.SessionStore
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,7 +30,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** All state/lifecycle mutations run on Main. JNI save calls run on the view's GL thread. */
 class LibretroEngine(private val context: Context, private val scope: CoroutineScope,
     private val checkpointIntervalMs: Long = 15_000,
-    private val coreOptions: () -> Map<String, String> = { emptyMap() }) : EmulationEngine {
+    private val coreOptions: () -> Map<String, String> = { emptyMap() },
+    private val sessionStore: SessionStore? = null) : EmulationEngine {
     private class SessionOwner : LifecycleOwner {
         val registry = LifecycleRegistry(this)
         override val lifecycle: Lifecycle get() = registry
@@ -37,6 +42,8 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     override val status = mutableStatus.asStateFlow()
     private val mutableSurface = MutableStateFlow<GLRetroView?>(null)
     val surface = mutableSurface.asStateFlow()
+    private val mutableFrozenFrame = MutableStateFlow<Bitmap?>(null)
+    val frozenFrame = mutableFrozenFrame.asStateFlow()
     private val saves = SaveStore(File(context.filesDir, "saves"))
     private var owner: SessionOwner? = null
     private var game: GameRequest? = null
@@ -90,7 +97,9 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 eventJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
                     view.getGLRetroEvents().collect { event ->
                         if (event == GLRetroView.GLRetroEvents.SurfaceCreated) initialized.complete(Unit)
-                        if (event == GLRetroView.GLRetroEvents.FrameRendered) {
+                        // Two produced frames let the restored video pipeline settle before pausing
+                        // a new surface; an upstream timing-only draw is not a produced frame.
+                        if (event == GLRetroView.GLRetroEvents.FrameRendered && !ready.isCompleted && onGl { SaveBridge.frameCount(corePath) >= 2 }) {
                             coreReady = true
                             ready.complete(Unit)
                         }
@@ -138,6 +147,10 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 if (savedRtc != null && savedRtc.isNotEmpty()) {
                     check(onGl { SaveBridge.restore(corePath, savedRtc, 1) }) { "The core rejected the cartridge clock save. The original file was kept." }
                 }
+                game.resumeState?.let { bytes ->
+                    require(bytes.isNotEmpty() && bytes.size <= SessionStore.MAX_STATE) { "The resume state is invalid" }
+                    check(onGl { unserializeState(bytes, false) }) { "The core rejected the saved session" }
+                }
                 session.registry.currentState = Lifecycle.State.RESUMED
                 withTimeout(15_000) { ready.await() }
                 transition(SessionState.Running)
@@ -154,16 +167,35 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
         mutex.withLock {
             if (machine.state != SessionState.Running) return@withLock
             releaseInput()
+            // GLSurfaceView releases its buffers on pause. Retain an actual presented frame for
+            // the custom menu, rather than keeping an active emulator render loop behind it.
+            mutableFrozenFrame.value = capturePresentedFrame()
             // ON_PAUSE waits for GLSurfaceView's GL thread before pausing native audio.
             owner!!.registry.currentState = Lifecycle.State.STARTED
             transition(SessionState.Paused)
             checkpointWithWarning()
         }
     }
+    private suspend fun capturePresentedFrame(): Bitmap? {
+        val view = mutableSurface.value ?: return null
+        if (view.width <= 0 || view.height <= 0 || !view.isShown) return null
+        return withTimeoutOrNull(300) {
+            while (true) {
+                val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+                val copied = CompletableDeferred<Int>()
+                PixelCopy.request(view, Rect(0, 0, view.width, view.height), bitmap,
+                    { copied.complete(it) }, Handler(Looper.getMainLooper()))
+                if (copied.await() == PixelCopy.SUCCESS) return@withTimeoutOrNull bitmap
+                bitmap.recycle(); delay(16)
+            }
+            @Suppress("UNREACHABLE_CODE") null
+        }
+    }
     override suspend fun resume() = withContext(Dispatchers.Main.immediate) {
         mutex.withLock {
             if (machine.state != SessionState.Paused) return@withLock
             owner!!.registry.currentState = Lifecycle.State.RESUMED
+            mutableFrozenFrame.value = null
             transition(SessionState.Running)
         }
     }
@@ -217,12 +249,14 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
         }
     }
     override suspend fun saveState() = pausedOperation {
+        val current = checkNotNull(game)
         val bytes = onGl { SaveBridge.captureState(corePath) }
-        withContext(Dispatchers.IO) { saves.write(game!!.id, "state", bytes) }
+        withContext(NonCancellable + Dispatchers.IO) { saves.write(current.id, "state", bytes) }
         checkpointWithWarning()
     }
     override suspend fun loadState() = pausedOperation {
-        val bytes = withContext(Dispatchers.IO) { saves.read(game!!.id, "state") }
+        val current = checkNotNull(game)
+        val bytes = withContext(Dispatchers.IO) { saves.read(current.id, "state") }
             ?: error("There is no saved state for this game")
         check(onGl { unserializeState(bytes, false) }) { "The core rejected this saved state" }
         checkpointWithWarning()
@@ -230,25 +264,33 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     override suspend fun persistSaveRam() = pausedOperation {
         writeBatterySave()
     }
+    override suspend fun checkpointSession() = pausedOperation { writeBatterySave(); writeSession() }
+    private suspend fun writeSession() {
+        val store = sessionStore ?: return
+        val current = checkNotNull(game)
+        val bytes = onGl { SaveBridge.captureState(corePath) }
+        withContext(NonCancellable + Dispatchers.IO) { store.write(current.id, current.system, bytes) }
+    }
     /** Called under the session mutex; capture happens between frames on the core's own GL thread. */
     private suspend fun writeBatterySave() {
+        val current = checkNotNull(game)
         val (bytes, rtc) = onGl { SaveBridge.read(corePath) to SaveBridge.read(corePath, 1) }
         if (bytes.isNotEmpty() && lastWrittenRam?.contentEquals(bytes) != true) {
-            withContext(Dispatchers.IO) { saves.write(game!!.id, "sram", bytes) }
+            withContext(NonCancellable + Dispatchers.IO) { saves.write(current.id, "sram", bytes) }
             lastWrittenRam = bytes
         }
         if (rtc.isNotEmpty() && lastWrittenRtc?.contentEquals(rtc) != true) {
-            withContext(Dispatchers.IO) { saves.write(game!!.id, "rtc", rtc) }
+            withContext(NonCancellable + Dispatchers.IO) { saves.write(current.id, "rtc", rtc) }
             lastWrittenRtc = rtc
         }
         mutableStatus.value = status.value.copy(saveWarning = null)
     }
     private suspend fun checkpointWithWarning() {
-        try { writeBatterySave() }
+        try { writeBatterySave(); writeSession() }
         catch (failure: TimeoutCancellationException) { throw failure }
         catch (failure: CancellationException) { throw failure }
         catch (failure: Exception) {
-            mutableStatus.value = status.value.copy(saveWarning = "Battery save could not be written: ${failure.message}. Eject to retry.")
+            mutableStatus.value = status.value.copy(saveWarning = "Save checkpoint could not be written: ${failure.message}. Pause or eject to retry.")
         }
     }
     private fun startCheckpoints() {
@@ -289,8 +331,10 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
             it.registry.currentState = Lifecycle.State.DESTROYED
         }
         mutableSurface.value = null
+        mutableFrozenFrame.value = null
         owner = null
         coreReady = false
+        game = null; lastWrittenRam = null; lastWrittenRtc = null
         if (ownsNative) nativeClaim.set(false)
         ownsNative = false
     }

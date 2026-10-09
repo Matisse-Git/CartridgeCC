@@ -6,6 +6,8 @@ import dev.cartridge.domain.SessionState
 import dev.cartridge.domain.GameSystem
 import dev.cartridge.emulation.EmulationEngine
 import dev.cartridge.library.*
+import dev.cartridge.storage.ResumeSession
+import dev.cartridge.storage.SessionStore
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,6 +39,7 @@ data class CollectionState(
     val historyWarning: String? = null,
     val lastLabelAppliedTo: String? = null,
     val layout: CollectionLayout = CollectionLayout.Horizontal,
+    val resumeSession: ResumeSession? = null,
 ) {
     val selectedGame get() = slots[selection.index]
     val title get() = selectedGame?.title ?: if (allGames.isNotEmpty()) "No matching games" else "Your collection is empty"
@@ -64,6 +67,7 @@ class CollectionCoordinator(
     private val onLayoutChanged: (CollectionLayout) -> Unit = {},
     private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
     private val wallMillis: () -> Long = System::currentTimeMillis,
+    private val sessionStore: SessionStore? = null,
 ) {
     private val mutableState = MutableStateFlow(CollectionState(reducedMotion = reducedMotion, alternateShortcut = alternateShortcut, layout = layout))
     val state = mutableState.asStateFlow()
@@ -85,6 +89,7 @@ class CollectionCoordinator(
     // A filtered-out scrape target is projected only for the draft. Never persist a temporary query
     // or selection: a process death during preview must leave the user's collection view intact.
     private var previewGameId: String? = null
+    private var resumeAfterBackground = false
 
     init {
         observers += scope.launch {
@@ -92,6 +97,7 @@ class CollectionCoordinator(
                 val initial = repository.initialize()
                 applySnapshot(initial, forceFocus = true)
                 mutableState.value = state.value.copy(loaded = true)
+                readResume()
                 repository.snapshots.collect { snapshot ->
                     canonical = snapshot
                     if (state.value.screen in setOf(CollectionScreen.Library, CollectionScreen.LibraryMenu, CollectionScreen.Details)) applySnapshot(snapshot)
@@ -113,6 +119,34 @@ class CollectionCoordinator(
                     runAction { eject(status.error, animate = false) }
                 }
             }
+        }
+    }
+    private suspend fun readResume() {
+        val store = sessionStore ?: return
+        try { mutableState.value = state.value.copy(resumeSession = withContext(Dispatchers.IO) { store.available() }) }
+        catch (failure: Exception) { if (failure is CancellationException) throw failure; notify("Saved session unavailable: ${failure.message}. Discard it in Console settings.") }
+    }
+    fun discardResume() {
+        if (state.value.screen != CollectionScreen.Library) return
+        runAction { withContext(Dispatchers.IO) { sessionStore?.clear() }; mutableState.value = state.value.copy(resumeSession = null); notify("Saved session discarded; battery and manual saves kept") }
+    }
+    fun resumeSavedSession() {
+        val saved = state.value.resumeSession ?: return
+        if (!foreground || state.value.screen != CollectionScreen.Library || state.value.busy || !state.value.loaded) return
+        val game = state.value.allGames.firstOrNull { it.id == saved.id && it.system == saved.system }
+            ?: return notify("The saved game's library entry is missing. Restore the entry or discard this session.")
+        runAction(isLaunch = true) {
+            val bytes = withContext(Dispatchers.IO) { checkNotNull(sessionStore).read(saved) }
+            val request = repository.gameRequest(game).copy(resumeState = bytes)
+            previewGameId = game.id; applySnapshot(canonical)
+            mutableState.value = state.value.copy(screen = CollectionScreen.Handoff, rendererReady = false)
+            renderers.releaseLibrary(); mutableState.value = state.value.copy(screen = CollectionScreen.Emulator, menuIndex = 0)
+            playingId = game.id
+            engine.prepare(request)
+            check(engine.status.value.state == SessionState.Running) { engine.status.value.error ?: "The saved session did not start" }
+            engine.pause()
+            readResume()
+            notify("Session restored")
         }
     }
     private fun applySnapshot(snapshot: LibrarySnapshot, forceFocus: Boolean = false) {
@@ -425,7 +459,12 @@ class CollectionCoordinator(
         val hadSession = state.value.screen == CollectionScreen.Emulator
         playJob?.cancel(); savePlay(false); playActive = false
         engine.stop()
+        if (sessionStore != null && message == null && animate && engine.status.value.state == SessionState.Idle) {
+            withContext(NonCancellable + Dispatchers.IO) { sessionStore.clear() }
+            mutableState.value = state.value.copy(resumeSession = null)
+        }
         playingId = null
+        previewGameId = null
         renderers.releaseEmulator()
         renderers.releaseLibrary()
         val failure = engine.status.value.error ?: message
@@ -436,7 +475,16 @@ class CollectionCoordinator(
         if (shouldAnimate) { delay(dev.cartridge.domain.MediaMotion.EJECT_MS.toLong()); mutableState.value = state.value.copy(screen = CollectionScreen.Library) }
         refreshLibrary()
     }
-    fun foreground() { foreground = true }
+    fun foreground() {
+        foreground = true
+        scope.launch {
+            backgroundJob?.join()
+            if (resumeAfterBackground && foreground && !destroyed) {
+                resumeAfterBackground = false
+                resumeSavedSession()
+            }
+        }
+    }
     fun background() {
         foreground = false
         if (destroyed || backgroundJob?.isActive == true) return
@@ -446,7 +494,26 @@ class CollectionCoordinator(
             pending?.join() // Complete writes; do not cancel a user's state save midway through ejection.
             if (!destroyed && (engine.status.value.state != SessionState.Idle || state.value.screen == CollectionScreen.Emulator)) {
                 mutableState.value = state.value.copy(busy = true)
-                try { eject("Session ended when the app left the foreground.", animate = false) }
+                try {
+                    if (sessionStore == null) eject("Session ended when the app left the foreground.", animate = false)
+                    else {
+                        var checkpointFailure: Exception? = null
+                        try { engine.pause(); engine.checkpointSession() }
+                        catch (failure: Exception) { if (failure is CancellationException) throw failure; checkpointFailure = failure }
+                        playJob?.cancel(); savePlay(false); playActive = false
+                        engine.stop(); playingId = null
+                        if (engine.status.value.state == SessionState.Error) {
+                            checkpointFailure = IllegalStateException(engine.status.value.error)
+                            engine.stop()
+                        }
+                        renderers.releaseEmulator(); renderers.releaseLibrary()
+                        mutableState.value = state.value.copy(screen = CollectionScreen.Library, rendererReady = false,
+                            viewportGeneration = state.value.viewportGeneration + 1,
+                            message = checkpointFailure?.let { "Session checkpoint failed: ${it.message}" })
+                        readResume()
+                        resumeAfterBackground = checkpointFailure == null && state.value.resumeSession != null
+                    }
+                }
                 finally { if (!destroyed) mutableState.value = state.value.copy(busy = false) }
             }
         }

@@ -37,3 +37,13 @@ Sleep/recovery, backup/restore and sustained stability are the next increments; 
 Platform references inspected 2026-10-10:
 [RoleManager](https://developer.android.com/reference/android/app/role/RoleManager),
 [Activity lifecycle](https://developer.android.com/guide/components/activities/activity-lifecycle).
+
+## Session recovery — version 14
+
+Automatic full states now checkpoint alongside battery/RTC saves every 15 seconds, on pause and before background shutdown. Completed generation publication is atomic and validates game/system, integration revision, length and SHA-256. Same-Activity wake creates a fresh emulator surface and restores paused. Cold launch opens the collection with Tools → Resume session, also available in Console settings. Manual ejection clears the automatic checkpoint after a successful stop; Discard keeps manual/battery saves. Failed recovery is visible and preserves the library and previous files.
+
+Two wake incompatibilities were fixed: a stopped Compose collector could skip the Library screen and reuse a released host, so the emulator view is keyed by identity. Upstream FrameRendered can be emitted without a core frame; the native wrapper counts real non-null video callbacks and preparation waits for two. The paused Android GL surface discards buffers, so the custom menu retains an actual PixelCopy frame instead of running an emulator loop behind it. Snapshot capture is bounded and omitted if the window is already hidden.
+
+Both APKs, 44 host tests and lint pass. The focused recovery test passes on RP5 in 8.366 seconds, including actual KEYCODE_SLEEP/WAKEUP with screen-interactive verification, same-Activity frozen pixels, cold Activity launch, and corrupt-state rejection/discard. Earlier test timing included ActivityScenario’s 45-second finish waits for stopped Activities; closing from its resumed state avoids that test-harness delay without dropping lifecycle assertions. A cold Activity launch is not claimed as a device reboot or abrupt process-death test. Loss since the last completed checkpoint remains possible on sudden termination. See ADR 0015.
+
+Full RP5 regression also passed: 28 tests, including 50 handoffs, in 182.603 seconds. This verifies the recovery increment together with the existing library, scraper, renderer and internal GBA/GB/GBC tests; it does not establish a long-duration memory plateau.

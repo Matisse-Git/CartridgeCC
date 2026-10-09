@@ -8,4 +8,5 @@ import androidx.annotation.Keep
     external fun read(corePath: String, memoryId: Int = 0): ByteArray
     external fun restore(corePath: String, bytes: ByteArray, memoryId: Int = 0): Boolean
     external fun captureState(corePath: String): ByteArray
+    external fun frameCount(corePath: String): Long
 }
