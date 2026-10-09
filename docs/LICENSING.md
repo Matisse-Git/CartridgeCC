@@ -106,3 +106,5 @@ M5 enables GB/GBC source in the same hash-pinned MPL-2.0 mGBA 0.10.5 archive; de
 M6 setup/controller/core/HOME code adds no dependency. The APK now includes the matching repository licence files via a reproducible Sync task and an in-app reader. Source/relinking and full transitive notice audit remain release gates; this does not assign a project licence or imply that a private debug build is ready for public distribution.
 
 M6 recovery extends the original native wrapper with a narrowly scoped video callback counter over the unchanged hash-pinned mGBA translation unit. Corresponding source includes this wrapper/bridge/build change. SessionStore, lifecycle and pause-frame code are original; Android PixelCopy/Bitmap/PowerManager and Java atomic-file APIs add no third-party dependency. Actual diagnostic frame captures are private and generated from original homebrew, not bundled commercial images.
+
+Backup adds no third-party dependency. Accepted user/provider artwork stays private in an explicitly exported archive; exporting does not grant redistribution rights. Notice/licensing and complete-source release gates remain in force.

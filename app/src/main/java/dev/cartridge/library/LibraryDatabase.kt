@@ -61,6 +61,9 @@ data class SlotRow(val slot: Int, val selectedSlot: Int, val id: String?, val ti
 
 @Dao
 interface LibraryDao {
+    @Query("SELECT * FROM games ORDER BY id") suspend fun allGames(): List<GameRecord>
+    @Query("SELECT * FROM collection_state WHERE singleton = 0") suspend fun collectionRecord(): CollectionRecord?
+    @Update suspend fun updateGame(game: GameRecord)
     @Query("SELECT gameId FROM removed_games") suspend fun removedIds(): List<String>
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun hide(game: RemovedGameRecord)
     @Query("DELETE FROM removed_games WHERE gameId = :id") suspend fun unhide(id: String)

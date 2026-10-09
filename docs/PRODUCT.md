@@ -184,3 +184,5 @@ An empty first collection has skippable setup; existing owners go straight to th
 ## M6 session recovery
 
 Sleep/wake restores the game paused, with an actual frozen gameplay frame. Cold opening still enters the collection and offers Resume session. Save state and the automatic session are independent. Ejection clears the automatic session after successful save/stop; Discard keeps battery/manual saves. A failed or incompatible checkpoint reports a concise error and returns to the collection. Sudden termination can lose progress since the last completed checkpoint.
+
+Console settings offers Export backup / Restore backup. Review counts and opt into settings when needed; existing collection choices/saves win. ROMs are excluded, so folder permissions must be reauthorized after a device transfer. See BACKUP_FORMAT.

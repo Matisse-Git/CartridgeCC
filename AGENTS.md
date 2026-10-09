@@ -53,3 +53,5 @@
   Never extract ZIP names directly or let local candidates fall back to network. Keep drafts separate.
 
 - SessionStore publishes a completed generation last; keep manual/battery saves separate. Restore requires a compatible core revision, size and hash. Key emulator hosts by view identity; native readiness requires real video callbacks. Pause-frame imagery must come from PixelCopy of actual gameplay, with no active emulator loop behind the menu. A cold Activity test is not a process-kill or reboot test.
+
+- Backup archives contain only declared bounded records/images/saves; never extract ZIP names directly. Preserve existing files and choices during merge, require explicit settings opt-in, and exclude ROMs, roles, grants and credentials. Do not claim Room and filesystem commits are one atomic transaction.

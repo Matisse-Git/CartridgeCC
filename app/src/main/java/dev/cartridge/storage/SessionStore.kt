@@ -59,6 +59,9 @@ class SessionStore(private val directory: File) {
         if (manifest.exists()) check(manifest.delete()) { "Cannot discard the saved session" }
         directory.listFiles()?.filter { it.name.matches(STATE_NAME) }?.forEach { it.delete() }
     }
+    fun writeMissing(session: ResumeSession, bytes: ByteArray): Boolean = synchronized(lock) {
+        if (manifest.exists()) false else { write(session.id, session.system, bytes, session.savedAt); true }
+    }
     companion object {
         const val CORE = "mgba-0.10.5-cartridge-memory-2"
         const val MAX_STATE = 16 * 1024 * 1024

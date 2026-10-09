@@ -47,3 +47,9 @@ Two wake incompatibilities were fixed: a stopped Compose collector could skip th
 Both APKs, 44 host tests and lint pass. The focused recovery test passes on RP5 in 8.366 seconds, including actual KEYCODE_SLEEP/WAKEUP with screen-interactive verification, same-Activity frozen pixels, cold Activity launch, and corrupt-state rejection/discard. Earlier test timing included ActivityScenario’s 45-second finish waits for stopped Activities; closing from its resumed state avoids that test-harness delay without dropping lifecycle assertions. A cold Activity launch is not claimed as a device reboot or abrupt process-death test. Loss since the last completed checkpoint remains possible on sudden termination. See ADR 0015.
 
 Full RP5 regression also passed: 28 tests, including 50 handoffs, in 182.603 seconds. This verifies the recovery increment together with the existing library, scraper, renderer and internal GBA/GB/GBC tests; it does not establish a long-duration memory plateau.
+
+## Portable backup — version 15
+
+Console settings now exports and reviews/restores bounded ROM-free ZIP backups through SAF. Logical Room records, original accepted images/provenance, history/favorites/removal exclusions, whitelisted preferences, battery/RTC/manual saves and a compatible completed session are included. Merge preserves existing choices and save files; settings require opt-in. See BACKUP_FORMAT and ADR 0016 for bounds, transfer/reauthorization and failure behavior.
+
+Both APKs, 44 host tests and lint pass. Three focused RP5 backup tests pass in 3.394 seconds, including the actual console panel, document callbacks, recreation and tampered archive rejection. Abrupt process death and sustained operation are the next validation increment.

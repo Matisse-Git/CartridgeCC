@@ -29,6 +29,10 @@ class SaveStore(private val directory: File) {
             } finally { temporary.delete() }
         }
     }
+    /** Append only: a merge must never replace an existing save, including an invalid one. */
+    fun writeMissing(id: String, kind: String, bytes: ByteArray): Boolean = synchronized(lock) {
+        if (file(id, kind).exists()) false else { write(id, kind, bytes); true }
+    }
     fun read(id: String, kind: String): ByteArray? = synchronized(lock) {
         val source = file(id, kind)
         if (!source.exists()) return@synchronized null

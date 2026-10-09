@@ -2,7 +2,7 @@ param(
     [string]$Sdk = (Join-Path $PSScriptRoot '../.tools/sdk'),
     [string]$Serial,
     [ValidateRange(1, 50)][int]$Cycles = 3,
-    [ValidateSet('Surface', 'Collection', 'Scrape', 'Library', 'Battery', 'Render', 'Manage', 'Review', 'Pack', 'Layout', 'Systems', 'Environment', 'Recovery', 'Live', 'All')][string]$Suite = 'Surface'
+    [ValidateSet('Surface', 'Collection', 'Scrape', 'Library', 'Battery', 'Render', 'Manage', 'Review', 'Pack', 'Layout', 'Systems', 'Environment', 'Recovery', 'Backup', 'Live', 'All')][string]$Suite = 'Surface'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -58,10 +58,11 @@ try {
         'Systems' { 'dev.cartridge.AdditionalSystemsTest' }
         'Environment' { 'dev.cartridge.ConsoleEnvironmentTest' }
         'Recovery' { 'dev.cartridge.SessionRecoveryTest' }
+        'Backup' { 'dev.cartridge.BackupDeviceTest' }
         'Live' { 'dev.cartridge.ProviderLiveTest' }
-        'All' { 'dev.cartridge.SurfaceHandoffTest,dev.cartridge.CollectionUiTest,dev.cartridge.ProviderContractTest,dev.cartridge.ScrapeUiTest,dev.cartridge.LibraryGrowthTest,dev.cartridge.ScrapeResumeTest,dev.cartridge.BatterySaveTest,dev.cartridge.RenderRefinementTest,dev.cartridge.RenderPacingTest,dev.cartridge.LibraryManagementTest,dev.cartridge.ScrapeReviewTest,dev.cartridge.ScrapePackTest,dev.cartridge.CollectionLayoutDeviceTest,dev.cartridge.AdditionalSystemsTest,dev.cartridge.ConsoleEnvironmentTest,dev.cartridge.SessionRecoveryTest' }
+        'All' { 'dev.cartridge.SurfaceHandoffTest,dev.cartridge.CollectionUiTest,dev.cartridge.ProviderContractTest,dev.cartridge.ScrapeUiTest,dev.cartridge.LibraryGrowthTest,dev.cartridge.ScrapeResumeTest,dev.cartridge.BatterySaveTest,dev.cartridge.RenderRefinementTest,dev.cartridge.RenderPacingTest,dev.cartridge.LibraryManagementTest,dev.cartridge.ScrapeReviewTest,dev.cartridge.ScrapePackTest,dev.cartridge.CollectionLayoutDeviceTest,dev.cartridge.AdditionalSystemsTest,dev.cartridge.ConsoleEnvironmentTest,dev.cartridge.SessionRecoveryTest,dev.cartridge.BackupDeviceTest' }
     }
-    $expectedTests = switch ($Suite) { 'Surface' { 1 }; 'Collection' { 2 }; 'Scrape' { 5 }; 'Library' { 4 }; 'Battery' { 2 }; 'Render' { 2 }; 'Manage' { 2 }; 'Review' { 4 }; 'Pack' { 2 }; 'Layout' { 2 }; 'Systems' { 2 }; 'Environment' { 2 }; 'Recovery' { 1 }; 'Live' { 1 }; 'All' { 28 } }
+    $expectedTests = switch ($Suite) { 'Surface' { 1 }; 'Collection' { 2 }; 'Scrape' { 5 }; 'Library' { 4 }; 'Battery' { 2 }; 'Render' { 2 }; 'Manage' { 2 }; 'Review' { 4 }; 'Pack' { 2 }; 'Layout' { 2 }; 'Systems' { 2 }; 'Environment' { 2 }; 'Recovery' { 1 }; 'Backup' { 3 }; 'Live' { 1 }; 'All' { 31 } }
     $result = Invoke-DeviceAdb -Arguments @('shell', 'am', 'instrument', '-w', '-r', '-e', 'cycles', "$Cycles", '-e', 'liveProvider', "$($Suite -eq 'Live')".ToLowerInvariant(), '-e', 'class',
         $testClass, 'dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner')
     $result | Set-Content -LiteralPath '.tools/device-test.log'

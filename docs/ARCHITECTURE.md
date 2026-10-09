@@ -260,3 +260,5 @@ ConsolePreferences carries supported controller and core choices independently o
 ## M6 session recovery
 
 SessionStore publishes checksum/version-bound completed state generations separately from manual saves. LibretroEngine checkpoints state after battery/RTC and restores before the first actual core video frames; JNI video callback count supplements pinned lifecycle setup barriers. The coordinator serializes background checkpoint/stop/release and fresh-view paused restoration. Cold startup offers recovery from the collection. The AndroidView is keyed by GLRetroView identity, preventing a stopped Compose collector from reusing a released host. Actual presented pixels are retained as one optional pause bitmap while Android’s paused surface releases buffers. See ADR 0015.
+
+M6 portable backup: logical records and declared checksummed blobs, read-only staging/review, append-only save merge and a Room transaction are specified in BACKUP_FORMAT and ADR 0016. No ROM bytes or Android grants/default roles are exported; settings restore is explicit.

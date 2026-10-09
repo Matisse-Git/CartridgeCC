@@ -184,3 +184,5 @@ M5 GB/GBC implementation and verification are documented in [M5_PROGRESS](docs/M
 M6 version 13 adds first-run setup, Console settings (B → Collection or Tools), separate menu/gameplay controller choices, supported core options and optional Android HOME eligibility. Paused gameplay offers Settings and Controller. HOME is initially disabled; Android asks you to choose the default. See [M6_PROGRESS](docs/M6_PROGRESS.md).
 
 Version 14 adds checksum/core-bound session recovery and a real frozen pause frame; see M6_PROGRESS and ADR 0015.
+
+Version 15 adds portable backup/restore in Console settings. See [BACKUP_FORMAT](docs/BACKUP_FORMAT.md) for contents, review and transfer behavior.

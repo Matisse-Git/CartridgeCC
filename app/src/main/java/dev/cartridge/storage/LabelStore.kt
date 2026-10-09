@@ -18,6 +18,14 @@ data class LabelPixels(val key: String, val width: Int, val height: Int, val rgb
 
 /** IO-thread image import/decoding. Originals are retained; recipes derive bounded template textures. */
 class LabelStore(private val directory: File) {
+    fun exportOriginal(id: String): File = original(id).also { check(it.isFile) { "An accepted image is missing. Import it again before backup." } }
+    fun validateImage(file: File) {
+        require(file.length() in 1..12L * 1024 * 1024) { "Invalid image size" }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.path, bounds)
+        require(bounds.outWidth > 0 && bounds.outHeight > 0 && bounds.outMimeType in setOf("image/png", "image/jpeg", "image/webp") &&
+            max(bounds.outWidth, bounds.outHeight) <= 32768 && bounds.outWidth.toLong() * bounds.outHeight <= 100_000_000L) { "Invalid backup image" }
+    }
     private fun original(id: String): File {
         require(id.matches(Regex("[a-f0-9]{64}")))
         return File(directory, "$id.image")

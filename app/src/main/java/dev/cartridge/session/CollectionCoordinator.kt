@@ -373,6 +373,11 @@ class CollectionCoordinator(
             finally { mutableState.value = state.value.copy(scanning = false) }
         }
     }
+    /** Serialized library-only file operations; never read/write saves under an active core. */
+    fun libraryOperation(operation: suspend () -> Unit) {
+        if (state.value.screen != CollectionScreen.Library || !state.value.loaded || engine.status.value.state != SessionState.Idle) return
+        runAction { focusJob?.cancelAndJoin(); operation(); refreshLibrary(); readResume() }
+    }
     fun cancelScan() {
         if (state.value.scanning) { actionJob?.cancel(); notify("Scan cancelled. Imported games were kept.") }
     }

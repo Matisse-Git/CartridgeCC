@@ -98,6 +98,10 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     private var noticeIndex = 0
     private lateinit var repository: CollectionRepository
     private lateinit var sessionStore: SessionStore
+    private var chooseBackup: (() -> Unit)? = null
+    private var exportBackup: (() -> Unit)? = null
+    private var backupReview by mutableStateOf<BackupReview?>(null)
+    private var restorePreferences by mutableStateOf(false)
     internal val collectionSurface get() = cartridgeSurface
     protected open fun createRepository(): CollectionRepository = RoomCollectionRepository(this)
     protected open fun createLabelStore(): LabelStore = LabelStore(File(filesDir, "labels"))
@@ -219,13 +223,14 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     private fun consoleBack() {
         if (coordinator.state.value.busy) return
         if (consolePage == ConsolePage.Setup) presentationPreferences().edit { putBoolean("setupComplete", true) }
+        if (consolePage == ConsolePage.Backup) { backupReview?.close(); backupReview = null }
         consolePage = null; input.reset(); refreshInputMode()
     }
     private fun consoleChoices(): List<String> = when(consolePage) {
         ConsolePage.Setup -> listOf("Choose game folder", "Controller", "Continue to collection")
         ConsolePage.Settings -> listOf("Back", "Controller", "Game settings", if (coordinator.state.value.reducedMotion) "Motion: Off" else "Motion: On",
             if (soundEnabled) "Media sound: On" else "Media sound: Off", if (homeEnabled) "HOME candidate: On" else "HOME candidate: Off",
-            "Choose Android default home", "First-run setup", "About & licences", "Resume saved session", "Discard saved session")
+            "Choose Android default home", "First-run setup", "About & licences", "Resume saved session", "Discard saved session", "Export backup", "Restore backup")
         ConsolePage.Controllers -> listOf("Back", if (consoleSettings.swapMenuButtons) "Menu select: B / back: A" else "Menu select: A / back: B",
             if (consoleSettings.swapGameButtons) "Gameplay A/B: Swapped" else "Gameplay A/B: Direct",
             if (consoleSettings.swapShoulders) "Gameplay L/R: Swapped" else "Gameplay L/R: Direct",
@@ -233,6 +238,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             if (coordinator.state.value.alternateShortcut) "Pause: Start + Select" else "Pause: L3 + R3", "Reset controller")
         ConsolePage.Game -> listOf("Back", if (consoleSettings.audioFilter) "Audio smoothing: On" else "Audio smoothing: Off", "Frames skipped: ${consoleSettings.frameSkip}")
         ConsolePage.Notices -> listOf("Back", "Next licence")
+        ConsolePage.Backup -> listOf("Merge missing data", if (restorePreferences) "Restore settings: Yes" else "Restore settings: No", "Cancel")
         null -> emptyList()
     }
     private fun changeConsole(next: ConsoleSettings) {
@@ -258,6 +264,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 7 -> openConsole(ConsolePage.Setup); 8 -> openConsole(ConsolePage.Notices)
                 9 -> { consoleBack(); coordinator.resumeSavedSession() }
                 10 -> { consoleBack(); coordinator.discardResume() }
+                11, 12 -> if (engine.status.value.state != SessionState.Idle) coordinator.notify("Eject to the collection before backing up or restoring")
+                    else if (index == 11) exportBackup?.invoke() else chooseBackup?.invoke()
             }
             ConsolePage.Controllers -> when(index) {
                 0 -> consoleBack(); 1 -> changeConsole(consoleSettings.copy(swapMenuButtons = !consoleSettings.swapMenuButtons))
@@ -269,7 +277,56 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             }
             ConsolePage.Game -> when(index) { 0 -> consoleBack(); 1 -> changeConsole(consoleSettings.copy(audioFilter = !consoleSettings.audioFilter)); 2 -> changeConsole(consoleSettings.copy(frameSkip = (consoleSettings.frameSkip + 1) % 3)) }
             ConsolePage.Notices -> when(index) { 0 -> consoleBack(); 1 -> { noticeIndex++; loadNotice() } }
+            ConsolePage.Backup -> when(index) { 0 -> mergeBackup(); 1 -> restorePreferences = !restorePreferences; 2 -> consoleBack() }
             null -> Unit
+        }
+    }
+    private fun backupStore() = BackupStore(checkNotNull(repository as? BackupRepository), labelStore, SaveStore(File(filesDir, "saves")), sessionStore, File(cacheDir, "backup-staging"))
+    private fun writeBackup(uri: Uri) {
+        coordinator.libraryOperation {
+            withContext(Dispatchers.IO) {
+                val file = File.createTempFile("cartridge-backup-", ".zip", cacheDir)
+                try {
+                    file.outputStream().use { backupStore().export(it, BackupPreferences.capture(presentationPreferences())) }
+                    check(file.length() <= 1024L * 1024 * 1024) { "Backup exceeds 1 GiB" }
+                    checkNotNull(contentResolver.openOutputStream(uri, "wt")) { "Cannot write the selected backup" }.use { output -> file.inputStream().use { it.copyTo(output) } }
+                } finally { file.delete() }
+            }
+            coordinator.notify("Backup exported. Keep it private: it contains your collection choices and saves.")
+        }
+    }
+    private fun readBackup(uri: Uri) {
+        coordinator.libraryOperation {
+            val review = withContext(Dispatchers.IO) { checkNotNull(contentResolver.openInputStream(uri)).use { backupStore().inspect(it) } }
+            backupReview?.close(); backupReview = review; restorePreferences = false
+            noticeText = "${review.library.games.size} games · ${review.imageCount} images · ${review.saveCount} saves\n\nMerge keeps your existing artwork, metadata, collection membership and saves. Missing fields and saves are filled. History uses the greater value. Settings change only if you choose Yes.\n\nROMs and Android folder permissions are excluded. Choose folders again or use Locate same ROM after moving devices."
+            consolePage = ConsolePage.Backup; consoleFocus = 0
+        }
+    }
+    private fun mergeBackup() {
+        val review = backupReview ?: return
+        val settings = restorePreferences
+        // Transfer ownership to the serialized operation so Activity cancellation cannot delete
+        // reviewed files during acceptance. Its finally block releases staging.
+        backupReview = null
+        coordinator.libraryOperation {
+            try {
+                val result = withContext(NonCancellable + Dispatchers.IO) {
+                    val message = backupStore().merge(review)
+                    if (settings) BackupPreferences.restore(presentationPreferences(), review.preferences)
+                    message
+                }
+                if (settings) {
+                    val preferences = presentationPreferences()
+                    consoleSettings = ConsolePreferences(preferences).read(); applyControllerSettings()
+                    soundEnabled = preferences.getBoolean("mediaSound", false); autoScan = preferences.getBoolean("autoScan", true)
+                    lifecycleScope.launch {
+                        coordinator.state.first { !it.busy }
+                        coordinator.settings(preferences.getBoolean("reducedMotion", false), preferences.getBoolean("alternateShortcut", false), CollectionLayout.valueOf(preferences.getString("layout", "Horizontal")!!))
+                    }
+                }
+                consolePage = ConsolePage.Settings; consoleFocus = 0; coordinator.notify(result)
+            } finally { withContext(NonCancellable + Dispatchers.IO) { review.close() } }
         }
     }
     private fun loadNotice() {
@@ -406,17 +463,21 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         val labelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importLabel) }
         val directoryPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { it?.let(::scanDirectory) }
         val packPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importPack) }
+        val backupPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::readBackup) }
+        val backupWriter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { it?.let(::writeBackup) }
         DisposableEffect(gamePicker, labelPicker) {
             chooseGame = { if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) { addingGame = true; gamePicker.launch(arrayOf("*/*")) } }
             chooseDirectory = { if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) directoryPicker.launch(null) }
             choosePack = { if (!scraper.state.value.busy) packPicker.launch(arrayOf("application/zip", "application/octet-stream")) }
+            chooseBackup = { if (!coordinator.state.value.busy) backupPicker.launch(arrayOf("application/zip", "application/octet-stream")) }
+            exportBackup = { if (!coordinator.state.value.busy) backupWriter.launch("Cartridge-backup.zip") }
             chooseLabel = {
                 if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) {
                     if (coordinator.state.value.selectedGame == null) coordinator.notify("Choose a game before assigning its label.")
                     else labelPicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
                 }
             }
-            onDispose { chooseGame = null; chooseLabel = null; chooseDirectory = null; choosePack = null }
+            onDispose { chooseGame = null; chooseLabel = null; chooseDirectory = null; choosePack = null; chooseBackup = null; exportBackup = null }
         }
         MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFD8C7A8), background = Color(0xFF191817))) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -623,6 +684,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         if (!hasFocus && ::input.isInitialized) { input.reset(); coordinator.pause() }
     }
     override fun onDestroy() {
+        backupReview?.close(); backupReview = null
         getSystemService(InputManager::class.java).unregisterInputDeviceListener(this)
         coordinator.destroy()
         scraper.destroy()

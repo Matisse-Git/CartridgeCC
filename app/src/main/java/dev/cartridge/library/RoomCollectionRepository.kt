@@ -22,10 +22,44 @@ interface DirectoryRepository {
     suspend fun finishScan(uri: String, name: String, seen: Set<String>, complete: Boolean, error: String?)
 }
 
-class RoomCollectionRepository(context: Context, private val database: LibraryDatabase = LibraryDatabase.get(context)) : CollectionRepository, DirectoryRepository {
+class RoomCollectionRepository(context: Context, private val database: LibraryDatabase = LibraryDatabase.get(context)) : CollectionRepository, DirectoryRepository, BackupRepository {
     private val context = context.applicationContext
     private val dao = database.library()
     private val roms = File(context.filesDir, "roms")
+    override suspend fun exportLibrary(): LibraryBackup = database.withTransaction {
+        LibraryBackup(dao.allGames(), dao.slots().mapNotNull { it.gameId }, dao.removedIds().toSet(), dao.collectionRecord() ?: CollectionRecord())
+    }
+    override suspend fun mergeLibrary(backup: LibraryBackup): Int = database.withTransaction {
+        dao.insertState(CollectionRecord())
+        val existing = dao.allGames().associateBy { it.id }
+        val ids = dao.slots().mapNotNull { it.gameId }.toMutableList()
+        val selected = dao.selectedSlot() ?: 0
+        backup.games.forEach { incoming ->
+            val current = existing[incoming.id]
+            if (current == null) {
+                dao.insertGame(incoming)
+                if (incoming.id in backup.removed) dao.hide(RemovedGameRecord(incoming.id))
+            } else {
+                require(current.system == incoming.system) { "The same ROM has conflicting console identities" }
+                val metadata = LibraryJson.metadata(incoming.metadataJson) + LibraryJson.metadata(current.metadataJson)
+                val media = LibraryJson.media(incoming.mediaJson) + LibraryJson.media(current.mediaJson)
+                val merged = current.copy(
+                    labelAssetId = current.labelAssetId ?: incoming.labelAssetId,
+                    labelFit = if (current.labelAssetId == null) incoming.labelFit else current.labelFit,
+                    labelQuarterTurns = if (current.labelAssetId == null) incoming.labelQuarterTurns else current.labelQuarterTurns,
+                    labelSourceUri = if (current.labelAssetId == null) incoming.labelSourceUri else current.labelSourceUri,
+                    labelProvenance = if (current.labelAssetId == null) incoming.labelProvenance else current.labelProvenance,
+                    metadataJson = LibraryJson.metadata(metadata), mediaJson = LibraryJson.media(media),
+                    favorite = current.favorite || incoming.favorite, playMs = maxOf(current.playMs, incoming.playMs),
+                    lastPlayed = maxOf(current.lastPlayed, incoming.lastPlayed))
+                if (merged != current) { rememberEnrichment(current); dao.updateGame(merged) }
+            }
+        }
+        backup.order.filter { it !in existing && it !in backup.removed }.forEach { if (it !in ids) ids.add(it) }
+        replaceSlots(ids, if (existing.isEmpty()) backup.state.selectedSlot.coerceIn(0, (ids.size - 1).coerceAtLeast(0)) else selected)
+        if (existing.isEmpty()) dao.query(backup.state.sort, backup.state.favoritesOnly, backup.state.search)
+        backup.games.count { it.id !in existing }
+    }
     override val snapshots = dao.observe().map(::snapshot).distinctUntilChanged()
     override suspend fun initialize(): LibrarySnapshot {
         database.withTransaction {
