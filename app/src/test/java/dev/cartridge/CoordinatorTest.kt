@@ -24,6 +24,19 @@ class CoordinatorTest {
             snapshots.value = snapshots.value.copy(slots = snapshots.value.slots.toMutableList().also { it[slot] = game })
         }
         override suspend fun select(slot: Int) { snapshots.value = snapshots.value.copy(selectedSlot = slot) }
+        private val removed = mutableMapOf<String, LibraryGame>()
+        override suspend fun remove(gameId: String) {
+            removed[gameId] = snapshots.value.slots.first { it?.id == gameId }!!
+            val remaining = snapshots.value.slots.filterNot { it?.id == gameId }
+            snapshots.value = LibrarySnapshot(remaining, snapshots.value.selectedSlot.coerceAtMost(remaining.lastIndex))
+        }
+        override suspend fun restore(gameId: String, position: Int) {
+            snapshots.value = LibrarySnapshot(snapshots.value.slots.toMutableList().also { it.add(position, removed.remove(gameId)!!) }, position)
+        }
+        override suspend fun add(game: LibraryGame, restoreRemoved: Boolean): Boolean {
+            snapshots.value = snapshots.value.copy(slots = snapshots.value.slots + game)
+            return true
+        }
         override suspend fun setLabel(gameId: String, label: LabelRef?) {
             labelWrites++
             snapshots.value = snapshots.value.copy(slots = snapshots.value.slots.map { if (it?.id == gameId) it.copy(label = label) else it })
@@ -154,6 +167,56 @@ class CoordinatorTest {
         assertEquals("There is no saved state", coordinator.state.value.message)
         assertEquals(0, surfaces.emulatorReleases)
         assertFalse(coordinator.state.value.busy)
+        coordinator.destroy()
+    }
+    @Test fun explicitAddFocusesNewGameAndAcknowledgesLabelsBeyondThirdSlot() = runTest {
+        val library = Library()
+        val coordinator = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope)
+        runCurrent()
+        repeat(5) { coordinator.addGame { library.one.copy(id = (it + 1).toString().repeat(64), title = "Added $it") }; runCurrent() }
+        assertEquals(8, coordinator.state.value.selection.count)
+        assertEquals(7, coordinator.state.value.selection.index)
+        coordinator.navigate(20); runCurrent()
+        assertEquals(7, coordinator.state.value.selection.index)
+        assertEquals(5, coordinator.state.value.windowStart)
+        val label = LabelRef("e".repeat(64))
+        coordinator.previewLabel { label }; runCurrent()
+        coordinator.labelsReady(0, listOf(null, null, label.textureKey), firstIndex = 0)
+        assertFalse(coordinator.state.value.labelPreviewReady)
+        coordinator.labelsReady(0, listOf(null, null, label.textureKey), firstIndex = 5)
+        assertTrue(coordinator.state.value.labelPreviewReady)
+        coordinator.destroy()
+    }
+    @Test fun collectionMenuRemovalAndUndoRestoreIdentityAndPositionWithoutStartingEngine() = runTest {
+        val library = Library(); val engine = Engine()
+        val coordinator = CollectionCoordinator(engine, library, Surfaces(), backgroundScope)
+        runCurrent()
+        coordinator.back(); coordinator.navigate(1); coordinator.select(); runCurrent()
+        assertEquals(CollectionScreen.Library, coordinator.state.value.screen)
+        assertEquals(2, coordinator.state.value.slots.size)
+        assertEquals(library.two.id, coordinator.state.value.removedEntry!!.gameId)
+        coordinator.back(); coordinator.navigate(2); coordinator.select(); runCurrent()
+        assertEquals(library.two.id, coordinator.state.value.selectedGame!!.id)
+        assertEquals(1, coordinator.state.value.selection.index)
+        assertNull(coordinator.state.value.removedEntry)
+        assertEquals(0, engine.prepares)
+        assertEquals(0, engine.stops)
+        coordinator.destroy()
+    }
+    @Test fun cancellingScanKeepsCommittedGamesAndDoesNotStopAnIdleEngine() = runTest {
+        val library = Library(); val engine = Engine()
+        val coordinator = CollectionCoordinator(engine, library, Surfaces(), backgroundScope)
+        runCurrent()
+        coordinator.scanDirectory { progress ->
+            library.add(library.one.copy(id = "d".repeat(64)))
+            progress("One imported")
+            awaitCancellation()
+        }
+        runCurrent(); coordinator.cancelScan(); runCurrent()
+        assertEquals(4, coordinator.state.value.slots.size)
+        assertFalse(coordinator.state.value.scanning)
+        assertFalse(coordinator.state.value.busy)
+        assertEquals(0, engine.stops)
         coordinator.destroy()
     }
 }

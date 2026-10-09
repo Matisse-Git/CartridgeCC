@@ -28,12 +28,26 @@ data class SlotRecord(@PrimaryKey val slot: Int, val gameId: String? = null)
 @Entity(tableName = "collection_state")
 data class CollectionRecord(@PrimaryKey val singleton: Int = 0, val selectedSlot: Int = 0)
 
+@Entity(tableName = "directories")
+data class DirectoryRecord(@PrimaryKey val uri: String)
+
+@Entity(tableName = "removed_games")
+data class RemovedGameRecord(@PrimaryKey val gameId: String)
+
 data class SlotRow(val slot: Int, val selectedSlot: Int, val id: String?, val title: String?,
     val sourceUri: String?, val labelAssetId: String?, val labelFit: String?, val labelQuarterTurns: Int?, val labelSourceUri: String?,
     val labelProvenance: String?, val metadataJson: String?, val mediaJson: String?)
 
 @Dao
 interface LibraryDao {
+    @Query("SELECT gameId FROM removed_games") suspend fun removedIds(): List<String>
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun hide(game: RemovedGameRecord)
+    @Query("DELETE FROM removed_games WHERE gameId = :id") suspend fun unhide(id: String)
+    @Query("DELETE FROM slots") suspend fun clearSlots()
+    @Query("SELECT selectedSlot FROM collection_state WHERE singleton = 0") suspend fun selectedSlot(): Int?
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun directory(directory: DirectoryRecord)
+    @Query("SELECT uri FROM directories ORDER BY uri") suspend fun directories(): List<String>
+    @Query("SELECT * FROM slots ORDER BY slot") suspend fun slots(): List<SlotRecord>
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertGame(game: GameRecord)
     @Query("UPDATE games SET title = :title, sourceUri = :uri WHERE id = :id")
     suspend fun updateSource(id: String, title: String, uri: String)
@@ -56,10 +70,20 @@ interface LibraryDao {
     suspend fun read(): List<SlotRow>
 }
 
-@Database(entities = [GameRecord::class, SlotRecord::class, CollectionRecord::class], version = 2, exportSchema = true)
+@Database(entities = [GameRecord::class, SlotRecord::class, CollectionRecord::class, DirectoryRecord::class, RemovedGameRecord::class], version = 4, exportSchema = true)
 abstract class LibraryDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
     companion object {
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS removed_games (gameId TEXT NOT NULL PRIMARY KEY)")
+            }
+        }
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS directories (uri TEXT NOT NULL PRIMARY KEY)")
+            }
+        }
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE games ADD COLUMN labelProvenance TEXT")
@@ -70,7 +94,7 @@ abstract class LibraryDatabase : RoomDatabase() {
         @Volatile private var instance: LibraryDatabase? = null
         fun get(context: Context): LibraryDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, LibraryDatabase::class.java, "library.db")
-                .addMigrations(MIGRATION_1_2).build().also { instance = it }
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
         }
     }
 }

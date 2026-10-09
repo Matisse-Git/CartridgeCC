@@ -95,3 +95,13 @@ v1 API with Android's HTTPS/JSON facilities, adding no HTTP SDK dependency or ap
 persists independently accepted selections through an explicit migration. Existing UI/Filament preview
 and private original caching are reused; native surfaces/emulation remain isolated. See ADR 0005,
 PROVIDER_RESEARCH, SCRAPING_REPORT and TESTING for contract inspection and actual RP5 results.
+
+## Larger library and saved review queues
+
+Room schema 4 keeps the ordered-slot/game model, adds granted directory URIs and persisted removal
+exclusions, and explicitly migrates v1→v2→v3→v4. Legacy repeated hashes collapse; distinct hashes remain.
+DocumentsContract tree traversal supplies read-only nested imports on IO without a new storage
+dependency. Three Filament instances serve a variable-length collection via a visible window and global
+focus; no GLB per-ROM allocation. AtomicFile-based ScrapeJournal persists minimal target/progress state
+and individual candidate files, restoring only current candidates to RAM. No new dependencies or pins.
+See ADR 0006 and LIBRARY_PROGRESS for API inspection, physical proofs and actual scaling limits.

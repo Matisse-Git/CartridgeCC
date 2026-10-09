@@ -22,6 +22,9 @@ class ScrapeQueueTest {
         var accepted = emptyMap<String, MetadataValue>()
         override suspend fun initialize() = snapshots.value
         override suspend fun assign(slot: Int, game: LibraryGame) = Unit
+        override suspend fun add(game: LibraryGame, restoreRemoved: Boolean) = false
+        override suspend fun remove(gameId: String) = Unit
+        override suspend fun restore(gameId: String, position: Int) = Unit
         override suspend fun select(slot: Int) = Unit
         override suspend fun setLabel(gameId: String, label: LabelRef?) { writes++ }
         override suspend fun setMetadata(gameId: String, values: Map<String, MetadataValue>) { writes++; accepted += values }
@@ -49,7 +52,7 @@ class ScrapeQueueTest {
         assertTrue(scraper.state.value.entries.all { it.searched })
         assertEquals(0, repository.writes)
         assertNotNull(repository.snapshots.value.slots[0]!!.label)
-        scraper.next(); assertEquals(repository.two.id, scraper.state.value.current!!.game.id)
+        scraper.next(); runCurrent(); assertEquals(repository.two.id, scraper.state.value.current!!.game.id)
         scraper.destroy()
     }
     @Test fun cancellationLeavesPendingTitlesRetryableAndAcceptsOnlyCheckedFields() = runTest {
@@ -69,5 +72,24 @@ class ScrapeQueueTest {
         assertEquals(1, repository.writes)
         assertNotNull(repository.snapshots.value.slots[0]!!.label)
         scraper.destroy()
+    }
+    @Test fun recreatedQueueLoadsCompletedCandidatesAndResumesOnlyPendingTitles() = runTest {
+        val repository = Repository(); val provider = Provider(); val journal = MemoryScrapeJournal()
+        val scraper = ScrapeCoordinator(provider, repository, LabelStore(File("unused")), File("unused"), backgroundScope, journal) { _, _ -> }
+        scraper.open(listOf(repository.one, repository.two), repository.one)
+        scraper.chooseScope(false); runCurrent()
+        assertEquals(2, provider.calls)
+        assertTrue(scraper.state.value.entries[1].matches.isEmpty()) // Noncurrent candidates are journal-only.
+        scraper.next(); runCurrent()
+        assertFalse(scraper.state.value.current!!.matches.isEmpty())
+        scraper.destroy(); runCurrent()
+        val reopened = ScrapeCoordinator(provider, repository, LabelStore(File("unused")), File("unused"), backgroundScope, journal) { _, _ -> }
+        runCurrent(); reopened.open(listOf(repository.one, repository.two), repository.one)
+        reopened.resumeBatch(); runCurrent()
+        assertEquals(1, reopened.state.value.index)
+        assertEquals(repository.two.title, reopened.state.value.current!!.matches[0].title)
+        assertEquals(2, provider.calls)
+        assertEquals(0, repository.writes)
+        reopened.destroy()
     }
 }

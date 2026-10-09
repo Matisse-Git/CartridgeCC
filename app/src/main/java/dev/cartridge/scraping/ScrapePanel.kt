@@ -33,8 +33,9 @@ import kotlin.math.max
                 TextButton(onClick = coordinator::back, modifier = Modifier.testTag("scrape-back")) { Text(if (state.busy) "Cancel" else "Back") }
             }
             state.current?.let { Text("${state.index + 1} / ${state.entries.size} · ${it.game.title}", modifier = Modifier.padding(vertical = 8.dp)) }
-            if (state.busy) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(state.progress ?: "Working…", fontSize = 12.sp) }
+            if (state.busy || !state.ready) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(state.progress ?: "Working…", fontSize = 12.sp) }
             state.message?.let { Text(it, color = Color(0xFFE2CFAE), modifier = Modifier.padding(vertical = 8.dp).testTag("scrape-message")) }
+            if (state.page == ScrapePage.Scope && state.entries.isNotEmpty()) Text("Resume the saved batch, or start a new search to replace its progress. Applied artwork stays.", fontSize = 12.sp)
             if (state.page == ScrapePage.Matches) {
                 Row(Modifier.fillMaxWidth()) {
                     OutlinedTextField(value = state.current?.query.orEmpty(), onValueChange = coordinator::query,
@@ -57,7 +58,8 @@ import kotlin.math.max
                         item { Action("This title", 0, state) { coordinator.chooseScope(true) } }
                         item { Action("GBA collection", 1, state) { coordinator.chooseScope(false) } }
                         item { Action("All games", 2, state) { coordinator.chooseScope(false) } }
-                        item { Action("Close", 3, state, coordinator::back) }
+                        item { Action(if (state.entries.isEmpty()) "No saved batch" else "Resume saved batch · ${state.index + 1} / ${state.entries.size}", 3, state, coordinator::resumeBatch) }
+                        item { Action("Close", 4, state, coordinator::back) }
                     }
                     ScrapePage.Matches -> {
                         val matches = state.current?.matches.orEmpty()
@@ -125,7 +127,7 @@ private fun regionTitle(region: String) = when (region.lowercase()) {
     else -> region.uppercase()
 }
 @Composable private fun Action(title: String, index: Int, state: ScrapeState, action: () -> Unit) {
-    TextButton(enabled = !state.busy, onClick = action, modifier = Modifier.fillMaxWidth().testTag("scrape-action-$index")
+    TextButton(enabled = !state.busy && state.ready && !(state.page == ScrapePage.Scope && index == 3 && state.entries.isEmpty()), onClick = action, modifier = Modifier.fillMaxWidth().testTag("scrape-action-$index")
         .background(if (state.focus == index) Color(0xFF34312D) else Color.Transparent)) { Text(title, modifier = Modifier.fillMaxWidth()) }
 }
 @Composable private fun ProviderThumbnail(asset: ArtworkCandidate, provider: ArtworkProvider) {

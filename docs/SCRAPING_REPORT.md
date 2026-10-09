@@ -3,6 +3,9 @@
 Version 0.1.0-m1-scrape (versionCode 3) adds real provider-backed scraping to the installed RP5 app.
 M0 remains passed; M1 remains in progress. Custom image import is the optional fallback.
 
+This records version 3. Version 4 removes the three-slot limit, adds SAF folder importing and durable
+scrape review/resume; see LIBRARY_PROGRESS and the latest TESTING entry.
+
 ## Implemented
 
 - Y / Scrape opens one-title, GBA-collection or all-current-games scope. The latter two currently

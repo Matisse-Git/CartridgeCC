@@ -11,28 +11,89 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
 
-class RoomCollectionRepository(context: Context, private val database: LibraryDatabase = LibraryDatabase.get(context)) : CollectionRepository {
+interface DirectoryRepository {
+    suspend fun rememberDirectory(uri: String)
+    suspend fun directories(): List<String>
+}
+
+class RoomCollectionRepository(context: Context, private val database: LibraryDatabase = LibraryDatabase.get(context)) : CollectionRepository, DirectoryRepository {
     private val context = context.applicationContext
     private val dao = database.library()
     private val roms = File(context.filesDir, "roms")
     override val snapshots = dao.observe().map(::snapshot).distinctUntilChanged()
     override suspend fun initialize(): LibrarySnapshot {
         database.withTransaction {
-            repeat(3) { dao.insertSlot(SlotRecord(it)) }
             dao.insertState(CollectionRecord())
+            val previous = dao.slots()
+            val selected = dao.selectedSlot() ?: 0
+            val focusedId = previous.firstOrNull { it.slot == selected }?.gameId
+            val removed = dao.removedIds().toSet()
+            // Legacy study slots could assign the same content to several positions.
+            // Collapse identical hashes only; preserve order, accepted data and focused identity.
+            val ids = previous.mapNotNull { it.gameId }.filterNot { it in removed }.distinct()
+            val normalized = if (ids.isEmpty()) listOf(SlotRecord(0)) else ids.mapIndexed { index, id -> SlotRecord(index, id) }
+            val focus = ids.indexOf(focusedId).takeIf { it >= 0 } ?: selected.coerceIn(0, normalized.lastIndex)
+            if (previous != normalized) replaceSlots(ids, focus)
+            else if (focus != selected) dao.select(focus)
         }
         return snapshot(dao.read())
     }
     override suspend fun assign(slot: Int, game: LibraryGame) {
-        require(slot in 0..2)
+        require(slot >= 0)
         database.withTransaction {
             dao.insertGame(GameRecord(game.id, game.title, game.sourceUri))
             // Reimporting identical content preserves the game's accepted label.
             dao.updateSource(game.id, game.title, game.sourceUri)
-            dao.assign(slot, game.id)
+            dao.unhide(game.id)
+            val ids = dao.slots().mapNotNull { it.gameId }.toMutableList()
+            val existing = ids.indexOf(game.id)
+            if (existing >= 0) dao.select(existing) else {
+                val position = slot.coerceAtMost(ids.size)
+                if (position == ids.size) ids.add(game.id) else ids[position] = game.id
+                replaceSlots(ids, position)
+            }
         }
     }
-    override suspend fun select(slot: Int) { require(slot in 0..2); dao.select(slot) }
+    override suspend fun add(game: LibraryGame, restoreRemoved: Boolean): Boolean = database.withTransaction {
+        if (!restoreRemoved && game.id in dao.removedIds()) return@withTransaction false
+        if (restoreRemoved) dao.unhide(game.id)
+        val slots = dao.slots()
+        dao.insertGame(GameRecord(game.id, game.title, game.sourceUri))
+        dao.updateSource(game.id, game.title, game.sourceUri)
+        if (slots.any { it.gameId == game.id }) false else {
+            val position = slots.firstOrNull { it.gameId == null }?.slot ?: ((slots.lastOrNull()?.slot ?: -1) + 1)
+            dao.insertSlot(SlotRecord(position))
+            dao.assign(position, game.id)
+            true
+        }
+    }
+    override suspend fun remove(gameId: String) = database.withTransaction {
+        val ids = dao.slots().mapNotNull { it.gameId }.toMutableList()
+        val position = ids.indexOf(gameId)
+        check(position >= 0) { "This game is no longer in the collection" }
+        val selected = dao.selectedSlot() ?: 0
+        val focusedId = ids.getOrNull(selected)
+        ids.removeAll { it == gameId }
+        dao.hide(RemovedGameRecord(gameId))
+        replaceSlots(ids, ids.indexOf(focusedId).takeIf { it >= 0 } ?: position.coerceAtMost((ids.size - 1).coerceAtLeast(0)))
+    }
+    override suspend fun restore(gameId: String, position: Int) = database.withTransaction {
+        checkNotNull(dao.game(gameId)) { "The saved collection entry is unavailable" }
+        val ids = dao.slots().mapNotNull { it.gameId }.toMutableList()
+        dao.unhide(gameId)
+        val existing = ids.indexOf(gameId)
+        val target = if (existing >= 0) existing else position.coerceIn(0, ids.size).also { ids.add(it, gameId) }
+        replaceSlots(ids, target)
+    }
+    private suspend fun replaceSlots(ids: List<String>, selected: Int) {
+        dao.clearSlots()
+        if (ids.isEmpty()) dao.insertSlot(SlotRecord(0))
+        else ids.forEachIndexed { index, id -> dao.insertSlot(SlotRecord(index, id)) }
+        dao.select(selected)
+    }
+    override suspend fun rememberDirectory(uri: String) { dao.directory(DirectoryRecord(uri)) }
+    override suspend fun directories() = dao.directories()
+    override suspend fun select(slot: Int) { require(slot >= 0); dao.select(slot) }
     override suspend fun setLabel(gameId: String, label: LabelRef?) {
         require(gameId.matches(Regex("[a-f0-9]{64}")))
         check(dao.label(gameId, label?.assetId, label?.fit?.name ?: "Fit", label?.quarterTurns ?: 0, label?.sourceUri, LibraryJson.provenance(label?.provenance)) == 1) {
@@ -61,13 +122,16 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
         }
         GameRequest(file, game.id)
     }
-    private fun snapshot(rows: List<SlotRow>): LibrarySnapshot = LibrarySnapshot(
-        List(3) { slot -> rows.firstOrNull { it.slot == slot }?.let { row ->
+    private fun snapshot(rows: List<SlotRow>): LibrarySnapshot {
+        val bySlot = rows.associateBy { it.slot }
+        val count = (rows.maxOfOrNull { it.slot }?.plus(1) ?: 1).coerceAtLeast(1)
+        return LibrarySnapshot(List(count) { slot -> bySlot[slot]?.let { row ->
             row.id?.let {
                 val metadata = LibraryJson.metadata(row.metadataJson)
                 LibraryGame(it, metadata["title"]?.value ?: row.title ?: "Untitled game", row.sourceUri.orEmpty(),
                     row.labelAssetId?.let { asset -> LabelRef(asset, LabelFit.valueOf(row.labelFit ?: "Fit"), row.labelQuarterTurns ?: 0,
                         row.labelSourceUri, LibraryJson.provenance(row.labelProvenance)) }, metadata, LibraryJson.media(row.mediaJson))
             }
-        } }, rows.firstOrNull()?.selectedSlot?.coerceIn(0, 2) ?: 0)
+        } }, rows.firstOrNull()?.selectedSlot?.coerceIn(0, count - 1) ?: 0)
+    }
 }

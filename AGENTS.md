@@ -27,3 +27,9 @@
 - API/database scraping is the owner's primary artwork workflow. Local custom image import is an
   optional fallback; never report it as completion of the scraping feature. Inspect Socket/Slot's
   public references and real provider media categories; box art is not a flat label.
+- Collection length is variable; keep the visible GLB/label pool bounded and map GPU acknowledgements
+  through its global window offset. Never allocate a mesh or decode every label for a full library.
+- Save scrape targets before network work. Keep accepted Room choices separate from durable candidates;
+  journal writes/reset need ordering across Activity recreation. No implicit network resume on launch.
+- Deduplicate ROM hashes, never titles. Collection removal must preserve source files, saves and accepted
+  enrichment; persisted exclusions must survive Rescan. Test legacy migrations and restore/Undo.

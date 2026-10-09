@@ -81,18 +81,28 @@ SCRAPING_REPORT and LICENSING for evidence and precise Socket/Slot findings.
 
 ## Current implementation and limits
 
-GBA only, three persistent slots, one accepted label and one asset per additional-media category per
-game. One-title, GBA collection and all-current-games scopes operate on deduplicated existing identities;
-the latter two are the same scope today. Every apply is explicit, protecting unchecked fields/current
-labels; there is no automatic fill-missing or apply-to-remaining policy. Search cancellation preserves
-accepted choices; failed and unfinished searches can retry while the in-memory queue survives.
+GBA only, a growing persistent collection, one accepted label and one asset per additional-media category
+per game. SAF folder/Add .gba imports fill empty slots then append distinct content hashes. One-title,
+GBA collection and all-current-games scopes operate on deduplicated existing identities; the latter
+two remain the same scope while GBA is the only system. Every apply is explicit, protecting unchecked
+fields/current labels; no automatic fill-missing or apply-to-remaining policy. Search cancellation
+preserves accepted choices; failed and unfinished searches can retry or explicitly resume after reopening.
 
-Room v2 records per-field/provider/record/source/license/time and asset type/region. Originals carry a
+Room v4 retains v2's per-field/provider/record/source/license/time and asset type/region, adding saved
+SAF directory URIs and removal exclusions through explicit migrations. Collection removal retains
+accepted choices; Undo/Add restores them, while Rescan respects exclusions. Originals carry a
 local SHA-256 content ID, while label Fit/Crop/rotation remains separate. Dimensions are checked at
 decode, not stored as provenance. Edition/disc/language tags and selection history are not modeled yet.
 Candidate JSON has a one-hour TTL and a 32-file/32-MiB cap; accepted assets persist offline.
 
-Queues are not resumed after Activity/process recreation. Selected subsets/consoles, multiple providers,
-scrape-pack import, undo, full metadata/details views and disc templates/emulation are future work.
+ScrapeJournal stores targets, corrected queries, search/error status and review index in an atomic
+manifest, plus candidates in one file per title (≤8 MiB per file). Only current candidates occupy RAM.
+Completed searches load from disk on Resume; no implicit network activity on cold launch. One saved
+batch is supported. Starting a new scope replaces unfinished search progress, preserving applied data.
+Unapplied previews/checkbox drafts are discarded on recreation. See LIBRARY_PROGRESS and ADR 0006.
+
+Selected subsets/consoles, preferences, multiple providers, scrape-pack import, accepted-artwork undo, full metadata/details
+views and disc templates/emulation are future work. Directory rescans rehash files; scan cursors are
+not resumed after recreation, but completed imports remain deduplicated.
 Cancelled imports can leave unreferenced originals; reference-aware garbage collection is pending.
 The provider's source checksum is not verified; cached originals have the app's own SHA-256 identity.

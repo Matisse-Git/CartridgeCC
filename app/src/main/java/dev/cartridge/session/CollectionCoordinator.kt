@@ -9,12 +9,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 
-enum class CollectionScreen { Library, Inserting, Handoff, Emulator, Ejecting, LabelPreview }
+enum class CollectionScreen { Library, LibraryMenu, Inserting, Handoff, Emulator, Ejecting, LabelPreview }
 data class LabelDraft(val gameId: String, val label: LabelRef)
+data class RemovedEntry(val gameId: String, val position: Int)
 data class CollectionState(
     val screen: CollectionScreen = CollectionScreen.Library,
-    val selection: Selection = Selection(),
-    val slots: List<LibraryGame?> = List(3) { null },
+    val selection: Selection = Selection(count = 1),
+    val slots: List<LibraryGame?> = listOf(null),
     val loaded: Boolean = false,
     val message: String? = null,
     val rendererReady: Boolean = false,
@@ -25,10 +26,14 @@ data class CollectionState(
     val viewportGeneration: Int = 0,
     val labelDraft: LabelDraft? = null,
     val labelPreviewReady: Boolean = false,
+    val scanning: Boolean = false,
+    val removedEntry: RemovedEntry? = null,
 ) {
     val selectedGame get() = slots[selection.index]
     val title get() = selectedGame?.title ?: "Empty cartridge ${selection.index + 1}"
-    val labels get() = slots.map { game -> if (game?.id == labelDraft?.gameId && labelDraft != null) labelDraft.label else game?.label }
+    val labels get() = slots.subList(windowStart, (windowStart + 3).coerceAtMost(slots.size)).map { game ->
+        if (game?.id == labelDraft?.gameId && labelDraft != null) labelDraft.label else game?.label }
+    val windowStart get() = (selection.index - 1).coerceIn(0, (slots.size - 3).coerceAtLeast(0))
 }
 
 /** Main-thread ports return only after the old GPU owner has synchronously detached/flushed. */
@@ -60,8 +65,12 @@ class CollectionCoordinator(
         observers += scope.launch {
             try {
                 val initial = repository.initialize()
-                mutableState.value = state.value.copy(slots = initial.slots, selection = Selection(initial.selectedSlot), loaded = true)
-                repository.snapshots.collect { snapshot -> mutableState.value = state.value.copy(slots = snapshot.slots) }
+                mutableState.value = state.value.copy(slots = initial.slots, selection = Selection(initial.selectedSlot, initial.slots.size), loaded = true)
+                repository.snapshots.collect { snapshot ->
+                    val membershipChanged = snapshot.slots.map { it?.id } != state.value.slots.map { it?.id }
+                    mutableState.value = state.value.copy(slots = snapshot.slots,
+                        selection = Selection(if (membershipChanged) snapshot.selectedSlot else state.value.selection.index.coerceAtMost(snapshot.slots.lastIndex), snapshot.slots.size))
+                }
             } catch (failure: Exception) {
                 if (failure is CancellationException) throw failure
                 mutableState.value = state.value.copy(message = "Cannot read the local library: ${failure.message}")
@@ -79,17 +88,19 @@ class CollectionCoordinator(
     fun rendererReady(generation: Int) {
         if (!destroyed && generation == state.value.viewportGeneration) mutableState.value = state.value.copy(rendererReady = true)
     }
-    fun labelsReady(generation: Int, keys: List<String?>) {
+    fun labelsReady(generation: Int, keys: List<String?>, firstIndex: Int = 0) {
         val current = state.value
         if (generation == current.viewportGeneration && current.labelDraft != null && !current.labelPreviewReady &&
-            keys.getOrNull(current.selection.index) == current.labelDraft.label.textureKey) {
+            keys.getOrNull(current.selection.index - firstIndex) == current.labelDraft.label.textureKey) {
             mutableState.value = current.copy(labelPreviewReady = true)
         }
     }
     fun navigate(delta: Int) {
         if (destroyed || !foreground || state.value.busy || !state.value.loaded) return
         val current = state.value
-        if (current.screen == CollectionScreen.LabelPreview || engine.status.value.state == SessionState.Paused) {
+        if (current.screen == CollectionScreen.LibraryMenu) {
+            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 2))
+        } else if (current.screen == CollectionScreen.LabelPreview || engine.status.value.state == SessionState.Paused) {
             mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 3))
         } else if (current.screen == CollectionScreen.Library) {
             val selection = current.selection.move(delta)
@@ -106,14 +117,50 @@ class CollectionCoordinator(
     }
     fun select() {
         when {
+            state.value.screen == CollectionScreen.LibraryMenu -> libraryAction(state.value.menuIndex)
             state.value.screen == CollectionScreen.LabelPreview -> labelAction(state.value.menuIndex)
             engine.status.value.state == SessionState.Paused -> menuAction(state.value.menuIndex)
             else -> insert()
         }
     }
     fun back() {
-        if (state.value.screen == CollectionScreen.LabelPreview) cancelLabel()
+        if (state.value.busy) return
+        if (state.value.screen == CollectionScreen.Library) openLibraryMenu()
+        else if (state.value.screen == CollectionScreen.LibraryMenu) libraryAction(0)
+        else if (state.value.screen == CollectionScreen.LabelPreview) cancelLabel()
         else if (engine.status.value.state == SessionState.Paused) menuAction(0)
+    }
+    fun openLibraryMenu() {
+        if (foreground && state.value.loaded && !state.value.busy && state.value.screen == CollectionScreen.Library)
+            mutableState.value = state.value.copy(screen = CollectionScreen.LibraryMenu, menuIndex = 0, message = null)
+    }
+    fun libraryAction(index: Int) {
+        if (state.value.screen != CollectionScreen.LibraryMenu || state.value.busy) return
+        when (index) {
+            0 -> mutableState.value = state.value.copy(screen = CollectionScreen.Library)
+            1 -> state.value.selectedGame?.let { game ->
+                val entry = RemovedEntry(game.id, state.value.selection.index)
+                runAction {
+                    focusJob?.cancelAndJoin()
+                    repository.remove(game.id)
+                    refreshLibrary()
+                    mutableState.value = state.value.copy(screen = CollectionScreen.Library, removedEntry = entry,
+                        message = "Entry removed. ROM, saves and artwork kept. Undo is available in B → Collection.")
+                }
+            }
+            2 -> state.value.removedEntry?.let { entry ->
+                runAction {
+                    focusJob?.cancelAndJoin()
+                    repository.restore(entry.gameId, entry.position)
+                    refreshLibrary()
+                    mutableState.value = state.value.copy(screen = CollectionScreen.Library, removedEntry = null, message = "Entry restored")
+                }
+            }
+        }
+    }
+    private suspend fun refreshLibrary() {
+        val snapshot = repository.initialize()
+        mutableState.value = state.value.copy(slots = snapshot.slots, selection = Selection(snapshot.selectedSlot, snapshot.slots.size))
     }
     fun settings(reducedMotion: Boolean = state.value.reducedMotion, alternateShortcut: Boolean = state.value.alternateShortcut) {
         if (!state.value.busy) mutableState.value = state.value.copy(reducedMotion = reducedMotion, alternateShortcut = alternateShortcut)
@@ -157,6 +204,29 @@ class CollectionCoordinator(
         val selected = state.value.selection.index
         if (state.value.screen != CollectionScreen.Library || !state.value.loaded) return
         runAction { val game = import(); repository.assign(selected, game); notify("Game added") }
+    }
+    fun addGame(import: suspend () -> LibraryGame) {
+        if (state.value.screen != CollectionScreen.Library || !state.value.loaded) return
+        runAction {
+            val game = import()
+            focusJob?.cancelAndJoin()
+            val added = repository.add(game, restoreRemoved = true)
+            val snapshot = repository.initialize()
+            repository.select(snapshot.slots.indexOfFirst { it?.id == game.id }.coerceAtLeast(0))
+            refreshLibrary()
+            notify(if (added) "Game added" else "Selected the existing entry")
+        }
+    }
+    fun scanDirectory(scan: suspend ((String) -> Unit) -> String) {
+        if (state.value.screen != CollectionScreen.Library || !state.value.loaded) return
+        runAction {
+            mutableState.value = state.value.copy(scanning = true)
+            try { notify(scan(::notify)) }
+            finally { mutableState.value = state.value.copy(scanning = false) }
+        }
+    }
+    fun cancelScan() {
+        if (state.value.scanning) { actionJob?.cancel(); notify("Scan cancelled. Imported games were kept.") }
     }
     fun previewLabel(import: suspend () -> LabelRef) {
         val selected = state.value

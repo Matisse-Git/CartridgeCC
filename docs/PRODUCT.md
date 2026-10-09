@@ -66,18 +66,37 @@ reviewable change summary. Region/language preferences rank choices but do not h
 Accepted assets and provenance are cached locally; network failures must never block launching a game.
 
 Local image import, online one-title/current-GBA-collection scraping, independent metadata/media
-candidates, manual review and accepted provenance are implemented. Current scope is three GBA slots;
-selected subsets/consoles, scrape packs, durable jobs, undo and automatic fill-missing remain M3 work.
+candidates, manual review and accepted provenance are implemented. Folder imports grow the GBA library;
+saved batches resume after reopening with accepted choices preserved. Selected subsets/consoles,
+scrape packs, undo and automatic fill-missing remain M3 work.
 See [LABEL_SCRAPING.md](LABEL_SCRAPING.md) for the complete required workflow and current boundaries.
 
 ## Explicitly deferred
 
 The final believable slot/insertion/ejection choreography and mechanical sound, production mesh/textures,
-full gameplay touch controls, per-button remapping, details/media panels, directory scanning,
-multi-directory indexing, favorites, durable directory-scale scrape jobs, vertical/grid layouts, additional systems,
+full gameplay touch controls, per-button remapping, details/media panels, incremental directory indexing,
+directory removal/availability UI, favorites, scheduled unattended scraping, vertical/grid layouts, additional systems,
 HOME launcher mode and backup. Backgrounding currently ends the session after persisting RAM;
 the app does not claim seamless resume of a lost EGL context.
 
 No confirmation dialog is added for ordinary insertion/ejection. Loading/saving errors remain visible
 and preserve selection. A failed save is reported even though native resources are still shut down.
 Force-stop/process death cannot guarantee a final SaveRAM write; periodic checkpoints are future work.
+
+## Larger GBA library increment
+
+Start / Folder imports nested .gba files through SAF; multiple read-granted roots and an explicit
+Rescan persist. Content hashes collapse legacy and new duplicates while preserving labels/metadata
+and focused identity. Actual entries expand; empty collections show one placeholder. At most three
+genuine GLB instances remain visible/allocated. B cancels a scan while keeping completed imports.
+X / Add .gba adds or selects a single existing entry. B / Collection offers removal and single-step
+Undo. Removal keeps ROMs/saves/artwork and survives Rescan/reopening; Add .gba restores hidden entries.
+Undo is available in the current Activity session.
+
+Bulk scope now covers imported GBA games. Y → Resume saved batch reads saved targets/candidates and
+continues unfinished search work without reapplying accepted media/metadata. No network work resumes
+automatically on cold launch. New scopes replace unfinished search progress, with an explanation.
+Unapplied preview/metadata drafts are discarded on recreation. See LIBRARY_PROGRESS for exact limits.
+
+Owner feedback: saved-batch resume works, but the review flow is tedious. A simpler controller-led
+scraper UX remains required and is deferred to a later version at the owner's request.

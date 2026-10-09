@@ -69,3 +69,9 @@ bounded preview pipeline. Additional provider media never binds to the label pri
 confirmed real remote artwork thumbnails/application/reopening; final scan fidelity and asymmetric UV
 orientation still need product validation. Keep retrieved commercial assets in private runtime caches,
 never in model generators, source art, tests or APKs. See PROVIDER_RESEARCH and SCRAPING_REPORT.
+
+Version 5 keeps three GLB instances while collection length grows. Inactive instances beyond a one/two
+game collection live outside the far clip, with padded label buffers. The visible window rebinds labels
+by global index; six derived buffers remain the cache cap. The RP5 test reads blue pixels on game six,
+persists its recipe and enters/exits real internal gameplay without allocating a model per library item.
+This is a bounded rendering proof, not a hundreds-of-games frame-pacing measurement.

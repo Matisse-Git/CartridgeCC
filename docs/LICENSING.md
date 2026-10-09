@@ -64,6 +64,11 @@ blanket redistribution grant. Resolve data/service terms before a public release
 metadata export. Commercial images remain outside Git, fixtures and APK assets. Tests use original
 artwork, with a separate live API test that retrieves only metadata and media URLs.
 
+The folder/removal/resumable-queue increment adds no dependency. DocumentsContract, DocumentsProvider
+and AtomicFile are Android platform APIs. Folder and migration/device fixtures use the project's own
+diagnostic ROM and original solid-color labels. Runtime ROMs, scraped artwork and private database
+inspection copies stay outside Git/APKs. Entry removal retains these private originals and saves.
+
 See PROVIDER_RESEARCH for the precise Socket/Slot evidence. Neither Socket's unidentified backend nor
 a community fork's Skyscraper recipe establishes permission to copy that application's assets/keys.
 

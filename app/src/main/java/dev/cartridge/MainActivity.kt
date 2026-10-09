@@ -66,10 +66,17 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     private var emulatorHost: EmulatorHost? = null
     private var chooseGame: (() -> Unit)? = null
     private var chooseLabel: (() -> Unit)? = null
+    private var chooseDirectory: (() -> Unit)? = null
+    private var addingGame = false
+    private lateinit var repository: CollectionRepository
     internal val collectionSurface get() = cartridgeSurface
     protected open fun createRepository(): CollectionRepository = RoomCollectionRepository(this)
     protected open fun createLabelStore(): LabelStore = LabelStore(File(filesDir, "labels"))
     protected open fun createArtworkProvider(): ArtworkProvider = RetroBaseProvider(File(cacheDir, "scrape-candidates"))
+    protected open fun createScrapeJournal(): ScrapeJournal = FileScrapeJournal(File(filesDir, "scrape-job"))
+    protected open fun persistDirectoryPermission(uri: Uri) {
+        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
     private val menuItems = listOf("Resume", "Save state", "Load state", "Eject to collection")
     private val inputFrames = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
@@ -91,12 +98,12 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         engine = LibretroEngine(this, lifecycleScope)
         labelStore = createLabelStore()
         val preferences = getPreferences(MODE_PRIVATE)
-        val repository = createRepository()
+        repository = createRepository()
         coordinator = CollectionCoordinator(engine, repository, object : RendererHandoff {
             override fun releaseLibrary() { cartridgeSurface?.close(); cartridgeSurface = null }
             override fun releaseEmulator() { emulatorHost?.release(); emulatorHost = null }
         }, lifecycleScope, preferences.getBoolean("reducedMotion", false), preferences.getBoolean("alternateShortcut", false))
-        scraper = ScrapeCoordinator(createArtworkProvider(), repository, labelStore, File(filesDir, "roms"), lifecycleScope) { game, label ->
+        scraper = ScrapeCoordinator(createArtworkProvider(), repository, labelStore, File(filesDir, "roms"), lifecycleScope, createScrapeJournal()) { game, label ->
             val slot = coordinator.state.value.slots.indexOfFirst { it?.id == game.id }
             if (slot >= 0) {
                 coordinator.navigate(slot - coordinator.state.value.selection.index)
@@ -108,10 +115,10 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             select = { if (scraper.state.value.visible) scraper.select() else coordinator.select() },
             back = { if (scraper.state.value.visible) scraper.back() else coordinator.back() }, pause = coordinator::pause,
             gameKey = engine::key, gameMotion = engine::motion, chooseGame = { chooseGame?.invoke() },
-            chooseLabel = { chooseLabel?.invoke() }, chooseScrape = ::openScraper, alternate = {
+            chooseLabel = { chooseLabel?.invoke() }, chooseScrape = ::openScraper, chooseDirectory = { chooseDirectory?.invoke() }, alternate = {
                 val scrape = scraper.state.value
                 if (scrape.visible && scrape.page == ScrapePage.Metadata) scrape.candidate?.metadata?.keys?.elementAtOrNull(scrape.focus)?.let(scraper::variant)
-            })
+            }, cancelOperation = coordinator::cancelScan)
         getSystemService(InputManager::class.java).registerInputDeviceListener(this, null)
         lifecycleScope.launch {
             var previousScreen = CollectionScreen.Library
@@ -121,7 +128,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 input.mode = when {
                     scrape.visible -> InputMode.Menu
                     state.busy || !state.loaded -> InputMode.Locked
-                    state.screen == CollectionScreen.LabelPreview -> InputMode.Menu
+                    state.screen in listOf(CollectionScreen.LabelPreview, CollectionScreen.LibraryMenu) -> InputMode.Menu
                     status.state == SessionState.Running -> InputMode.Gameplay
                     status.state == SessionState.Paused -> InputMode.Menu
                     state.screen == CollectionScreen.Library -> InputMode.Library
@@ -141,11 +148,29 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean =
         if (::input.isInitialized && input.motion(event)) true else super.dispatchGenericMotionEvent(event)
 
-    private fun importGame(uri: Uri) = coordinator.assignGame {
-        runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-        withContext(Dispatchers.IO) {
-            val game = RomImporter(contentResolver, File(filesDir, "roms")).import(uri)
-            LibraryGame(game.request.id, game.title, uri.toString())
+    private fun importGame(uri: Uri) {
+        val import: suspend () -> LibraryGame = {
+            runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            withContext(Dispatchers.IO) {
+                val taskContext = coroutineContext
+                val game = RomImporter(contentResolver, File(filesDir, "roms")).import(uri) { taskContext.ensureActive() }
+                LibraryGame(game.request.id, game.title, uri.toString())
+            }
+        }
+        if (addingGame) coordinator.addGame(import) else coordinator.assignGame(import)
+        addingGame = false
+    }
+    private fun scanDirectory(uri: Uri?) {
+        coordinator.scanDirectory { progress ->
+            val directories = checkNotNull(repository as? DirectoryRepository) { "Directory import is unavailable" }
+            if (uri != null) persistDirectoryPermission(uri)
+            val targets = uri?.let { listOf(it.toString()) } ?: directories.directories()
+            require(targets.isNotEmpty()) { "Choose a ROM folder before rescanning" }
+            val scanner = DirectoryScanner(contentResolver, File(filesDir, "roms"), repository, directories)
+            val results = targets.map { scanner.scan(Uri.parse(it), progress) }
+            if (results.size == 1) results.single().message else
+                "Scan complete: ${results.sumOf { it.added }} added · ${results.sumOf { it.duplicates }} duplicates · ${results.sumOf { it.failed }} failed" +
+                    results.firstNotNullOfOrNull { it.errors.firstOrNull() }?.let { ". $it" }.orEmpty()
         }
     }
     private fun importLabel(uri: Uri) = coordinator.previewLabel {
@@ -168,29 +193,32 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         }
         val gamePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importGame) }
         val labelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importLabel) }
+        val directoryPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { it?.let(::scanDirectory) }
         DisposableEffect(gamePicker, labelPicker) {
-            chooseGame = { if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) gamePicker.launch(arrayOf("*/*")) }
+            chooseGame = { if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) { addingGame = true; gamePicker.launch(arrayOf("*/*")) } }
+            chooseDirectory = { if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) directoryPicker.launch(null) }
             chooseLabel = {
                 if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) {
                     if (coordinator.state.value.selectedGame == null) coordinator.notify("Choose a game before assigning its label.")
                     else labelPicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
                 }
             }
-            onDispose { chooseGame = null; chooseLabel = null }
+            onDispose { chooseGame = null; chooseLabel = null; chooseDirectory = null }
         }
         MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFD8C7A8), background = Color(0xFF191817))) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                if (state.screen in listOf(CollectionScreen.Library, CollectionScreen.Inserting, CollectionScreen.Ejecting, CollectionScreen.LabelPreview)) {
+                if (state.screen in listOf(CollectionScreen.Library, CollectionScreen.LibraryMenu, CollectionScreen.Inserting, CollectionScreen.Ejecting, CollectionScreen.LabelPreview)) {
                     glb?.let { bytes -> key(state.viewportGeneration) { LibraryViewport(bytes, state) } }
                     Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(state.title, fontSize = 23.sp, color = Color(0xFFE9E2D6), modifier = Modifier.testTag("selected-title"))
                         Text(if (state.screen == CollectionScreen.LabelPreview) "↑ ↓ Choose   ·   A Apply action   ·   B Cancel"
-                            else "← → Browse   ·   A Insert   ·   X Game   ·   Y Scrape   ·   Select Image   ·   ${state.selection.index + 1} / 3",
+                            else "← → Browse   ·   A Insert   ·   X Add   ·   Y Scrape   ·   B Collection   ·   Start Folder   ·   ${state.selection.index + 1} / ${state.selection.count}",
                             fontSize = 12.sp, color = Color(0xFF9C968B), modifier = Modifier.padding(top = 8.dp))
                     }
                     if (state.screen == CollectionScreen.Library) {
                         Row(Modifier.align(Alignment.TopEnd).padding(16.dp)) {
-                            TextButton(enabled = !state.busy && state.loaded, onClick = { chooseGame?.invoke() }, modifier = Modifier.testTag("choose-game")) { Text("Choose .gba") }
+                            TextButton(enabled = !state.busy && state.loaded, onClick = { chooseGame?.invoke() }, modifier = Modifier.testTag("choose-game")) { Text("Add .gba") }
+                            TextButton(enabled = !state.busy && state.loaded, onClick = { chooseDirectory?.invoke() }, modifier = Modifier.testTag("choose-folder")) { Text("Folder") }
                             TextButton(enabled = !state.busy && state.loaded, onClick = ::openScraper, modifier = Modifier.testTag("scrape")) { Text("Scrape") }
                             TextButton(enabled = !state.busy && state.selectedGame != null, onClick = { chooseLabel?.invoke() }, modifier = Modifier.testTag("choose-label")) { Text("Image") }
                             if (state.selectedGame?.label != null) TextButton(enabled = !state.busy, onClick = coordinator::removeLabel) { Text("Reset label") }
@@ -205,9 +233,23 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                                 coordinator.settings(alternateShortcut = !state.alternateShortcut)
                                 getPreferences(MODE_PRIVATE).edit { putBoolean("alternateShortcut", !state.alternateShortcut) }
                             }) { Text(if (state.alternateShortcut) "Menu: Start + Select" else "Menu: L3 + R3") }
+                            TextButton(enabled = !state.busy, onClick = { scanDirectory(null) }, modifier = Modifier.testTag("rescan")) { Text("Rescan") }
+                            TextButton(enabled = !state.busy && state.loaded, onClick = coordinator::openLibraryMenu, modifier = Modifier.testTag("collection-menu")) { Text("Collection") }
                         }
+                        if (state.scanning) TextButton(onClick = coordinator::cancelScan, modifier = Modifier.align(Alignment.Center).testTag("cancel-scan")) { Text("Cancel scan") }
                         TextButton(enabled = !state.busy, onClick = { coordinator.navigate(-1) }, modifier = Modifier.align(Alignment.CenterStart).testTag("previous")) { Text("‹") }
                         TextButton(enabled = !state.busy, onClick = { coordinator.navigate(1) }, modifier = Modifier.align(Alignment.CenterEnd).testTag("next")) { Text("›") }
+                    }
+                    if (state.screen == CollectionScreen.LibraryMenu) {
+                        Column(Modifier.align(Alignment.CenterEnd).width(280.dp).background(Color(0xF0191817)).padding(12.dp)) {
+                            Text("Collection", fontSize = 19.sp, modifier = Modifier.padding(8.dp))
+                            Text("Removal keeps ROMs, saves and artwork. Rescan skips removed entries; Add .gba restores them.", fontSize = 12.sp, modifier = Modifier.padding(8.dp))
+                            listOf("Back to collection", "Remove selected entry", "Undo last removal").forEachIndexed { index, title ->
+                                TextButton(enabled = !state.busy && (index != 1 || state.selectedGame != null) && (index != 2 || state.removedEntry != null),
+                                    onClick = { coordinator.libraryAction(index) }, modifier = Modifier.fillMaxWidth().testTag("collection-action-$index")
+                                        .background(if (state.menuIndex == index) Color(0xFF34312D) else Color.Transparent)) { Text(title) }
+                            }
+                        }
                     }
                     if (state.screen == CollectionScreen.LabelPreview) {
                         val actions = listOf("Sizing: ${state.labelDraft?.label?.fit}", "Rotate 90°", "Apply label", "Cancel")
@@ -277,9 +319,12 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         AndroidView(modifier = Modifier.fillMaxSize(), factory = {
             CartridgeSurface(it, bytes, state.selection.index,
                 onReady = { coordinator.rendererReady(state.viewportGeneration) }, onReleased = {},
-                onLabelsReady = { keys -> coordinator.labelsReady(state.viewportGeneration, keys) }, onLabelError = coordinator::notify
+                onLabelsReady = { first, keys -> coordinator.labelsReady(state.viewportGeneration, keys, first) }, onLabelError = coordinator::notify
             ).also { renderer -> surface = renderer; cartridgeSurface = renderer }
-        }, update = { it.selection = state.selection.index; it.insertion = motion.value; it.setLabels(pixels) }, onRelease = { it.close() })
+        }, update = {
+            it.selection = state.selection.index; it.windowStart = state.windowStart; it.collectionCount = state.selection.count; it.insertion = motion.value
+            it.setLabels(if (pixels.map { pixel -> pixel?.key } == labels.map { label -> label?.textureKey }) pixels else List(3) { null })
+        }, onRelease = { it.close() })
         DisposableEffect(surface) {
             val renderer = surface
             val observer = object : DefaultLifecycleObserver {

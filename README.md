@@ -7,11 +7,12 @@ proprietary artwork is bundled; users can scrape artwork into their private coll
 
 **Status:** M0 passed on RP5 on 2026-10-09. M1 has Room-persisted game slots/focus, real API label
 scraping, independent media/metadata choices, 3D Fit/Crop/rotation preview and a tested session
-coordinator. Both APKs build; 13 unit tests and four asset checks pass. RP5 tests cover real native
-handoffs, ordinary UI recovery, independent labels, schema migration and reviewed scraping; a separate
+coordinator. Folder imports now grow the collection and saved scrape batches resume after reopening.
+Both APKs build; 17 unit tests and four asset checks pass. Ten RP5 tests cover real native
+handoffs, ordinary UI recovery, independent labels, schema migrations, folder imports and resumed scraping; a separate
 live API test passes. The owner confirmed physical navigation, gameplay/audio, save/load and local labels.
 M1 remains in progress: the mesh and motion are engineering assets and long-duration validation
-is outstanding. See [docs/SCRAPING_REPORT.md](docs/SCRAPING_REPORT.md) and [docs/TESTING.md](docs/TESTING.md).
+is outstanding. See [docs/LIBRARY_PROGRESS.md](docs/LIBRARY_PROGRESS.md) and [docs/TESTING.md](docs/TESTING.md).
 
 ## Prerequisites
 
@@ -59,20 +60,34 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n dev.cartridge/.MainActivity
 ```
 
-The collection opens with three cartridge slots, all using one instanced GLB. Browse with D-pad
-left/right, left stick, or touch arrows. Press X / Choose .gba to assign an uncompressed `.gba`
-document to the focused slot, then A / Insert to play. The file picker uses SAF and requests a persistable
+The empty collection shows one study cartridge and grows as games are imported. At most three visible instances
+reuse one GLB, regardless of collection size. Browse with D-pad left/right, left stick, or touch arrows.
+Press X / Add .gba to add an uncompressed `.gba`
+document or focus its existing entry, then A / Insert to play. The picker uses SAF and requests a persistable
 read grant. A bounded, SHA-256-addressed working copy lives in app-private storage; the original
 document is unchanged. Room preserves slot assignments, labels and the selected slot across relaunch.
 Old M0 assignments were transient and must be selected once in this version. SaveRAM and one
 save-state slot per content hash persist across sessions.
+
+Press **Start / Folder** to import a GBA directory and its subfolders through SAF. Read permissions and
+multiple roots persist. New content hashes append; duplicates keep accepted
+labels/metadata. **Rescan** revisits saved roots without adding duplicate games. **B / Cancel scan** keeps
+completed imports. Legacy repeated assignments collapse on startup by hash; identical titles with
+different ROM content stay separate. **B / Collection → Remove selected entry** hides the game while
+keeping ROMs, saves and artwork. Rescan respects removal. **Undo last removal** restores its position
+in the current Activity session; after reopening, **X / Add .gba** restores a hidden game and its data.
+Only uncompressed GBA files are supported. Scans stop with an error at 10,000 entries or 16 levels;
+invalid files are reported while valid siblings continue. Originals are never changed or deleted.
 
 Press **Y / Scrape** for the main artwork workflow. Choose This title, GBA collection or All games,
 then review ranked RetroBase matches. Correct the search title if needed. Choose a regional flat label
 to preview on the real cartridge; choose metadata fields/variants independently. Box art, screenshots
 and logos can be saved separately without replacing the label. Next title advances or finishes the queue.
 Nothing is automatically applied. Cancel preserves accepted choices; retry retains successful searches.
-No account is required. The current three-slot GBA collection is the full supported scope.
+No account is required. GBA/all scopes cover the existing GBA collection, including folder imports.
+**Resume saved batch** restores an interrupted queue and its review position; completed searches load
+from private candidate files rather than repeating network requests. Starting a new scope replaces
+saved search progress, preserving applied choices. Unapplied preview/checkbox drafts are discarded.
 
 Scraping requires internet and sends title queries or ROM fingerprints/size, never ROM bytes.
 Accepted images/metadata are cached for offline use; ordinary launch has no network dependency.
@@ -91,8 +106,8 @@ A/B go directly to the corresponding Libretro A/B; verify Retroid's selected but
 The first button of a two-button shortcut may reach the game before the second is pressed.
 
 Insertion now lifts, aligns and slides the cartridge over 540 ms; ejection reverses it over 420 ms.
-Motion off bypasses both. A receiving slot, production model/materials, directory scanning, details,
-durable large-library scrape jobs, disc media, other layouts and HOME registration remain planned.
+Motion off bypasses both. A receiving slot, production model/materials, incremental directory indexing,
+details, selected-title/region preferences, disc media, other layouts and HOME registration remain planned.
 Backgrounding ends the current session after saving RAM; full session sleep/resume comes later.
 
 ## Engineering record
@@ -101,6 +116,7 @@ Backgrounding ends the current session after saving RAM; full session sleep/resu
 - [Product and UX scope](docs/PRODUCT.md)
 - [Label import, candidate choice and bulk scraping](docs/LABEL_SCRAPING.md)
 - [API scraping implementation and limits](docs/SCRAPING_REPORT.md)
+- [Folder imports, growing collection and saved scrape batches](docs/LIBRARY_PROGRESS.md)
 - [Socket/Slot and provider research](docs/PROVIDER_RESEARCH.md)
 - [Architecture and lifecycle](docs/ARCHITECTURE.md)
 - [Milestones](docs/ROADMAP.md)

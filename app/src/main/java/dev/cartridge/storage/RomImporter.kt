@@ -12,13 +12,13 @@ data class ImportedGame(val request: GameRequest, val title: String)
 
 /** M0 imports one document, without broad storage permissions or a commercial test ROM. */
 class RomImporter(private val resolver: ContentResolver, private val directory: File) {
-    fun import(uri: Uri): ImportedGame {
+    fun import(uri: Uri, checkCancelled: () -> Unit = {}): ImportedGame {
         val title = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) it.getString(0) else null
         } ?: "User game.gba"
         require(title.endsWith(".gba", ignoreCase = true)) { "Select an uncompressed .gba file" }
         check(directory.isDirectory || directory.mkdirs())
-        val temporary = File(directory, "import.tmp")
+        val temporary = File.createTempFile("rom-", ".tmp", directory)
         val digest = MessageDigest.getInstance("SHA-256")
         try {
             resolver.openInputStream(uri).use { input ->
@@ -27,6 +27,7 @@ class RomImporter(private val resolver: ContentResolver, private val directory: 
                     val buffer = ByteArray(64 * 1024)
                     var size = 0L
                     while (true) {
+                        checkCancelled()
                         val count = input.read(buffer)
                         if (count < 0) break
                         size += count
@@ -41,7 +42,7 @@ class RomImporter(private val resolver: ContentResolver, private val directory: 
             val id = digest.digest().joinToString("") { "%02x".format(it) }
             val destination = File(directory, "$id.gba")
             if (destination.exists()) temporary.delete() else check(temporary.renameTo(destination))
-            return ImportedGame(GameRequest(destination, id), title.removeSuffix(".gba").removeSuffix(".GBA"))
+            return ImportedGame(GameRequest(destination, id), title.dropLast(4))
         } finally { temporary.delete() }
     }
 }

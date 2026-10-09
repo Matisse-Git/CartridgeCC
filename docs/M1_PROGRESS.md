@@ -5,6 +5,10 @@ not yet accepted as a complete product milestone. API/database label scraping is
 enrichment goal. Local image import is the foundation and optional fallback. A second increment now
 implements real API scraping; see SCRAPING_REPORT for files, choices, tests and remaining scope.
 
+A third increment grows the GBA collection through SAF folder imports and saves scrape queues for
+explicit resume after reopening. Version 5 also collapses legacy duplicates and adds Remove/Undo with
+persisted rescan exclusions. LIBRARY_PROGRESS and the latest TESTING entry describe the current build.
+
 ## Implemented
 
 - Room-persisted three-slot GBA collection, original source URIs, content hashes and selected focus.
@@ -48,9 +52,10 @@ replaced with mocked rendering. No RP5 60 FPS or long-term memory-stability clai
 ## Open M1 work
 
 The cartridge is still faceted engineering geometry, without final plastic normal/roughness textures,
-studio cubemap or a receiving slot. Motion needs physical polish. Only three slots, one state slot,
-and a label per game are supported; directory indexing, disc templates/cores and durable large-library
-scraping are not present. The second increment adds real API choices and independent media/metadata.
+studio cubemap or a receiving slot. Motion needs physical polish. One state slot and a label per game
+are supported. The third increment grows the collection through SAF imports and saves scrape batches;
+disc templates/cores, incremental indexing, complete batch policies and very-large-library profiling
+remain pending. The second increment added real API choices and independent media/metadata.
 Backgrounding ends gameplay; seamless state restoration and periodic
 SaveRAM checkpoints are deferred. Force-stop cannot guarantee a final save. Validate a diagnostic that
 writes SRAM, asymmetric artwork orientation, held inputs/disconnection, sleep, sustained frame pacing,

@@ -4,7 +4,7 @@ One Android module keeps the feasibility work reviewable. Packages separate pure
 logic, input routing, file handling, renderer ownership and the emulator adapter. MainActivity owns
 Android views/lifecycle; an Android-free CollectionCoordinator owns selection, operations and handoff
 decisions. Native objects are never retained in a ViewModel or global UI singleton. RoomCollectionRepository
-persists the three slots, ROM identities/source URIs, focus and accepted label recipes. Schema JSON is
+persists ordered slots, ROM identities/source URIs, focus and accepted label recipes. Schema JSON is
 versioned under app/schemas; no destructive migration fallback is permitted.
 
 ## State and input
@@ -15,20 +15,22 @@ core/game setup and waits for the first real FrameRendered event. Error recovery
 session and returns through cleanup to Idle before retry. A process-wide atomic claim prevents a second
 LibretroDroid native frontend from being initialized concurrently.
 
-The coordinator independently tracks Library, Inserting, Handoff, Emulator, Ejecting and LabelPreview,
+The coordinator independently tracks Library, LibraryMenu, Inserting, Handoff, Emulator, Ejecting and LabelPreview,
 selection, viewport generation and busy state. The
 busy flag locks input during preparation/save/ejection. It does not declare an emulator Ready state.
 `ControllerRouter` sends each event to exactly one route: Library, Gameplay, Menu or Locked. Android
 keys go to GBA port zero; sticks/HAT use a digital D-pad mapping with a 0.35 dead zone. Navigation is
 polled by an Activity Choreographer callback: first action immediately, first repeat at 300 ms,
-following repeats at 110 ms. X invokes the game picker, Y opens scraping and Select invokes the image picker in Library; label preview routes
+following repeats at 110 ms. X adds/selects a game, B opens the collection menu, Y opens scraping, Start opens the folder picker
+and Select invokes the image picker in Library; label preview routes
 D-pad/A/B to its own actions. Gameplay never receives those UI actions.
 Pause clears all previously forwarded keys/axes. No HOME interception or system-button assumptions.
 
 ## Graphics ownership
 
 Filament uses a SurfaceView/UiHelper swapchain. Its glTF loader creates three instances sharing meshes,
-shell textures/materials. CartridgeLabels duplicates only the named label material per visible instance
+shell textures/materials. The collection length is independent: these three instances represent a
+moving window around the global selection. CartridgeLabels duplicates only the named label material per visible instance
 and owns its replacement SRGB8_A8 texture. GLB/image file reads and label decoding use IO; every Filament/JNI resource call stays on Main. Texture
 resources load asynchronously and renderables are added when ready. A Choreographer callback updates
 root transforms and draws; the focus spring retargets in place. Backgrounding pauses that loop.
@@ -115,7 +117,28 @@ at least 1.1 seconds between API calls; HTTP failures remain visible. Thumbnails
 
 The queue snapshots/deduplicates current game IDs. Only explicit choices can replace accepted fields,
 labels or media. Cancel stops pending work without rollback of accepted choices; failed/unsearched
-entries can retry without repeating successes. The queue is in memory and dies on recreation; Room
-selections persist. One-title/GBA/all scopes exist for three slots, not a directory-scale scanner.
-Durable jobs, selected subsets/consoles, fill-missing automation, scrape packs and undo remain planned.
-See LABEL_SCRAPING and ADR 0005. Renderer/native surface ownership is unchanged by the scraper.
+entries can retry without repeating successes. ScrapeJournal now saves targets, corrected queries,
+error/completion status and the review index in an atomic manifest, with candidates in per-title files.
+Only current candidates remain in RAM. Reopen → Resume loads completed candidates and continues
+pending searches. No automatic network work on launch. Draft previews/checkboxes are not accepted or
+restored implicitly; a new scope replaces queue progress, preserving Room choices. File writes share
+a mutex and sequence ordering across Activity instances. One saved batch; individual files ≤8 MiB.
+
+Room v3 adds remembered SAF directories; v4 adds removed-game identities, with v1→v2→v3→v4 migrations.
+Initialization collapses legacy repeated hashes, compacts slots and preserves focused ROM identity.
+Different hashes with the same title remain separate. Remove/restore transactionally update exclusions,
+ordered entries and focus, retaining game records, ROMs, saves and enrichment. Undo retains the previous
+ID/position in Activity state; explicit Add restores exclusions after reopening. Rescans cannot unhide games.
+DirectoryScanner traverses child
+document URIs on IO with persistent read grants, depth/count/ROM-byte bounds, per-file commits and
+cancellation checks. New identities append; existing identities keep labels and
+metadata. Sources are never written or deleted, including when a rescan reports revoked/missing roots.
+Snapshot mapping is linear in collection size; selection count follows the repository without resetting
+focus. Rendering/label decoding stays bounded to the visible three-object window. An empty collection
+has one placeholder; inactive pooled instances lie beyond the far clip and label buffers remain padded
+to three. Registered roots
+persist, while an interrupted scan restarts/deduplicates on explicit Rescan.
+
+Selected subsets/consoles, fill-missing automation, scrape packs, accepted-artwork undo, incremental rescanning and
+directory-removal UI remain planned. See LABEL_SCRAPING and ADRs 0005/0006. Renderer/native surface
+ownership is unchanged by the scraper and directory importer.

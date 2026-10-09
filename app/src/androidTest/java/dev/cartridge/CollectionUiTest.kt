@@ -104,10 +104,9 @@ class CollectionUiTest {
             await(scenario) { it.coordinator.state.value.labelPreviewReady }
             ui.onNodeWithTag("label-action-2").performClick()
             await(scenario) { it.coordinator.state.value.screen == CollectionScreen.Library && !it.coordinator.state.value.busy }
-            ui.onNodeWithTag("next").performClick()
-            scenario.onActivity { assertEquals("Next did not select slot 1", 1, it.coordinator.state.value.selection.index) }
             choose("choose-game", "probe-two.gba")
             await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame != null }
+            scenario.onActivity { assertEquals("Add did not select the new game", 1, it.coordinator.state.value.selection.index) }
             choose("choose-label", "blue-label.png")
             await(scenario) { it.coordinator.state.value.labelPreviewReady }
             awaitLabelColor(scenario, red = false)
@@ -138,7 +137,7 @@ class CollectionUiTest {
             ui.onNodeWithTag("label-action-3").performClick()
             awaitLabelColor(scenario, red = true)
             choose("choose-game", "probe-one.gba") // Reimport must preserve this game's label.
-            await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message == "Game added" }
+            await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message == "Selected the existing entry" }
             awaitLabelColor(scenario, red = true)
             choose("choose-label", "invalid.png")
             await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message?.contains("Choose a PNG") == true }

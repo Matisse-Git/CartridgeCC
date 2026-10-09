@@ -22,7 +22,7 @@ class CartridgeSurface(
     initialSelection: Int,
     private val onReady: () -> Unit,
     private val onReleased: () -> Unit,
-    private val onLabelsReady: (List<String?>) -> Unit = {},
+    private val onLabelsReady: (Int, List<String?>) -> Unit = { _, _ -> },
     private val onLabelError: (String) -> Unit = {},
 ) : SurfaceView(context), Choreographer.FrameCallback {
     private val engine: Engine
@@ -49,13 +49,17 @@ class CartridgeSurface(
     private var reportedReady = false
     private var lastFrame = 0L
     var selection: Int = initialSelection
+    var windowStart: Int = 0
+    var collectionCount: Int = 1
     var lift: Float = 0f
     var insertion: Float = 0f
     private var labelFailure = false
     fun setLabels(pixels: List<LabelPixels?>) {
+        require(pixels.size <= instances.size)
         if (!closed) {
-            if (labels.desired.map { it?.key } != pixels.map { it?.key }) labelFailure = false
-            labels.desired = pixels
+            val pooled = List(instances.size) { pixels.getOrNull(it) }
+            if (labels.desired.map { it?.key } != pooled.map { it?.key }) labelFailure = false
+            labels.desired = pooled
         }
     }
 
@@ -149,13 +153,15 @@ class CartridgeSurface(
             }
         }
         instances.forEachIndexed { index, instance ->
-            val offset = index - focus
+            val offset = index + windowStart - focus
             val emphasis = (1f - abs(offset)).coerceIn(0f, 1f)
             Matrix.setIdentityM(matrix, 0)
             val progress = insertion.coerceIn(0f, 1f)
             val rise = (progress / .35f).coerceIn(0f, 1f) * .32f
             val slide = ((progress - .5f) / .5f).coerceIn(0f, 1f) * 2.1f
-            Matrix.translateM(matrix, 0, offset * 1.85f, emphasis * (lift * .5f + rise - slide), emphasis * .12f)
+            // Inactive pool instances live beyond the far clip; no singular zero-scale transforms.
+            Matrix.translateM(matrix, 0, offset * 1.85f, emphasis * (lift * .5f + rise - slide),
+                if (index + windowStart < collectionCount) emphasis * .12f else -100f)
             Matrix.rotateM(matrix, 0, -12f - emphasis * (lift * 25f + progress * 18f), 1f, 0f, 0f)
             Matrix.rotateM(matrix, 0, (offset.coerceIn(-1f, 1f) * -22f + 8f) * (1f - emphasis * progress), 0f, 1f, 0f)
             val scale = 22f + emphasis * 5f
@@ -166,7 +172,7 @@ class CartridgeSurface(
         if (uiHelper.isReadyToRender && renderer.beginFrame(chain, frameTimeNanos)) {
             renderer.render(view)
             renderer.endFrame()
-            onLabelsReady(labels.keys)
+            onLabelsReady(windowStart, labels.keys)
             if (!reportedReady && resourceLoader.asyncGetLoadProgress() >= 1f) {
                 reportedReady = true
                 onReady()

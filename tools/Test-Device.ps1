@@ -2,7 +2,7 @@ param(
     [string]$Sdk = (Join-Path $PSScriptRoot '../.tools/sdk'),
     [string]$Serial,
     [ValidateRange(1, 50)][int]$Cycles = 3,
-    [ValidateSet('Surface', 'Collection', 'Scrape', 'Live', 'All')][string]$Suite = 'Surface'
+    [ValidateSet('Surface', 'Collection', 'Scrape', 'Library', 'Live', 'All')][string]$Suite = 'Surface'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -35,10 +35,11 @@ try {
         'Surface' { 'dev.cartridge.SurfaceHandoffTest' }
         'Collection' { 'dev.cartridge.CollectionUiTest' }
         'Scrape' { 'dev.cartridge.ProviderContractTest,dev.cartridge.ScrapeUiTest' }
+        'Library' { 'dev.cartridge.LibraryGrowthTest,dev.cartridge.ScrapeResumeTest' }
         'Live' { 'dev.cartridge.ProviderLiveTest' }
-        'All' { 'dev.cartridge.SurfaceHandoffTest,dev.cartridge.CollectionUiTest,dev.cartridge.ProviderContractTest,dev.cartridge.ScrapeUiTest' }
+        'All' { 'dev.cartridge.SurfaceHandoffTest,dev.cartridge.CollectionUiTest,dev.cartridge.ProviderContractTest,dev.cartridge.ScrapeUiTest,dev.cartridge.LibraryGrowthTest,dev.cartridge.ScrapeResumeTest' }
     }
-    $expectedTests = switch ($Suite) { 'Surface' { 1 }; 'Collection' { 2 }; 'Scrape' { 3 }; 'Live' { 1 }; 'All' { 6 } }
+    $expectedTests = switch ($Suite) { 'Surface' { 1 }; 'Collection' { 2 }; 'Scrape' { 5 }; 'Library' { 2 }; 'Live' { 1 }; 'All' { 10 } }
     $result = Invoke-DeviceAdb -Arguments @('shell', 'am', 'instrument', '-w', '-r', '-e', 'cycles', "$Cycles", '-e', 'liveProvider', "$($Suite -eq 'Live')".ToLowerInvariant(), '-e', 'class',
         $testClass, 'dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner')
     $result | Set-Content -LiteralPath '.tools/device-test.log'

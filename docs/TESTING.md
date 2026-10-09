@@ -123,8 +123,9 @@ Build both APKs first, unlock/authorize the device, then use the reproducible he
 Pass `-Sdk C:/path/to/Android/Sdk` and optionally `-Serial <serial>` when needed. It generates the original
 probe, installs both APKs, pushes the fixture, wakes the screen, runs instrumentation and checks the
 JUnit result (ADB's process exit code alone is insufficient). `-Suite Surface` is the default and runs
-one test; `-Suite Collection` runs two ordinary UI tests; `-Suite Scrape` runs three parser/migration/chooser
-tests; `-Suite All` runs all six deterministic tests. `-Suite Live` opts into one real API test using
+one test; `-Suite Collection` runs two ordinary UI tests; `-Suite Scrape` runs five parser/migration/chooser
+tests; `-Suite Library` runs two folder/durable-queue tests; `-Suite All` runs all ten deterministic tests.
+`-Suite Live` opts into one real API test using
 a fresh candidate cache, requiring device internet. It retrieves no commercial image or ROM. Logs stay in
 ignored `.tools/device-test.log`. Collection tests stub only document-picker results, then use the real
 ContentResolver, Room database, Filament and mGBA. Their database/cache is isolated from the owner's library.
@@ -273,3 +274,98 @@ and cold-launch/play, asymmetric regional-label fidelity, and accepting/replacin
 Queue restoration after process death and accepted-version undo are not implemented. Longer collection/
 gameplay profiling, SaveRAM continuity, sleep/context loss and held-controller disconnection remain
 the M1 checklist above. M0 remains passed; M1 is not declared complete.
+
+## Larger library / durable queue results — 2026-10-09
+
+Version 0.1.0-m1-library, versionCode 4, same physical RP5 and firmware. Both APKs compile, all
+16 host tests pass (eight coordinator, five domain, three queue), four GLB structural checks pass,
+and lint has zero errors/21 warnings. The extra warning is a String.toUri style suggestion; remaining
+warnings are the existing pinned-version/orientation/ABI/backup/API-style items. No broad suppressions.
+
+`Test-Device.ps1 -Suite All -Cycles 50`: **OK (9 tests)** in **41.485 s**. The final reviewed build,
+including linear snapshot mapping and a bounded journal reader, then passed the same nine tests with
+three native cycles in **23.428 s**. The provider API adapter/dependency pins are unchanged; the separate
+actual API/artwork evidence is in the preceding entry.
+
+New physical tests:
+
+- A debug DocumentsProvider presents nested original diagnostic files, a duplicate, an invalid short
+  .gba and ignored text. Choose the folder through the ordinary Compose action (picker/grant alone
+  stubbed). Five new content identities plus one existing game become six slots; duplicate/invalid
+  counts are correct. Repeat Rescan and reopen the database with zero added duplicates.
+- Apply blue original artwork to game six. PixelCopy reads real GPU label pixels beyond the original
+  three slots, across Activity recreation and database closing/reopening. Insert that sixth ROM into
+  actual mGBA, pause/eject, restore focus and blue pixels. Renderer/emulator are never mocked.
+- Cancel a scrape during its second provider request, recreate the Activity and reopen the on-disk
+  journal. Resume retries only pending work; completed candidates reload from disk. Next-title review
+  index and independently accepted year metadata survive another recreation. The provider responses
+  are original fixtures, not live service calls.
+- Seed the exact exported v2 schema with scraped label/metadata/media provenance and focus; upgrade
+  through v2→v3, append/deduplicate games and register a directory without changing previous choices.
+  The existing v1 migration test now upgrades through v1→v2→v3. All schema JSON is versioned.
+
+The first compile caught a nullable-Unit return from journal reset. The first device run crashed before
+tests because DocumentsProvider requires exported=true and MANAGE_DOCUMENTS protection; its debug
+manifest was corrected and the full suite rerun. It has no DOCUMENTS_PROVIDER discovery filter, so it
+doesn't appear in the system picker. Only the old single-document fixture is nonexported; the new
+tree fixture is protected by the system-only permission, not generally accessible. The production
+app requests no such permission and release builds contain neither fixture.
+
+Reproduce after the normal build:
+
+```powershell
+.\tools\Test-Device.ps1 -Suite Library
+.\tools\Test-Device.ps1 -Suite All -Cycles 50
+```
+
+Manual owner folder/grant/bulk-resume validation was requested on the installed build. Automated results
+substitute picker/grant/provider responses as stated; physical reboot and full process-kill recovery
+have not been measured. Still required: persistable folder grants after device reboot, revoked/missing
+roots, read-only/cloud provider behavior, disk-full and cancellation during large copies/journal writes,
+hundreds of real games with rapid navigation, offline cold-launch/play, held inputs/disconnection,
+sustained CPU/GPU/audio/frame pacing/memory/battery, and suspend. One durable batch is implemented;
+directory scan cursors and unapplied previews/checkbox drafts do not survive recreation. M1 remains open.
+
+## Legacy duplicates and reversible removal — 2026-10-09
+
+Owner validation confirmed folder import and saved batch resume work. The owner reported three copies
+of one game and no removal control, and called the scraping review flow tedious. Its UX redesign is
+explicitly deferred to a later version. Aggregate inspection confirmed seven assigned entries but five
+distinct ROM hashes; two assignments were redundant. No personal titles, art, ROMs or database copies
+are committed.
+
+VersionCode 5 compacts entries and collapses legacy hashes without merging different-content versions
+with the same title. Room v4 migration adds removal exclusions. B / Collection offers Remove and Undo;
+X / Add .gba restores exclusions after reopening. All source files, working ROMs, saves and accepted
+enrichment are retained. Undo's previous position is Activity state, so it is single-step/session-only.
+
+Both APKs compile; **17 host tests** (nine coordinator, five domain, three queue), four GLB checks and
+lint pass, with zero lint errors/21 warnings. **All 10 RP5 tests passed in 24.810 s** with three native
+handoffs. New/extended checks:
+
+- Upgrade the exact v3 SQLite schema containing three assignments of one hash and a second hash with
+  the same title. Collapse to two, preserve focused identity and label, remove/reopen, suppress rescan
+  re-addition, restore original order, prevent duplicate legacy assignment, empty the collection, and
+  explicitly re-add with its label. Existing v1/v2 tests now migrate through v4.
+- On game six, save a real mGBA state, eject, remove through the production UI, rescan, and Undo.
+  PixelCopy proves the original blue GPU label returns at the original position. Repeat removal,
+  recreate, rescan, then Add restores the same identity/label. Save-state bytes and original/private
+  ROM files remain intact. All test data uses isolated databases and original diagnostic files.
+- The saved-batch test also asserts the target manifest exists before the first provider request.
+  Manifest/candidate/reset writes reject older IO operations across Activity instances.
+
+Final review added the same stale-operation guard to journal resets. Both APKs/17 host tests/lint
+were rerun successfully; the two focused LibraryGrowth/ScrapeResume RP5 tests passed in **9.379 s**
+on that final source, and the helper reopened the production application. The full ten-test result
+above covers the unchanged collection/migration/rendering code.
+
+The first removal device run caught an exact-three-label requirement when the collection contained
+one game. CartridgeSurface now pads its fixed label pool and places inactive instances outside the
+far clip; the full suite then passed. No failure was masked or acceptance gate relaxed.
+
+The installed owner's database upgraded to v4: five assigned entries, five unique hashes, zero
+duplicate assignments, and unchanged game/enrichment counts. Focus preservation is proved by the
+isolated migration tests; the earlier owner snapshot and later inspection were not simultaneous.
+Manual Remove/Rescan/Undo validation is requested separately. Reboot, disk-full/process-kill timing,
+large-library profiling, source grant recovery, SaveRAM continuity and sustained suspend/audio/memory
+checks remain as listed above. M0 remains passed; M1 is in progress.

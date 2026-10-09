@@ -19,7 +19,9 @@ class ControllerRouter(
     private val chooseGame: () -> Unit = {},
     private val chooseLabel: () -> Unit = {},
     private val chooseScrape: () -> Unit = {},
+    private val chooseDirectory: () -> Unit = {},
     private val alternate: () -> Unit = {},
+    private val cancelOperation: () -> Unit = {},
 ) {
     var mode = InputMode.Library
         set(value) { if (field != value) reset(); field = value }
@@ -50,13 +52,17 @@ class ControllerRouter(
             else if (code == KeyEvent.KEYCODE_BACK && down && event.repeatCount == 0) pause()
             return true
         }
-        if (mode == InputMode.Locked) return true
+        if (mode == InputMode.Locked) {
+            if (down && event.repeatCount == 0 && code in setOf(KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE)) cancelOperation()
+            return true
+        }
         if (down && event.repeatCount == 0) when (code) {
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_ENTER -> select()
             KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> back()
             KeyEvent.KEYCODE_BUTTON_X -> if (mode == InputMode.Library) chooseGame() else if (mode == InputMode.Menu) alternate()
             KeyEvent.KEYCODE_BUTTON_Y -> if (mode == InputMode.Library) chooseScrape()
             KeyEvent.KEYCODE_BUTTON_SELECT -> if (mode == InputMode.Library) chooseLabel()
+            KeyEvent.KEYCODE_BUTTON_START -> if (mode == InputMode.Library) chooseDirectory()
         }
         return true
     }
