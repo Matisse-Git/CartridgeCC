@@ -123,7 +123,9 @@ Build both APKs first, unlock/authorize the device, then use the reproducible he
 Pass `-Sdk C:/path/to/Android/Sdk` and optionally `-Serial <serial>` when needed. It generates the original
 probe, installs both APKs, pushes the fixture, wakes the screen, runs instrumentation and checks the
 JUnit result (ADB's process exit code alone is insufficient). `-Suite Surface` is the default and runs
-one test; `-Suite Collection` runs the two ordinary UI tests; `-Suite All` runs all three. Logs stay in
+one test; `-Suite Collection` runs two ordinary UI tests; `-Suite Scrape` runs three parser/migration/chooser
+tests; `-Suite All` runs all six deterministic tests. `-Suite Live` opts into one real API test using
+a fresh candidate cache, requiring device internet. It retrieves no commercial image or ROM. Logs stay in
 ignored `.tools/device-test.log`. Collection tests stub only document-picker results, then use the real
 ContentResolver, Room database, Filament and mGBA. Their database/cache is isolated from the owner's library.
 Equivalent individual commands:
@@ -226,3 +228,48 @@ label placement/application, switching cartridges and reopening persistence. Man
 orientation/fidelity across multiple images and broader controller/input/performance checks remain.
 The checklist above records M0 scope; these new tests cover a subset of its previously open lifecycle
 items, not every listed suspend/save/context-loss combination. M1 remains in progress.
+
+## API scraper increment results — 2026-10-09
+
+Version 0.1.0-m1-scrape, versionCode 3, same RP5/firmware. Both APK builds, unit tests and lint pass;
+13 host tests (five domain, six coordinator, two scrape-queue) have zero failures/errors. The queue
+tests cover scope deduplication, no automatic writes, cancel/retry and checked-field-only acceptance.
+Four structural GLB checks pass. Lint has zero errors and 20 existing warnings.
+
+`Test-Device.ps1 -Suite All -Cycles 3`: **OK (6 tests)** in **15.824 s** on the final reviewed build.
+The earlier 50-cycle native test remains the recorded stress result; this increment repeats three
+native handoffs plus ordinary collection/session tests and three new scraper tests:
+
+- Provider parsing preserves regional aliases/descriptions, rejects unsupported image hosts and
+  keeps flat labels separate from box art. Fixture data/artwork is original.
+- Create the actual exported v1 SQLite schema, seed ROM/label/focus, then open through production
+  Room migration v2. Independently merge metadata and extra media; close/reopen and preserve identity,
+  original title, label, focus and accepted choices. The fixture initially assumed every entity had an
+  indices array; optJSONArray now follows the exported schema. No destructive fallback is used.
+- Ordinary Compose scraper UI selects a year from record A, previews/applies A's label on real
+  Filament, then accepts a developer and box art from record B. Activity recreation retains separate
+  provenance and original ROM title. Only provider responses and SAF picker results are stubbed;
+  database, files, UI, 3D upload and emulator regression are real. Isolated test data avoids owner writes.
+
+`Test-Device.ps1 -Suite Live`: **OK (1 test)** in **1.851 s**, with a fresh cache on the final build.
+The earlier live probe also passed in 2.116 s. Real RP5 internet/API returned the GBA
+record and EU/JP/US support-texture URLs. This probe downloads no artwork and is separate from the
+deterministic suite; service failures are reported rather than hidden with a fixture fallback.
+
+The owner then confirmed **real remote thumbnails, applying a scraped label and persistence after
+reopening all work**. This closes the initial actual-provider artwork proof; it does not establish
+complete Socket coverage, disc support or directory-scale scraping.
+
+Reproduce the scraper regression and optional live contract independently after building:
+
+```powershell
+.\tools\Test-Device.ps1 -Suite All -Cycles 3
+.\tools\Test-Device.ps1 -Suite Live
+```
+
+Remaining physical scraper checks: controller-only bulk review/skip/variant selection, interrupted
+network and rate-limit retry, cancel during download/write, apply label+metadata then disable Wi-Fi
+and cold-launch/play, asymmetric regional-label fidelity, and accepting/replacing each media category.
+Queue restoration after process death and accepted-version undo are not implemented. Longer collection/
+gameplay profiling, SaveRAM continuity, sleep/context loss and held-controller disconnection remain
+the M1 checklist above. M0 remains passed; M1 is not declared complete.

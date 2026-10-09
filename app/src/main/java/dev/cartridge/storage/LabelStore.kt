@@ -7,6 +7,7 @@ import dev.cartridge.library.LabelFit
 import dev.cartridge.library.LabelRef
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import kotlin.math.max
@@ -21,12 +22,14 @@ class LabelStore(private val directory: File) {
         return File(directory, "$id.image")
     }
     fun import(resolver: ContentResolver, uri: Uri): LabelRef {
+        return importStream(uri.toString()) { requireNotNull(resolver.openInputStream(uri)) { "The label image is unavailable" } }
+    }
+    fun importStream(source: String, open: () -> InputStream): LabelRef {
         check(directory.isDirectory || directory.mkdirs()) { "Cannot create label cache" }
         val temporary = File.createTempFile("label-", ".tmp", directory)
         val digest = MessageDigest.getInstance("SHA-256")
         try {
-            resolver.openInputStream(uri).use { input ->
-                requireNotNull(input) { "The label image is unavailable" }
+            open().use { input ->
                 FileOutputStream(temporary).use { output ->
                     val buffer = ByteArray(64 * 1024)
                     var size = 0L
@@ -52,7 +55,7 @@ class LabelStore(private val directory: File) {
             val id = digest.digest().joinToString("") { "%02x".format(it) }
             val destination = original(id)
             if (!destination.exists()) check(temporary.renameTo(destination)) { "Cannot store the label" }
-            return LabelRef(id, sourceUri = uri.toString())
+            return LabelRef(id, sourceUri = source)
         } finally { temporary.delete() }
     }
     fun decode(label: LabelRef): LabelPixels {

@@ -2,6 +2,8 @@ package dev.cartridge.library
 
 import android.content.Context
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "games")
@@ -13,6 +15,9 @@ data class GameRecord(
     val labelFit: String = "Fit",
     val labelQuarterTurns: Int = 0,
     val labelSourceUri: String? = null,
+    val labelProvenance: String? = null,
+    val metadataJson: String? = null,
+    val mediaJson: String? = null,
 )
 
 @Entity(tableName = "slots", foreignKeys = [ForeignKey(entity = GameRecord::class,
@@ -24,7 +29,8 @@ data class SlotRecord(@PrimaryKey val slot: Int, val gameId: String? = null)
 data class CollectionRecord(@PrimaryKey val singleton: Int = 0, val selectedSlot: Int = 0)
 
 data class SlotRow(val slot: Int, val selectedSlot: Int, val id: String?, val title: String?,
-    val sourceUri: String?, val labelAssetId: String?, val labelFit: String?, val labelQuarterTurns: Int?, val labelSourceUri: String?)
+    val sourceUri: String?, val labelAssetId: String?, val labelFit: String?, val labelQuarterTurns: Int?, val labelSourceUri: String?,
+    val labelProvenance: String?, val metadataJson: String?, val mediaJson: String?)
 
 @Dao
 interface LibraryDao {
@@ -35,8 +41,11 @@ interface LibraryDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertState(state: CollectionRecord)
     @Query("UPDATE slots SET gameId = :id WHERE slot = :slot") suspend fun assign(slot: Int, id: String)
     @Query("UPDATE collection_state SET selectedSlot = :slot WHERE singleton = 0") suspend fun select(slot: Int)
-    @Query("UPDATE games SET labelAssetId = :asset, labelFit = :fit, labelQuarterTurns = :turns, labelSourceUri = :uri WHERE id = :id")
-    suspend fun label(id: String, asset: String?, fit: String, turns: Int, uri: String?): Int
+    @Query("UPDATE games SET labelAssetId = :asset, labelFit = :fit, labelQuarterTurns = :turns, labelSourceUri = :uri, labelProvenance = :provenance WHERE id = :id")
+    suspend fun label(id: String, asset: String?, fit: String, turns: Int, uri: String?, provenance: String?): Int
+    @Query("SELECT * FROM games WHERE id = :id") suspend fun game(id: String): GameRecord?
+    @Query("UPDATE games SET metadataJson = :json WHERE id = :id") suspend fun metadata(id: String, json: String)
+    @Query("UPDATE games SET mediaJson = :json WHERE id = :id") suspend fun media(id: String, json: String)
     @Query("""SELECT slots.slot, collection_state.selectedSlot, games.* FROM slots
         CROSS JOIN collection_state LEFT JOIN games ON slots.gameId = games.id
         WHERE collection_state.singleton = 0 ORDER BY slots.slot""")
@@ -47,14 +56,21 @@ interface LibraryDao {
     suspend fun read(): List<SlotRow>
 }
 
-@Database(entities = [GameRecord::class, SlotRecord::class, CollectionRecord::class], version = 1, exportSchema = true)
+@Database(entities = [GameRecord::class, SlotRecord::class, CollectionRecord::class], version = 2, exportSchema = true)
 abstract class LibraryDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
     companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE games ADD COLUMN labelProvenance TEXT")
+                db.execSQL("ALTER TABLE games ADD COLUMN metadataJson TEXT")
+                db.execSQL("ALTER TABLE games ADD COLUMN mediaJson TEXT")
+            }
+        }
         @Volatile private var instance: LibraryDatabase? = null
         fun get(context: Context): LibraryDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, LibraryDatabase::class.java, "library.db")
-                .build().also { instance = it }
+                .addMigrations(MIGRATION_1_2).build().also { instance = it }
         }
     }
 }

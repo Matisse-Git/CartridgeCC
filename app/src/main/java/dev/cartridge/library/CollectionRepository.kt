@@ -4,11 +4,13 @@ import dev.cartridge.emulation.GameRequest
 import kotlinx.coroutines.flow.Flow
 
 enum class LabelFit { Fit, Crop }
-data class LabelRef(val assetId: String, val fit: LabelFit = LabelFit.Fit, val quarterTurns: Int = 0, val sourceUri: String? = null) {
+data class LabelRef(val assetId: String, val fit: LabelFit = LabelFit.Fit, val quarterTurns: Int = 0,
+    val sourceUri: String? = null, val provenance: AssetProvenance? = null) {
     init { require(assetId.matches(Regex("[a-f0-9]{64}"))); require(quarterTurns in 0..3) }
     val textureKey: String get() = "$assetId:${fit.name}:$quarterTurns"
 }
-data class LibraryGame(val id: String, val title: String, val sourceUri: String, val label: LabelRef? = null) {
+data class LibraryGame(val id: String, val title: String, val sourceUri: String, val label: LabelRef? = null,
+    val metadata: Map<String, MetadataValue> = emptyMap(), val media: Map<String, MediaSelection> = emptyMap()) {
     init { require(id.matches(Regex("[a-f0-9]{64}"))) }
 }
 data class LibrarySnapshot(val slots: List<LibraryGame?> = List(3) { null }, val selectedSlot: Int = 0) {
@@ -22,5 +24,7 @@ interface CollectionRepository {
     suspend fun assign(slot: Int, game: LibraryGame)
     suspend fun select(slot: Int)
     suspend fun setLabel(gameId: String, label: LabelRef?)
+    suspend fun setMetadata(gameId: String, values: Map<String, MetadataValue>)
+    suspend fun setMedia(gameId: String, media: MediaSelection)
     suspend fun gameRequest(game: LibraryGame): GameRequest
 }

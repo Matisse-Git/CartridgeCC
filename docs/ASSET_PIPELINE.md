@@ -63,3 +63,9 @@ proves independence, not the fidelity of a production scan or the orientation of
 Publish label UV orientation, aspect ratio and a mask with each polished template.
 Future disc templates also define outer radius and centre-hole masking. Distinguish flat label artwork
 from photographs of entire media and case/box art. See [LABEL_SCRAPING.md](LABEL_SCRAPING.md).
+
+The API adapter now requests regional support-texture flat labels and routes them through this same
+bounded preview pipeline. Additional provider media never binds to the label primitive. The owner
+confirmed real remote artwork thumbnails/application/reopening; final scan fidelity and asymmetric UV
+orientation still need product validation. Keep retrieved commercial assets in private runtime caches,
+never in model generators, source art, tests or APKs. See PROVIDER_RESEARCH and SCRAPING_REPORT.

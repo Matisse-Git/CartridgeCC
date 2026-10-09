@@ -77,7 +77,7 @@ native surface probe with framebuffer/input/save-load checks now pass on RP5. Se
 - Android 16 KiB compatibility is not claimed for the entire dependency chain merely because the
   source-built mGBA core has aligned ELF segments. RP5/API 33 is the initial runtime target.
 - First build downloads source/dependencies; cold-build network restrictions and JitPack availability
-  can block compilation. No runtime network permission is requested.
+  can block compilation. M0 requested no runtime network permission; the later scraper adds INTERNET.
 
 ## M1 implementation pins
 
@@ -87,3 +87,11 @@ Espresso Intents 3.6.1 supplies picker-result stubbing only. The genuine rendere
 Filament 1.72.1 MaterialInstance.duplicate, RenderableManager material binding and Texture.Builder.usage
 were checked against that tag's Java source. Its default glTF ubershader exposes baseColorMap; runtime
 generated mipmaps need explicit GEN_MIPMAPPABLE usage. See ADR 0004 and M1_PROGRESS for scope/results.
+
+## Online proof brought forward
+
+The owner prioritized API scraping over custom-image import. The M1 scraper now uses RetroBase's public
+v1 API with Android's HTTPS/JSON facilities, adding no HTTP SDK dependency or app credential. Room v2
+persists independently accepted selections through an explicit migration. Existing UI/Filament preview
+and private original caching are reused; native surfaces/emulation remain isolated. See ADR 0005,
+PROVIDER_RESEARCH, SCRAPING_REPORT and TESTING for contract inspection and actual RP5 results.

@@ -1,5 +1,8 @@
 # M0 delivery report — 2026-10-09
 
+This records the M0 snapshot. Later persistent-library/local-label work is in M1_PROGRESS; the installed
+real API scraping increment and its validation/limits are in SCRAPING_REPORT and TESTING.
+
 ## Implemented
 
 Compilable native Kotlin/Compose Android app; immersive landscape shell; direct Filament/gltfio

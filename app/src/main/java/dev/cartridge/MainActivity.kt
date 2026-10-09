@@ -46,6 +46,7 @@ import dev.cartridge.input.InputMode
 import dev.cartridge.library.*
 import dev.cartridge.rendering.CartridgeSurface
 import dev.cartridge.session.*
+import dev.cartridge.scraping.*
 import dev.cartridge.storage.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.combine
@@ -59,6 +60,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         private set
     private lateinit var input: ControllerRouter
     private lateinit var labelStore: LabelStore
+    internal lateinit var scraper: ScrapeCoordinator
+        private set
     private var cartridgeSurface: CartridgeSurface? = null
     private var emulatorHost: EmulatorHost? = null
     private var chooseGame: (() -> Unit)? = null
@@ -66,6 +69,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     internal val collectionSurface get() = cartridgeSurface
     protected open fun createRepository(): CollectionRepository = RoomCollectionRepository(this)
     protected open fun createLabelStore(): LabelStore = LabelStore(File(filesDir, "labels"))
+    protected open fun createArtworkProvider(): ArtworkProvider = RetroBaseProvider(File(cacheDir, "scrape-candidates"))
     private val menuItems = listOf("Resume", "Save state", "Load state", "Eject to collection")
     private val inputFrames = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
@@ -87,16 +91,35 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         engine = LibretroEngine(this, lifecycleScope)
         labelStore = createLabelStore()
         val preferences = getPreferences(MODE_PRIVATE)
-        coordinator = CollectionCoordinator(engine, createRepository(), object : RendererHandoff {
+        val repository = createRepository()
+        coordinator = CollectionCoordinator(engine, repository, object : RendererHandoff {
             override fun releaseLibrary() { cartridgeSurface?.close(); cartridgeSurface = null }
             override fun releaseEmulator() { emulatorHost?.release(); emulatorHost = null }
         }, lifecycleScope, preferences.getBoolean("reducedMotion", false), preferences.getBoolean("alternateShortcut", false))
-        input = ControllerRouter(coordinator::navigate, coordinator::select, coordinator::back, coordinator::pause,
-            engine::key, engine::motion, chooseGame = { chooseGame?.invoke() }, chooseLabel = { chooseLabel?.invoke() })
+        scraper = ScrapeCoordinator(createArtworkProvider(), repository, labelStore, File(filesDir, "roms"), lifecycleScope) { game, label ->
+            val slot = coordinator.state.value.slots.indexOfFirst { it?.id == game.id }
+            if (slot >= 0) {
+                coordinator.navigate(slot - coordinator.state.value.selection.index)
+                coordinator.previewLabel { label }
+            } else { coordinator.notify("This game is no longer assigned to a cartridge"); scraper.previewFinished() }
+        }
+        input = ControllerRouter(
+            navigate = { if (scraper.state.value.visible) scraper.navigate(it) else coordinator.navigate(it) },
+            select = { if (scraper.state.value.visible) scraper.select() else coordinator.select() },
+            back = { if (scraper.state.value.visible) scraper.back() else coordinator.back() }, pause = coordinator::pause,
+            gameKey = engine::key, gameMotion = engine::motion, chooseGame = { chooseGame?.invoke() },
+            chooseLabel = { chooseLabel?.invoke() }, chooseScrape = ::openScraper, alternate = {
+                val scrape = scraper.state.value
+                if (scrape.visible && scrape.page == ScrapePage.Metadata) scrape.candidate?.metadata?.keys?.elementAtOrNull(scrape.focus)?.let(scraper::variant)
+            })
         getSystemService(InputManager::class.java).registerInputDeviceListener(this, null)
         lifecycleScope.launch {
-            combine(coordinator.state, engine.status) { state, status -> state to status }.collect { (state, status) ->
+            var previousScreen = CollectionScreen.Library
+            combine(coordinator.state, engine.status, scraper.state) { state, status, scrape -> Triple(state, status, scrape) }.collect { (state, status, scrape) ->
+                if (previousScreen == CollectionScreen.LabelPreview && state.screen == CollectionScreen.Library) scraper.previewFinished()
+                previousScreen = state.screen
                 input.mode = when {
+                    scrape.visible -> InputMode.Menu
                     state.busy || !state.loaded -> InputMode.Locked
                     state.screen == CollectionScreen.LabelPreview -> InputMode.Menu
                     status.state == SessionState.Running -> InputMode.Gameplay
@@ -129,10 +152,15 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         withContext(Dispatchers.IO) { labelStore.import(contentResolver, uri) }
     }
+    private fun openScraper() {
+        val current = coordinator.state.value
+        if (current.loaded && !current.busy && current.screen == CollectionScreen.Library) scraper.open(current.slots.filterNotNull(), current.selectedGame)
+    }
 
     @Composable private fun CartridgeApp() {
         val state by coordinator.state.collectAsStateWithLifecycle()
         val status by engine.status.collectAsStateWithLifecycle()
+        val scrape by scraper.state.collectAsStateWithLifecycle()
         val emulator by engine.surface.collectAsStateWithLifecycle()
         var glb by remember { mutableStateOf<ByteArray?>(null) }
         LaunchedEffect(Unit) {
@@ -157,13 +185,14 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                     Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(state.title, fontSize = 23.sp, color = Color(0xFFE9E2D6), modifier = Modifier.testTag("selected-title"))
                         Text(if (state.screen == CollectionScreen.LabelPreview) "↑ ↓ Choose   ·   A Apply action   ·   B Cancel"
-                            else "← → Browse   ·   A Insert   ·   X Game   ·   Y Label   ·   ${state.selection.index + 1} / 3",
+                            else "← → Browse   ·   A Insert   ·   X Game   ·   Y Scrape   ·   Select Image   ·   ${state.selection.index + 1} / 3",
                             fontSize = 12.sp, color = Color(0xFF9C968B), modifier = Modifier.padding(top = 8.dp))
                     }
                     if (state.screen == CollectionScreen.Library) {
                         Row(Modifier.align(Alignment.TopEnd).padding(16.dp)) {
                             TextButton(enabled = !state.busy && state.loaded, onClick = { chooseGame?.invoke() }, modifier = Modifier.testTag("choose-game")) { Text("Choose .gba") }
-                            TextButton(enabled = !state.busy && state.selectedGame != null, onClick = { chooseLabel?.invoke() }, modifier = Modifier.testTag("choose-label")) { Text("Label") }
+                            TextButton(enabled = !state.busy && state.loaded, onClick = ::openScraper, modifier = Modifier.testTag("scrape")) { Text("Scrape") }
+                            TextButton(enabled = !state.busy && state.selectedGame != null, onClick = { chooseLabel?.invoke() }, modifier = Modifier.testTag("choose-label")) { Text("Image") }
                             if (state.selectedGame?.label != null) TextButton(enabled = !state.busy, onClick = coordinator::removeLabel) { Text("Reset label") }
                             TextButton(enabled = !state.busy && state.rendererReady && state.loaded, onClick = coordinator::insert, modifier = Modifier.testTag("insert")) { Text("Insert") }
                         }
@@ -217,6 +246,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 }
                 state.message?.let { Text(it, color = Color(0xFFE2CFAE), modifier = Modifier.align(Alignment.BottomStart)
                     .background(Color(0xEE191817)).padding(16.dp).testTag("message"), fontSize = 13.sp) }
+                if (scrape.visible) ScrapePanel(scrape, scraper)
             }
         }
     }
@@ -280,6 +310,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     override fun onDestroy() {
         getSystemService(InputManager::class.java).unregisterInputDeviceListener(this)
         coordinator.destroy()
+        scraper.destroy()
         engine.releaseOnDestroy()
         emulatorHost?.release()
         cartridgeSurface?.close()

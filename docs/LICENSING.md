@@ -2,7 +2,8 @@
 
 Audit date: 2026-10-09. This records selected sources and known obligations. It is not a completed
 public-release source/notice package. No commercial ROM, BIOS, copyrighted game art or branded media
-model was adopted. Cannoli/Lemuroid were references only; no frontend code was copied from them.
+model is bundled. Runtime user-selected artwork is privately cached with provenance. Cannoli/Lemuroid,
+Socket/Slot were references only; no frontend code was copied from them.
 
 | Dependency | Version / source | License and consequences |
 | --- | --- | --- |
@@ -52,7 +53,21 @@ Filament/Oboe dependencies rather than treating this table as a complete binary 
 obligations disappear because the core is dynamically loaded. Private feasibility builds are not a
 public commercial release, and this work does not assign a blanket license to the owner's source.
 
-## Planned scraping providers and imported labels
+## Implemented provider and imported labels
+
+RetroBase Collection's public v1 API is used for runtime metadata/media retrieval, not linked library
+code. Its [developer documentation](https://retrobase-collection.com/developers) permits anonymous
+access. Its [legal notice](https://retrobase-collection.com/legal) states that the final data license is
+pending and grants no image license. Store the API's license status and provider/source/record/time
+with each accepted selection; show Data: RetroBase Collection in the scraper. These facts are not a
+blanket redistribution grant. Resolve data/service terms before a public release or redistributable
+metadata export. Commercial images remain outside Git, fixtures and APK assets. Tests use original
+artwork, with a separate live API test that retrieves only metadata and media URLs.
+
+See PROVIDER_RESEARCH for the precise Socket/Slot evidence. Neither Socket's unidentified backend nor
+a community fork's Skyscraper recipe establishes permission to copy that application's assets/keys.
+
+## Unadopted scraping providers
 
 ScreenScraper is a researched candidate, not a dependency or adopted artwork source. Its official
 API documentation requires developer credentials and limits ordinary API use to completely free apps

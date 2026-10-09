@@ -2,8 +2,10 @@
 
 Required by the owner on 2026-10-09. M1 now implements single local PNG/JPEG/WebP import through SAF,
 real 3D Fit/Crop/rotation preview and independent persistent labels. RP5 tests prove per-game GPU pixels,
-cancel, identical-ROM reimport and database reopening. Scrape-pack adapters, online scraping, multiple
-candidates, metadata choices and batch jobs below remain planned. Offline ROM launching is independent.
+cancel, identical-ROM reimport and database reopening. Real RetroBase API scraping now adds one-title
+and current-GBA-collection search, ranked multiple candidates, regional thumbnails, independent
+label/media/metadata choices and accepted provenance. The full workflow below also includes future
+scrape packs, selected subsets/consoles, undo and durable jobs. Offline ROM launching is independent.
 
 ## User flow
 
@@ -60,10 +62,12 @@ and actual responses; a support image is not assumed to be a flat label. API dev
 require contacting the service. The documented use terms require a completely free app or prior
 agreement for other distribution models. These are unresolved adoption gates, not an implemented API.
 
-No provider has been selected, no account created and no remote artwork downloaded. Inspect live API
-schemas, access/quota rules, service approval and asset rights before choosing an adapter. Local import
-is useful independently and must remain available when a provider is unavailable. Network-based scraping
-will require a deliberate internet permission and credential-storage design in that later milestone.
+RetroBase Collection is selected for the first account-free API proof. OpenAPI and actual regional
+support-texture records were inspected, and the live contract test passes on RP5. Only fingerprints,
+sizes/platforms and title queries are sent; never ROM bytes. The normal INTERNET permission is explicit.
+No account or secret is stored. The provider's final data license remains pending; images stay with
+their rightsholders. Runtime assets are private, never Git/APK fixtures. See PROVIDER_RESEARCH,
+SCRAPING_REPORT and LICENSING for evidence and precise Socket/Slot findings.
 
 ## Acceptance criteria
 
@@ -75,10 +79,20 @@ will require a deliberate internet permission and credential-storage design in t
 - Relaunch offline and browse/play with accepted labels/metadata; no account or network needed to launch.
 - Audit the selected provider terms and asset provenance; keep credentials and downloaded media out of Git.
 
-## Current local-import limits
+## Current implementation and limits
 
-GBA only, three persistent slots and one accepted label per game. The database records content hash,
-source URI and recipe; provider IDs, licence fields, accepted-version history/undo and batch policies
-are future schema work. Cancelled imports can leave unreferenced originals in the private cache;
-garbage collection needs a reference-aware policy. No network permission, provider credentials or
-remote artwork are used. Disc templates/emulation have not been implemented.
+GBA only, three persistent slots, one accepted label and one asset per additional-media category per
+game. One-title, GBA collection and all-current-games scopes operate on deduplicated existing identities;
+the latter two are the same scope today. Every apply is explicit, protecting unchecked fields/current
+labels; there is no automatic fill-missing or apply-to-remaining policy. Search cancellation preserves
+accepted choices; failed and unfinished searches can retry while the in-memory queue survives.
+
+Room v2 records per-field/provider/record/source/license/time and asset type/region. Originals carry a
+local SHA-256 content ID, while label Fit/Crop/rotation remains separate. Dimensions are checked at
+decode, not stored as provenance. Edition/disc/language tags and selection history are not modeled yet.
+Candidate JSON has a one-hour TTL and a 32-file/32-MiB cap; accepted assets persist offline.
+
+Queues are not resumed after Activity/process recreation. Selected subsets/consoles, multiple providers,
+scrape-pack import, undo, full metadata/details views and disc templates/emulation are future work.
+Cancelled imports can leave unreferenced originals; reference-aware garbage collection is pending.
+The provider's source checksum is not verified; cached originals have the app's own SHA-256 identity.

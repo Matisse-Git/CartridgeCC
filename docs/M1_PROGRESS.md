@@ -2,7 +2,8 @@
 
 M0 remains passed. This first M1 increment is implemented and installed on the physical RP5; M1 is
 not yet accepted as a complete product milestone. API/database label scraping is the owner's main
-enrichment goal. Local image import is the foundation and optional fallback; online work follows it.
+enrichment goal. Local image import is the foundation and optional fallback. A second increment now
+implements real API scraping; see SCRAPING_REPORT for files, choices, tests and remaining scope.
 
 ## Implemented
 
@@ -13,7 +14,8 @@ enrichment goal. Local image import is the foundation and optional fallback; onl
 - SAF local label import, real 3D Fit/Crop/90° rotation, Apply/Cancel/reset, independent label materials
   on one shared mesh. Originals, source URI and accepted recipes persist. Identical-ROM reimport keeps
   the label. Decoding/upload errors are visible; an unrendered draft cannot be accepted.
-- Controller X/Y game/label actions and D-pad/A/B preview actions use the same state as touch.
+- Controller game/image and D-pad/A/B preview actions use the same state as touch. The second increment
+  changes Y to primary Scrape and Select to optional local Image import.
 
 ## Files
 
@@ -25,7 +27,7 @@ CoordinatorTest, CollectionUiTest, debug-only DebugCollectionActivity/FixtureDoc
 Test-Device.ps1 extend verification. README, PRODUCT, ARCHITECTURE, ROADMAP, ASSET_PIPELINE, TESTING,
 LICENSING, TECHNICAL_PLAN, LABEL_SCRAPING and ADR 0004 describe the actual state.
 
-## Validation
+## First increment validation
 
 Build APKs and unit/lint checks pass; 11 unit tests and four structural asset checks pass. On the RP5,
 all three instrumentation tests passed in 30.628 s with 50 real Filament/mGBA handoffs. Ordinary UI
@@ -47,12 +49,14 @@ replaced with mocked rendering. No RP5 60 FPS or long-term memory-stability clai
 
 The cartridge is still faceted engineering geometry, without final plastic normal/roughness textures,
 studio cubemap or a receiving slot. Motion needs physical polish. Only three slots, one state slot,
-and a local image label are supported; directory indexing, disc templates/cores and full scraping are
-not present in this increment. Backgrounding ends gameplay; seamless state restoration and periodic
+and a label per game are supported; directory indexing, disc templates/cores and durable large-library
+scraping are not present. The second increment adds real API choices and independent media/metadata.
+Backgrounding ends gameplay; seamless state restoration and periodic
 SaveRAM checkpoints are deferred. Force-stop cannot guarantee a final save. Validate a diagnostic that
 writes SRAM, asymmetric artwork orientation, held inputs/disconnection, sleep, sustained frame pacing,
 audio timing, memory and battery on RP5.
 
 The owner requested immediate priority for database/API scraping and Socket/Slot-style labels after
-confirming the local workflow. That is the next focused enrichment task; it must expose real candidate
-choices and provenance rather than pretend custom image import satisfies the scrape requirement.
+confirming the local workflow. The second increment meets the initial API proof with genuine provider
+candidates and accepted provenance. Full scraping scope remains incremental work, not completed by
+custom-image import. See SCRAPING_REPORT, ADR 0005 and TESTING for current results.

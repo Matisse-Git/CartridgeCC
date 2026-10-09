@@ -32,6 +32,8 @@ class CoordinatorTest {
             check(!requestFailure) { "Missing game" }
             return GameRequest(File("${game.id}.gba"), game.id)
         }
+        override suspend fun setMetadata(gameId: String, values: Map<String, MetadataValue>) = Unit
+        override suspend fun setMedia(gameId: String, media: MediaSelection) = Unit
     }
     private class Engine : EmulationEngine {
         override val status = MutableStateFlow(EngineStatus())

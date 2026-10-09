@@ -21,7 +21,7 @@ busy flag locks input during preparation/save/ejection. It does not declare an e
 `ControllerRouter` sends each event to exactly one route: Library, Gameplay, Menu or Locked. Android
 keys go to GBA port zero; sticks/HAT use a digital D-pad mapping with a 0.35 dead zone. Navigation is
 polled by an Activity Choreographer callback: first action immediately, first repeat at 300 ms,
-following repeats at 110 ms. X/Y invoke game/label SAF pickers only in Library; label preview routes
+following repeats at 110 ms. X invokes the game picker, Y opens scraping and Select invokes the image picker in Library; label preview routes
 D-pad/A/B to its own actions. Gameplay never receives those UI actions.
 Pause clears all previously forwarded keys/axes. No HOME interception or system-button assumptions.
 
@@ -94,19 +94,28 @@ red/blue GPU labels stay independent and restore after cancellation/recreation/d
 Automatic EXIF orientation, arbitrary crop positioning, cache garbage collection and accepted-version
 undo are deferred. PNG/WebP originals are not compressed to KTX2 at runtime in this increment.
 
-## Planned artwork and metadata boundary
+## Implemented API artwork and metadata boundary
 
-Local image/scrape-pack import and online providers feed one enrichment workflow, separate from the
-ROM repository. A provider match never changes the content-hash game identifier. Candidate results are
-separate from accepted, versioned selections. Game identity, physical media template, label artwork,
-additional media and metadata fields have independent choices and provenance.
+ArtworkProvider's RetroBase adapter supplies real GBA candidates and HTTPS images. ScrapeCoordinator
+owns the separate reviewed search queue; ScrapePanel uses Compose, while flat-label choices use the
+existing Filament preview. Candidate API data is separate from Room's accepted selections. The SHA-256
+ROM key never changes when a provider match/label/title is selected. Metadata fields, regional label
+and additional-media categories merge independently, preserving unchecked choices. Room v2 adds three
+nullable JSON columns with an explicit tested v1→v2 migration; schemas 1 and 2 remain exported.
 
 Retain original images and crop/fit recipes separately from derived GPU textures. The renderer shares
 the cartridge mesh but binds a distinct label material instance per visible game; label decoding runs
-on IO, GPU creation/destruction on Main. This binding and the local-image path now exist; provider and
-metadata-candidate workflows are the next enrichment slice, prioritized by the owner.
+on IO, GPU creation/destruction on Main. SAF and remote bytes share LabelStore's bounded stream importer.
 Cache accepted files for offline use and bound GPU texture memory rather than decoding on every move.
 
-Batch jobs take a snapshot of the selected games, honour provider rate limits, retain resumable status,
-and commit reviewed choices transactionally. Default fill-missing behaviour preserves manual choices.
-See [LABEL_SCRAPING.md](LABEL_SCRAPING.md). Add only provider/data fields needed for a working scrape loop.
+Search uses SHA-1/size/platform lookup, then title queries; corrected queries skip the hash guess.
+No ROM upload, embedded secret or account. HTTPS hosts, image/API sizes and decode dimensions are bounded.
+Candidate JSON expires after one hour and is bounded to 32 files/32 MiB. Requests are sequential with
+at least 1.1 seconds between API calls; HTTP failures remain visible. Thumbnails decode off Main.
+
+The queue snapshots/deduplicates current game IDs. Only explicit choices can replace accepted fields,
+labels or media. Cancel stops pending work without rollback of accepted choices; failed/unsearched
+entries can retry without repeating successes. The queue is in memory and dies on recreation; Room
+selections persist. One-title/GBA/all scopes exist for three slots, not a directory-scale scanner.
+Durable jobs, selected subsets/consoles, fill-missing automation, scrape packs and undo remain planned.
+See LABEL_SCRAPING and ADR 0005. Renderer/native surface ownership is unchanged by the scraper.

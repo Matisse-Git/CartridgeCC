@@ -3,7 +3,8 @@
 Project Cartridge is one native, offline-first console experience: physical media collection →
 insertion → internal gameplay → app-owned pause/save/load → ejection → collection. The cartridge
 is the centerpiece. Warm charcoal, quiet lighting, restrained text and controller-first navigation
-guide later refinement. Original labels only; no Apple/Nintendo visual assets or commercial game data.
+guide later refinement. Bundled labels are original; user-selected scraped artwork is privately cached.
+No Apple/Nintendo interface assets, commercial ROMs or BIOS are bundled.
 
 The supplied master specification governs the roadmap. **M0 feasibility passed on the physical RP5
 on 2026-10-09**; M1 is in progress, with broader lifecycle/performance hardening still required.
@@ -24,7 +25,7 @@ Empty study slots cannot launch. Metadata does not block a user-selected game.
 ## Implemented M1 increment
 
 - Room persists the three game slots, source URIs, content identities and last selected slot.
-- X chooses a game; Y imports a local PNG/JPEG/WebP label through SAF. A real 3D preview offers
+- X chooses a game; Select imports an optional local PNG/JPEG/WebP label through SAF. A real 3D preview offers
   Fit/Crop, 90° rotation, Apply and Cancel using controller or touch. No choice is saved on Cancel.
 - Per-game label materials/textures share the original mesh. Original image bytes and their source
   URI are retained; recipes survive relaunch and reimporting an identical ROM preserves its label.
@@ -34,7 +35,17 @@ Empty study slots cannot launch. Metadata does not block a user-selected game.
   insertion and recovery. Reopening the Room database restores the independent labels and focus.
 
 The cartridge model, lighting and motion still need product polish and a receiving mechanism. This
-increment proves the local label path; it does not claim M1 completion or an online scraping service.
+increment proves the local label path; it does not claim M1 completion.
+
+## Implemented online scraping increment
+
+Y opens real RetroBase API scraping with single-title/GBA/all-current-library scopes. Review ranked
+hash/title candidates, correct a search, pick regional flat-label thumbnails, preview/apply them on
+the real model, and choose metadata fields/variants or additional media independently. No automatic
+replacement occurs. Sequential queue search reports progress/errors; accepted choices survive cancel
+and offline relaunch. Room v2 migrates existing slots and labels without deleting them. No account is
+needed, and no ROM bytes are uploaded. Source/record/region/license/time are retained per selection.
+See SCRAPING_REPORT and PROVIDER_RESEARCH for evidence and exact limits.
 
 ## Required label import and scraping experience
 
@@ -54,15 +65,16 @@ supports cancel/retry/skip. Ambiguous matches go to a review queue. Replacement 
 reviewable change summary. Region/language preferences rank choices but do not hide alternatives.
 Accepted assets and provenance are cached locally; network failures must never block launching a game.
 
-Local single-image import, accepted recipes and per-game textures are implemented in M1. Scrape-pack
-adapters, online title/console/all-library scraping, independent metadata/media candidates and bulk
-review remain M3 work. See [LABEL_SCRAPING.md](LABEL_SCRAPING.md) for the required complete workflow.
+Local image import, online one-title/current-GBA-collection scraping, independent metadata/media
+candidates, manual review and accepted provenance are implemented. Current scope is three GBA slots;
+selected subsets/consoles, scrape packs, durable jobs, undo and automatic fill-missing remain M3 work.
+See [LABEL_SCRAPING.md](LABEL_SCRAPING.md) for the complete required workflow and current boundaries.
 
 ## Explicitly deferred
 
 The final believable slot/insertion/ejection choreography and mechanical sound, production mesh/textures,
-full gameplay touch controls, per-button remapping, details panels, richer Room metadata, directory scanning,
-multi-directory indexing, favorites, online/bulk artwork selection, vertical/grid layouts, additional systems,
+full gameplay touch controls, per-button remapping, details/media panels, directory scanning,
+multi-directory indexing, favorites, durable directory-scale scrape jobs, vertical/grid layouts, additional systems,
 HOME launcher mode and backup. Backgrounding currently ends the session after persisting RAM;
 the app does not claim seamless resume of a lost EGL context.
 

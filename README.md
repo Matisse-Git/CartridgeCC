@@ -1,17 +1,17 @@
 # Project Cartridge
 
 Native Android, controller-first physical-media collection with **embedded** GBA emulation.
-This repository implements M0 and the first M1 increment, not the finished product. No RetroArch
-installation, external emulator intents, browser renderer, commercial ROM, BIOS, or proprietary
-artwork is used.
+This repository implements M0 and focused M1 increments, not the finished product. No RetroArch
+installation, external emulator intents or browser renderer is used. No commercial ROM, BIOS or
+proprietary artwork is bundled; users can scrape artwork into their private collection.
 
-**Status:** M0 passed on RP5 on 2026-10-09. M1 now has Room-persisted game slots/focus, local label
-import with real 3D Fit/Crop/rotation preview, independent per-game textures, and a tested session
-coordinator. The debug APK builds; 11 unit tests, four asset checks, and three RP5 instrumentation
-tests pass, including 50 real renderer/core handoffs, ordinary UI lifecycle recovery and reopening
-labels from disk. The owner previously confirmed physical navigation, gameplay/audio and save/load.
+**Status:** M0 passed on RP5 on 2026-10-09. M1 has Room-persisted game slots/focus, real API label
+scraping, independent media/metadata choices, 3D Fit/Crop/rotation preview and a tested session
+coordinator. Both APKs build; 13 unit tests and four asset checks pass. RP5 tests cover real native
+handoffs, ordinary UI recovery, independent labels, schema migration and reviewed scraping; a separate
+live API test passes. The owner confirmed physical navigation, gameplay/audio, save/load and local labels.
 M1 remains in progress: the mesh and motion are engineering assets and long-duration validation
-is outstanding. See [docs/M1_PROGRESS.md](docs/M1_PROGRESS.md) and [docs/TESTING.md](docs/TESTING.md).
+is outstanding. See [docs/SCRAPING_REPORT.md](docs/SCRAPING_REPORT.md) and [docs/TESTING.md](docs/TESTING.md).
 
 ## Prerequisites
 
@@ -67,7 +67,19 @@ document is unchanged. Room preserves slot assignments, labels and the selected 
 Old M0 assignments were transient and must be selected once in this version. SaveRAM and one
 save-state slot per content hash persist across sessions.
 
-Press Y / Label to choose a PNG, JPEG or WebP, including an already scraped flat label image.
+Press **Y / Scrape** for the main artwork workflow. Choose This title, GBA collection or All games,
+then review ranked RetroBase matches. Correct the search title if needed. Choose a regional flat label
+to preview on the real cartridge; choose metadata fields/variants independently. Box art, screenshots
+and logos can be saved separately without replacing the label. Next title advances or finishes the queue.
+Nothing is automatically applied. Cancel preserves accepted choices; retry retains successful searches.
+No account is required. The current three-slot GBA collection is the full supported scope.
+
+Scraping requires internet and sends title queries or ROM fingerprints/size, never ROM bytes.
+Accepted images/metadata are cached for offline use; ordinary launch has no network dependency.
+Data: [RetroBase Collection](https://retrobase-collection.com). Provider terms and coverage are documented
+in [docs/PROVIDER_RESEARCH.md](docs/PROVIDER_RESEARCH.md); exact Socket artwork coverage is unverified.
+
+Press Select / Image for optional local PNG, JPEG or WebP import, including an already scraped flat label.
 Preview it on the actual cartridge, toggle Fit/Crop, rotate in 90° steps, then Apply or Cancel.
 Use D-pad up/down and A in this panel; B cancels. Reset label restores the fictional study artwork.
 Original images are cached unchanged; only accepted recipes are saved. Adjacent games retain their
@@ -80,14 +92,16 @@ The first button of a two-button shortcut may reach the game before the second i
 
 Insertion now lifts, aligns and slides the cartridge over 540 ms; ejection reverses it over 420 ms.
 Motion off bypasses both. A receiving slot, production model/materials, directory scanning, details,
-online scraping, bulk/candidate selection, other layouts and HOME registration remain planned.
+durable large-library scrape jobs, disc media, other layouts and HOME registration remain planned.
 Backgrounding ends the current session after saving RAM; full session sleep/resume comes later.
 
 ## Engineering record
 
 - [Technical plan and feasibility blockers](docs/TECHNICAL_PLAN.md)
 - [Product and UX scope](docs/PRODUCT.md)
-- [Label import, candidate choice and bulk scraping](docs/LABEL_SCRAPING.md) (local image import implemented; online/bulk planned)
+- [Label import, candidate choice and bulk scraping](docs/LABEL_SCRAPING.md)
+- [API scraping implementation and limits](docs/SCRAPING_REPORT.md)
+- [Socket/Slot and provider research](docs/PROVIDER_RESEARCH.md)
 - [Architecture and lifecycle](docs/ARCHITECTURE.md)
 - [Milestones](docs/ROADMAP.md)
 - [Asset pipeline](docs/ASSET_PIPELINE.md)
