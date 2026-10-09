@@ -12,6 +12,7 @@ import java.io.File
 
 /** Runs the production UI/engine/renderer against a separate test DB, never the owner's collection. */
 class DebugCollectionActivity : MainActivity() {
+    override fun showFirstRunSetup() = intent.getBooleanExtra("showSetup", false)
     override fun createRepository(): CollectionRepository {
         val name = checkNotNull(intent.getStringExtra("testDatabase"))
         require(name.matches(Regex("m1-test-[a-f0-9-]+")))

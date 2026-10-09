@@ -44,6 +44,7 @@ import androidx.lifecycle.lifecycleScope
 import com.swordfish.libretrodroid.GLRetroView
 import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.LibretroEngine
+import dev.cartridge.environment.*
 import dev.cartridge.input.ControllerRouter
 import dev.cartridge.input.InputMode
 import dev.cartridge.input.MediaSound
@@ -86,6 +87,12 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     private var roots by mutableStateOf<List<DirectoryRecord>>(emptyList())
     private var autoScan by mutableStateOf(true)
     private var recoveryId: String? = null
+    private var consolePage by mutableStateOf<ConsolePage?>(null)
+    private var consoleFocus by mutableIntStateOf(0)
+    private var consoleSettings by mutableStateOf(ConsoleSettings())
+    private var homeEnabled by mutableStateOf(false)
+    private var noticeText by mutableStateOf("")
+    private var noticeIndex = 0
     private lateinit var repository: CollectionRepository
     internal val collectionSurface get() = cartridgeSurface
     protected open fun createRepository(): CollectionRepository = RoomCollectionRepository(this)
@@ -98,7 +105,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     protected open fun presentationPreferences() = getPreferences(MODE_PRIVATE)
-    private val menuItems = listOf("Resume", "Save state", "Load state", "Eject to collection")
+    protected open fun showFirstRunSetup() = true
+    private val menuItems = listOf("Resume", "Save state", "Load state", "Eject to collection", "Game settings", "Controller")
     private val inputFrames = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
@@ -118,9 +126,11 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
-        engine = LibretroEngine(this, lifecycleScope)
+        engine = LibretroEngine(this, lifecycleScope, coreOptions = { consoleSettings.coreOptions() })
         labelStore = createLabelStore()
         val preferences = presentationPreferences()
+        consoleSettings = ConsolePreferences(preferences).read()
+        homeEnabled = HomeRegistration(this).enabled()
         soundEnabled = preferences.getBoolean("mediaSound", false)
         autoScan = preferences.getBoolean("autoScan", true)
         mediaSound = MediaSound(this)
@@ -137,14 +147,19 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             else { coordinator.notify("This game is no longer in the collection"); scraper.previewFinished() }
         }
         input = ControllerRouter(
-            navigate = { if (libraryOverlay == LibraryOverlay.Manager) managerFocus = (managerFocus + it).coerceIn(0, 6 + roots.size)
+            navigate = { if (consolePage != null) consoleFocus = (consoleFocus + it).coerceIn(0, consoleChoices().lastIndex)
+                else if (libraryOverlay == LibraryOverlay.Manager) managerFocus = (managerFocus + it).coerceIn(0, 6 + roots.size)
                 else if (scraper.state.value.visible) scraper.navigate(it) else coordinator.navigate(it) },
-            select = { if (libraryOverlay == LibraryOverlay.Manager) managerAction(managerFocus)
+            select = { if (consolePage != null) consoleAction(consoleFocus)
+                else if (libraryOverlay == LibraryOverlay.Manager) managerAction(managerFocus)
                 else if (scraper.state.value.visible) scraper.select()
                 else if (coordinator.state.value.screen == CollectionScreen.Details) detailsAction(coordinator.state.value.menuIndex)
                 else if (coordinator.state.value.screen == CollectionScreen.LibraryMenu && coordinator.state.value.menuIndex == 6) openLibraryManager()
+                else if (coordinator.state.value.screen == CollectionScreen.LibraryMenu && coordinator.state.value.menuIndex == 8) openConsole(ConsolePage.Settings)
+                else if (engine.status.value.state == SessionState.Paused && coordinator.state.value.menuIndex in 4..5) openConsole(if (coordinator.state.value.menuIndex == 4) ConsolePage.Game else ConsolePage.Controllers)
                 else coordinator.select() },
-            back = { if (libraryOverlay != LibraryOverlay.None) showOverlay(if (libraryOverlay == LibraryOverlay.Search) LibraryOverlay.Manager else LibraryOverlay.None)
+            back = { if (consolePage != null) consoleBack()
+                else if (libraryOverlay != LibraryOverlay.None) showOverlay(if (libraryOverlay == LibraryOverlay.Search) LibraryOverlay.Manager else LibraryOverlay.None)
                 else if (scraper.state.value.visible) scraper.back() else coordinator.back() }, pause = coordinator::pause,
             gameKey = engine::key, gameMotion = engine::motion, chooseGame = { chooseGame?.invoke() },
             chooseLabel = { chooseLabel?.invoke() }, chooseScrape = ::openScraper, chooseDirectory = { chooseDirectory?.invoke() }, alternate = {
@@ -153,6 +168,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 else if (scrape.visible && scrape.page == ScrapePage.Targets) scraper.pickAll(scrape.pickedIds.size != scrape.availableGames.size)
                 else if (scrape.visible && scrape.page == ScrapePage.Consoles) scraper.pickAllConsoles(scrape.pickedSystems.size != scrape.consoles.size)
             }, cancelOperation = coordinator::cancelScan, details = coordinator::details, favorite = coordinator::favorite, navigateLibrary = coordinator::navigateSpatial)
+        applyControllerSettings()
         getSystemService(InputManager::class.java).registerInputDeviceListener(this, null)
         lifecycleScope.launch {
             var previousScreen = CollectionScreen.Library
@@ -172,6 +188,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         if (!::input.isInitialized) return
         val state = coordinator.state.value
         input.mode = when {
+            consolePage != null -> if (state.busy) InputMode.Locked else InputMode.Menu
             libraryOverlay in setOf(LibraryOverlay.Edit, LibraryOverlay.Search) -> InputMode.Text
             libraryOverlay == LibraryOverlay.Manager -> InputMode.Menu
             scraper.state.value.visible -> InputMode.Menu
@@ -181,6 +198,80 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             engine.status.value.state == SessionState.Paused -> InputMode.Menu
             state.screen == CollectionScreen.Library -> InputMode.Library
             else -> InputMode.Locked
+        }
+    }
+    private fun applyControllerSettings() {
+        input.swapMenuButtons = consoleSettings.swapMenuButtons; input.swapGameButtons = consoleSettings.swapGameButtons
+        input.swapShoulders = consoleSettings.swapShoulders; input.deadZone = consoleSettings.deadZone
+    }
+    private fun openConsole(page: ConsolePage) {
+        if (coordinator.state.value.busy) return
+        if (coordinator.state.value.screen == CollectionScreen.LibraryMenu) coordinator.back()
+        consolePage = page; consoleFocus = 0; refreshInputMode()
+        if (page == ConsolePage.Notices) loadNotice()
+    }
+    private fun consoleBack() {
+        if (coordinator.state.value.busy) return
+        if (consolePage == ConsolePage.Setup) presentationPreferences().edit { putBoolean("setupComplete", true) }
+        consolePage = null; input.reset(); refreshInputMode()
+    }
+    private fun consoleChoices(): List<String> = when(consolePage) {
+        ConsolePage.Setup -> listOf("Choose game folder", "Controller", "Continue to collection")
+        ConsolePage.Settings -> listOf("Back", "Controller", "Game settings", if (coordinator.state.value.reducedMotion) "Motion: Off" else "Motion: On",
+            if (soundEnabled) "Media sound: On" else "Media sound: Off", if (homeEnabled) "HOME candidate: On" else "HOME candidate: Off",
+            "Choose Android default home", "First-run setup", "About & licences")
+        ConsolePage.Controllers -> listOf("Back", if (consoleSettings.swapMenuButtons) "Menu select: B / back: A" else "Menu select: A / back: B",
+            if (consoleSettings.swapGameButtons) "Gameplay A/B: Swapped" else "Gameplay A/B: Direct",
+            if (consoleSettings.swapShoulders) "Gameplay L/R: Swapped" else "Gameplay L/R: Direct",
+            "Stick dead zone: ${(consoleSettings.deadZone * 100).toInt()}%",
+            if (coordinator.state.value.alternateShortcut) "Pause: Start + Select" else "Pause: L3 + R3", "Reset controller")
+        ConsolePage.Game -> listOf("Back", if (consoleSettings.audioFilter) "Audio smoothing: On" else "Audio smoothing: Off", "Frames skipped: ${consoleSettings.frameSkip}")
+        ConsolePage.Notices -> listOf("Back", "Next licence")
+        null -> emptyList()
+    }
+    private fun changeConsole(next: ConsoleSettings) {
+        val commit = { consoleSettings = next; ConsolePreferences(presentationPreferences()).write(next); applyControllerSettings() }
+        if (engine.status.value.state == SessionState.Paused && next.coreOptions() != consoleSettings.coreOptions()) coordinator.configureGame(next.coreOptions(), commit)
+        else commit()
+    }
+    private fun consoleAction(index: Int) {
+        if (coordinator.state.value.busy) return
+        when(consolePage) {
+            ConsolePage.Setup -> when(index) {
+                0 -> { consoleBack(); chooseDirectory?.invoke() }
+                1 -> { presentationPreferences().edit { putBoolean("setupComplete", true) }; openConsole(ConsolePage.Controllers) }
+                2 -> consoleBack()
+            }
+            ConsolePage.Settings -> when(index) {
+                0 -> consoleBack(); 1 -> openConsole(ConsolePage.Controllers); 2 -> openConsole(ConsolePage.Game)
+                3 -> { val next = !coordinator.state.value.reducedMotion; coordinator.settings(reducedMotion = next); presentationPreferences().edit { putBoolean("reducedMotion", next) } }
+                4 -> { soundEnabled = !soundEnabled; presentationPreferences().edit { putBoolean("mediaSound", soundEnabled) } }
+                5 -> { HomeRegistration(this).enable(!homeEnabled); homeEnabled = !homeEnabled }
+                6 -> try { HomeRegistration(this).apply { enable(true); homeEnabled = true }.requestIntent().let(::startActivity) }
+                    catch (failure: Exception) { coordinator.notify("Android home settings unavailable: ${failure.message}") }
+                7 -> openConsole(ConsolePage.Setup); 8 -> openConsole(ConsolePage.Notices)
+            }
+            ConsolePage.Controllers -> when(index) {
+                0 -> consoleBack(); 1 -> changeConsole(consoleSettings.copy(swapMenuButtons = !consoleSettings.swapMenuButtons))
+                2 -> changeConsole(consoleSettings.copy(swapGameButtons = !consoleSettings.swapGameButtons))
+                3 -> changeConsole(consoleSettings.copy(swapShoulders = !consoleSettings.swapShoulders))
+                4 -> changeConsole(consoleSettings.copy(deadZone = when { consoleSettings.deadZone < .3f -> .35f; consoleSettings.deadZone < .45f -> .5f; else -> .2f }))
+                5 -> { val next = !coordinator.state.value.alternateShortcut; coordinator.settings(alternateShortcut = next); presentationPreferences().edit { putBoolean("alternateShortcut", next) } }
+                6 -> { changeConsole(consoleSettings.copy(swapMenuButtons = false, swapGameButtons = false, swapShoulders = false, deadZone = .35f)); coordinator.settings(alternateShortcut = false); presentationPreferences().edit { putBoolean("alternateShortcut", false) } }
+            }
+            ConsolePage.Game -> when(index) { 0 -> consoleBack(); 1 -> changeConsole(consoleSettings.copy(audioFilter = !consoleSettings.audioFilter)); 2 -> changeConsole(consoleSettings.copy(frameSkip = (consoleSettings.frameSkip + 1) % 3)) }
+            ConsolePage.Notices -> when(index) { 0 -> consoleBack(); 1 -> { noticeIndex++; loadNotice() } }
+            null -> Unit
+        }
+    }
+    private fun loadNotice() {
+        lifecycleScope.launch {
+            noticeText = withContext(Dispatchers.IO) {
+                val names = assets.list("licenses").orEmpty().sorted()
+                if (names.isEmpty()) "License files unavailable" else names[noticeIndex % names.size].let { name ->
+                    "Cartridge · mGBA 0.10.5 · LibretroDroid 0.14.0 · Filament 1.72.1\nOriginal project assets; private user ROMs/artwork remain user controlled.\n\n$name\n\n" + assets.open("licenses/$name").bufferedReader().use { it.readText() }
+                }
+            }
         }
     }
     private fun showOverlay(next: LibraryOverlay) { libraryOverlay = next; refreshInputMode() }
@@ -284,6 +375,10 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         var glb by remember { mutableStateOf<CollectionAssets?>(null) }
         var toolsVisible by rememberSaveable { mutableStateOf(false) }
         LaunchedEffect(state.loaded) {
+            if (state.loaded && showFirstRunSetup() && !presentationPreferences().getBoolean("setupComplete", false)) {
+                if (state.allGames.isEmpty()) openConsole(ConsolePage.Setup)
+                else presentationPreferences().edit { putBoolean("setupComplete", true) }
+            }
             if (state.loaded && autoScan && (repository as? DirectoryRepository)?.directories()?.isNotEmpty() == true) scanDirectory(null)
         }
         LaunchedEffect(state.screen, soundEnabled) {
@@ -359,6 +454,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                                 TextButton(enabled = !state.busy, onClick = { scanDirectory(null) }, modifier = Modifier.testTag("rescan")) { Text("Rescan") }
                                 TextButton(enabled = !state.busy && state.loaded, onClick = coordinator::openLibraryMenu, modifier = Modifier.testTag("collection-menu")) { Text("Collection") }
                                 TextButton(enabled = !state.busy && state.selectedGame != null, onClick = coordinator::details, modifier = Modifier.testTag("details")) { Text("Details") }
+                                TextButton(enabled = !state.busy, onClick = { openConsole(ConsolePage.Settings) }, modifier = Modifier.testTag("console-settings")) { Text("Settings") }
                             }
                         }
                         if (state.scanning) TextButton(onClick = coordinator::cancelScan, modifier = Modifier.align(Alignment.Center).testTag("cancel-scan")) { Text("Cancel scan") }
@@ -379,6 +475,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                             }
                             LibraryAction("Folders & search", state.menuIndex == 6, "library-manager-open", !state.busy, ::openLibraryManager)
                             LibraryAction("View: ${state.layout.title}", state.menuIndex == 7, "layout-setting", !state.busy) { coordinator.settings(layout = state.layout.next()) }
+                            LibraryAction("Console settings", state.menuIndex == 8, "console-settings-menu", !state.busy) { openConsole(ConsolePage.Settings) }
                         }
                     }
                     if (state.screen == CollectionScreen.LabelPreview) {
@@ -403,7 +500,10 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                             Column(Modifier.width(280.dp)) {
                                 Text("Paused", fontSize = 25.sp, color = Color(0xFFE9E2D6), modifier = Modifier.padding(12.dp))
                                 menuItems.forEachIndexed { index, title ->
-                                    TextButton(enabled = !state.busy, onClick = { coordinator.menuAction(index) }, modifier = Modifier.fillMaxWidth()
+                                    TextButton(enabled = !state.busy, onClick = {
+                                        if (index in 4..5) openConsole(if (index == 4) ConsolePage.Game else ConsolePage.Controllers)
+                                        else coordinator.menuAction(index)
+                                    }, modifier = Modifier.fillMaxWidth()
                                         .testTag("menu-$index").background(if (index == state.menuIndex) Color(0xFF34312D) else Color.Transparent)) {
                                         Text(title, color = Color(0xFFE9E2D6))
                                     }
@@ -434,6 +534,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 listOfNotNull(status.saveWarning ?: state.message, state.historyWarning).joinToString("\n").takeIf(String::isNotEmpty)?.let { Text(it, color = Color(0xFFE2CFAE), modifier = Modifier.align(Alignment.BottomStart)
                     .background(Color(0xEE191817)).padding(16.dp).testTag("message"), fontSize = 13.sp) }
                 if (scrape.visible) ScrapePanel(scrape, scraper)
+                consolePage?.let { ConsolePanel(it, consoleChoices(), consoleFocus, state.busy, ::consoleAction, noticeText) }
             }
         }
     }
@@ -473,7 +574,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             it.reducedMotion = state.reducedMotion
             it.setLabels(if (pixels.map { pixel -> pixel?.key } == keys) pixels else List(labels.size) { null })
         }, onRelease = { it.close() })
-        val suspended = state.screen == CollectionScreen.Details || libraryOverlay != LibraryOverlay.None || scrapeVisible
+        val suspended = state.screen == CollectionScreen.Details || libraryOverlay != LibraryOverlay.None || scrapeVisible || consolePage != null
         DisposableEffect(surface, suspended) {
             val renderer = surface
             if (suspended) renderer?.pauseRendering() else if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) renderer?.resumeRendering()

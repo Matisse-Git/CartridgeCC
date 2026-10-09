@@ -14,8 +14,8 @@ android {
         applicationId = "dev.cartridge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "0.5.0-gb"
+        versionCode = 13
+        versionName = "0.6.0-console-settings"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
@@ -40,6 +40,13 @@ android {
 }
 
 room { schemaDirectory("$projectDir/schemas") }
+
+val syncLicenseNotices by tasks.registering(Sync::class) {
+    from(rootProject.file("docs/licenses"))
+    into(layout.buildDirectory.dir("generated/license-assets/licenses"))
+}
+android.sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/license-assets"))
+tasks.named("preBuild") { dependsOn(syncLicenseNotices) }
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.04.01"))

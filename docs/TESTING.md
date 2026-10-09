@@ -700,3 +700,7 @@ controller-disconnection/thermal/audio gates remain open. M5 is the next active 
 ## M5 actual results — 2026-10-10
 
 Version 12: both APKs build; 40 host tests, ten structural asset tests, lint (zero errors) and all three Khronos GLB validations (zero errors/warnings) pass. Focused GB/GBC tests pass in 10.807 s. Full RP5 suite: OK (25 tests), 148.971 s, three handoffs; a preceding longer run passed 50 handoffs but found two obsolete scraper test indices, subsequently corrected and verified. Native masked save-buffer and live RTC synchronization were required for immediate post-state-load checkpoints. GB/GBC original diagnostics prove frame pixels, A input, state, battery cold boot and halted MBC3 RTC restoration. No commercial ROM/BIOS/logo is bundled. See M5_PROGRESS for scope, commands and remaining real-cartridge/peripheral/RTC-drift gates.
+
+## M6 setup/settings actual results — 2026-10-10
+
+Version 13 builds both APKs with 42 host tests and lint passing. Environment suite: OK (2 tests), 6.381 s on the connected RP5. Setup/recreation, persistent independent mappings, native GB button behavior and paused/startup core variables, notices, and optional HOME resolver eligibility pass. The test restores the previous alias setting and never launches the chooser or changes the default role. Default HOME selection and reboot require an owner choice. Sleep/backup/stability work is still active.

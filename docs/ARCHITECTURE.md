@@ -252,3 +252,7 @@ Neutral stick/key release resets repetition before the next frame. GPU surface h
 ## M5 systems and cartridge memory
 
 Room schema 7 and GameSystem carry GBA/GB/GBC identities through importer, cache extension, request, scraping and journal v3. The same nine-slot viewport owns GBA and tall instances (18 bounded meshes), draws one format per slot and decodes aspect-specific labels. GB/GBC use source-built mGBA with M_CORE_GB enabled. The original frontend wrapper synchronizes pending battery masks and live MBC3 RTC registers before bounded JNI SAVE_RAM/RTC reads. Restore happens before the first frame; user state load checkpoints restored memory immediately. See ADR 0013.
+
+## M6 shell preferences
+
+ConsolePreferences carries supported controller and core choices independently of Room identity. ControllerRouter detects physical shortcuts before gameplay remapping. Core variables initialize through GLRetroViewData and current updates use the session mutex/GL queue. ConsolePanel pauses collection rendering, never emulation behind an active panel. HomeRegistration only enables eligibility and creates the Android-owned role/settings intent; MainActivity is singleTask. Notice assets derive from versioned docs/licenses at build time. See ADR 0014.

@@ -180,3 +180,5 @@ plan and complete corresponding source. See the audit before distributing; no pr
 commercial licensing decision has been made by this feasibility work.
 
 M5 GB/GBC implementation and verification are documented in [M5_PROGRESS](docs/M5_PROGRESS.md) and ADR 0013.
+
+M6 version 13 adds first-run setup, Console settings (B → Collection or Tools), separate menu/gameplay controller choices, supported core options and optional Android HOME eligibility. Paused gameplay offers Settings and Controller. HOME is initially disabled; Android asks you to choose the default. See [M6_PROGRESS](docs/M6_PROGRESS.md).

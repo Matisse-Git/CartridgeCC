@@ -29,6 +29,11 @@ class ControllerRouter(
     var mode = InputMode.Library
         set(value) { if (field != value) reset(); field = value }
     var pauseShortcut = setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_THUMBR)
+    var swapMenuButtons = false
+    var swapGameButtons = false
+    var swapShoulders = false
+    var deadZone = .35f
+        set(value) { require(value in .15f.. .65f); reset(); field = value }
     private val held = mutableSetOf<Int>()
     private val horizontalRepeat = AxisRepeater()
     private val verticalRepeat = AxisRepeater()
@@ -42,7 +47,12 @@ class ControllerRouter(
         KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_THUMBR)
 
     fun key(event: KeyEvent): Boolean {
-        val code = event.keyCode
+        val physical = event.keyCode
+        val code = if (mode != InputMode.Gameplay && swapMenuButtons) when (physical) {
+            KeyEvent.KEYCODE_BUTTON_A -> KeyEvent.KEYCODE_BUTTON_B
+            KeyEvent.KEYCODE_BUTTON_B -> KeyEvent.KEYCODE_BUTTON_A
+            else -> physical
+        } else physical
         if (mode == InputMode.Text) {
             if (code in setOf(KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE)) {
                 if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) back()
@@ -57,16 +67,22 @@ class ControllerRouter(
         if (down) held.add(code) else held.remove(code)
         if (!down) {
             if (code in setOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT) &&
-                held.none { it == KeyEvent.KEYCODE_DPAD_LEFT || it == KeyEvent.KEYCODE_DPAD_RIGHT } && abs(axisX) < .35f) horizontalRepeat.reset()
+                held.none { it == KeyEvent.KEYCODE_DPAD_LEFT || it == KeyEvent.KEYCODE_DPAD_RIGHT } && abs(axisX) < deadZone) horizontalRepeat.reset()
             if (code in setOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN) &&
-                held.none { it == KeyEvent.KEYCODE_DPAD_UP || it == KeyEvent.KEYCODE_DPAD_DOWN } && abs(axisY) < .35f) verticalRepeat.reset()
+                held.none { it == KeyEvent.KEYCODE_DPAD_UP || it == KeyEvent.KEYCODE_DPAD_DOWN } && abs(axisY) < deadZone) verticalRepeat.reset()
         }
         if (held.intersect(pauseShortcut).isEmpty()) shortcutLatched = false
         if (mode == InputMode.Gameplay) {
             if (!shortcutLatched && held.containsAll(pauseShortcut)) {
                 shortcutLatched = true
                 pause()
-            } else if (!shortcutLatched && code in gameplayKeys) gameKey(event.action, code)
+            } else if (!shortcutLatched && code in gameplayKeys) gameKey(event.action, when {
+                swapGameButtons && code == KeyEvent.KEYCODE_BUTTON_A -> KeyEvent.KEYCODE_BUTTON_B
+                swapGameButtons && code == KeyEvent.KEYCODE_BUTTON_B -> KeyEvent.KEYCODE_BUTTON_A
+                swapShoulders && code == KeyEvent.KEYCODE_BUTTON_L1 -> KeyEvent.KEYCODE_BUTTON_R1
+                swapShoulders && code == KeyEvent.KEYCODE_BUTTON_R1 -> KeyEvent.KEYCODE_BUTTON_L1
+                else -> code
+            })
             else if (code == KeyEvent.KEYCODE_BACK && down && event.repeatCount == 0) pause()
             return true
         }
@@ -93,14 +109,14 @@ class ControllerRouter(
         val hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
         val hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
         if (mode == InputMode.Gameplay) {
-            fun digital(value: Float) = if (abs(value) < .35f) 0f else if (value > 0) 1f else -1f
+            fun digital(value: Float) = if (abs(value) < deadZone) 0f else if (value > 0) 1f else -1f
             gameMotion(digital(if (hatX != 0f) hatX else x), digital(if (hatY != 0f) hatY else y))
         } else {
             axisX = if (hatX != 0f) hatX else x; axisY = if (hatY != 0f) hatY else y
             // A neutral event can arrive between frame polls. Release immediately so the next
             // stick/key press starts a fresh repeat, even when it follows in the same frame.
-            if (abs(axisX) < .35f && held.none { it == KeyEvent.KEYCODE_DPAD_LEFT || it == KeyEvent.KEYCODE_DPAD_RIGHT }) horizontalRepeat.reset()
-            if (abs(axisY) < .35f && held.none { it == KeyEvent.KEYCODE_DPAD_UP || it == KeyEvent.KEYCODE_DPAD_DOWN }) verticalRepeat.reset()
+            if (abs(axisX) < deadZone && held.none { it == KeyEvent.KEYCODE_DPAD_LEFT || it == KeyEvent.KEYCODE_DPAD_RIGHT }) horizontalRepeat.reset()
+            if (abs(axisY) < deadZone && held.none { it == KeyEvent.KEYCODE_DPAD_UP || it == KeyEvent.KEYCODE_DPAD_DOWN }) verticalRepeat.reset()
         }
         return true
     }

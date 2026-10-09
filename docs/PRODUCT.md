@@ -176,3 +176,7 @@ rendering independently of collection size. Reduced motion applies to every layo
 ## M5 additional systems
 
 SAF imports, per-game templates and API scraping now support GBA, GB and GBC. Choose consoles selects any subset; All games includes all three. The tall GB/GBC shell uses independent 512×448 labels. Native SRAM/RTC and state-buffer synchronization are verified with original diagnostics; see M5_PROGRESS.
+
+## M6 console settings
+
+An empty first collection has skippable setup; existing owners go straight to their games. Controller and core settings are app-owned and persist. Menu/gameplay A/B choices are independent. Optional HOME mode uses Android’s default chooser with an initially disabled alias. Matching licence notices are visible in-app. See M6_PROGRESS for implemented behavior and remaining sleep/backup/stability work.

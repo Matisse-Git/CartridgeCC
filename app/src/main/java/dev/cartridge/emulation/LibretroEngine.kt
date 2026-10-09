@@ -25,7 +25,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /** All state/lifecycle mutations run on Main. JNI save calls run on the view's GL thread. */
 class LibretroEngine(private val context: Context, private val scope: CoroutineScope,
-    private val checkpointIntervalMs: Long = 15_000) : EmulationEngine {
+    private val checkpointIntervalMs: Long = 15_000,
+    private val coreOptions: () -> Map<String, String> = { emptyMap() }) : EmulationEngine {
     private class SessionOwner : LifecycleOwner {
         val registry = LifecycleRegistry(this)
         override val lifecycle: Lifecycle get() = registry
@@ -78,6 +79,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                     savesDirectory = File(context.filesDir, "saves").apply { mkdirs() }.path
                     rumbleEventsEnabled = false
                     enableMicrophone = false
+                    variables = coreOptions().map { Variable(it.key, it.value) }.toTypedArray()
                 }
                 val view = GLRetroView(context, data).apply { isFocusable = false }
                 val session = SessionOwner()

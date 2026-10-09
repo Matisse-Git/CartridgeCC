@@ -195,10 +195,12 @@ class CollectionCoordinator(
         if (destroyed || !foreground || state.value.busy || !state.value.loaded) return
         val current = state.value
         if (current.screen == CollectionScreen.LibraryMenu) {
-            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 7))
+            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 8))
         } else if (current.screen == CollectionScreen.Details) {
             mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 5))
-        } else if (current.screen == CollectionScreen.LabelPreview || engine.status.value.state == SessionState.Paused) {
+        } else if (engine.status.value.state == SessionState.Paused) {
+            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 5))
+        } else if (current.screen == CollectionScreen.LabelPreview) {
             mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 3))
         } else if (current.screen == CollectionScreen.Library) {
             val selection = current.selection.move(delta)
@@ -307,6 +309,9 @@ class CollectionCoordinator(
                 3 -> eject()
             }
         }
+    }
+    fun configureGame(options: Map<String, String>, applied: () -> Unit) {
+        if (engine.status.value.state == SessionState.Paused) runAction { engine.configure(options); applied(); notify("Game settings saved") }
     }
     fun assignGame(import: suspend () -> LibraryGame) {
         val selected = state.value.selection.index
