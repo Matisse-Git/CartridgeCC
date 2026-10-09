@@ -157,3 +157,11 @@ undone after reopening, through review or Details. It does not rewind saves/hist
 Opaque review pages pause collection rendering. A hidden batch target's actual 3D preview restores the
 saved filter/focus after apply/cancel/recreation. No network resume or unattended acceptance on launch.
 GBA is the only supported console; disc labels/templates and multi-console scopes remain future work.
+
+## M3 offline packs
+
+Y → Import scrape pack accepts the documented private Cartridge v1 ZIP through SAF. Only existing
+ROM hashes match; reviewed candidates retain original source/region/language/provenance. The same
+preferred-label preview, separate metadata/media selection, missing-only merge, resume and undo apply.
+Packs contain no ROMs/BIOS/saves; importing never changes membership or launches network calls. Unknown
+formats/unsafe paths/oversized or altered images are rejected. See SCRAPE_PACK_FORMAT/ADR 0011.

@@ -9,7 +9,7 @@ proprietary artwork is bundled; users can scrape artwork into their private coll
 scraping, independent media/metadata choices, 3D Fit/Crop/rotation preview and a tested session
 coordinator. Folder imports now grow the collection and saved scrape batches resume after reopening.
 Battery saves now restore before gameplay and checkpoint during play/pause. Both APKs build;
-31 unit tests and eight asset checks pass. Nineteen RP5 tests cover real native
+34 unit tests and eight asset checks pass. Twenty-one RP5 tests cover real native
 handoffs, ordinary UI recovery, independent labels, schema migrations, folder imports and resumed scraping; a separate
 live API test passes. The owner confirmed physical navigation, gameplay/audio, save/load and local labels.
 M2 refinement is implemented: refined GBA mesh/PBR, original studio reflections, receiving slot,
@@ -152,7 +152,8 @@ on pause/eject/background. Failed history writes remain visible and retry for th
 the Activity lives. Process death can lose history since the latest completed checkpoint.
 
 See [M3 library progress](docs/M3_PROGRESS.md), [scraper review](docs/M3_SCRAPE_REVIEW.md) and ADRs 0009/0010.
-Scrape-pack import, large-library validation and broader sleep/reboot/performance gates remain open.
+M3 scrape-pack import is implemented. Large-library/grant/storage-failure validation and broader
+sleep/reboot/performance gates remain open; the active roadmap continues through M4–M6.
 
 ## Engineering record
 

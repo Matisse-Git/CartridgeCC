@@ -10,7 +10,7 @@ import java.io.File
 enum class ScrapePage { Scope, Targets, Preferences, Matches, Review, Artwork, Metadata }
 enum class ScrapeOutcome { Pending, Applied, Skipped }
 data class ScrapeEntry(val game: LibraryGame, val query: String, val matches: List<GameCandidate> = emptyList(),
-    val error: String? = null, val searched: Boolean = false, val corrected: Boolean = false, val outcome: ScrapeOutcome = ScrapeOutcome.Pending)
+    val error: String? = null, val searched: Boolean = false, val corrected: Boolean = false, val outcome: ScrapeOutcome = ScrapeOutcome.Pending, val local: Boolean = false)
 data class ScrapeState(val visible: Boolean = false, val page: ScrapePage = ScrapePage.Scope,
     val entries: List<ScrapeEntry> = emptyList(), val index: Int = 0, val candidate: GameCandidate? = null,
     val busy: Boolean = false, val focus: Int = 0, val progress: String? = null, val message: String? = null,
@@ -30,6 +30,7 @@ class ScrapeCoordinator(
     private val journal: ScrapeJournal = MemoryScrapeJournal(),
     private val preferences: ScrapePreferenceStore = MemoryScrapePreferences(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val choosePack: () -> Unit = {},
     private val preview: (LibraryGame, LabelRef) -> Unit,
 ) {
     private val mutableState = MutableStateFlow(ScrapeState(ready = false))
@@ -61,6 +62,18 @@ class ScrapeCoordinator(
     fun chooseScope(single: Boolean) {
         if (state.value.busy || !state.value.ready) return
         begin(if (single) listOfNotNull(selected) else available)
+    }
+    fun pickPack() { if (!state.value.busy && state.value.ready) choosePack() }
+    fun importPack(import: suspend () -> ScrapePack) = action {
+        val pack = import()
+        val games = repository.initialize().slots.filterNotNull().distinctBy { it.id }
+        val entries = games.mapNotNull { game -> pack.games[game.id]?.let { ScrapeEntry(game, game.title, it, searched = true, local = true) } }
+        require(entries.isNotEmpty()) { "No ROM hashes in this pack match your collection. Import its games first." }
+        journal.reset()
+        entries.forEach { journal.saveMatches(it.game.id, it.matches) }
+        mutableState.value = state.value.copy(visible = true, page = ScrapePage.Matches, entries = entries.mapIndexed { i, entry ->
+            if (i == 0) entry else entry.copy(matches = emptyList()) }, index = 0, candidate = null, focus = 0,
+            message = "${entries.size} matching games from ${pack.source}. Review before applying.")
     }
     private fun begin(targets: List<LibraryGame>) {
         if (state.value.busy || !state.value.ready) return
@@ -95,12 +108,13 @@ class ScrapeCoordinator(
         mutableState.value = state.value.copy(preferences = changed)
     }
     fun query(value: String) {
-        if (state.value.busy) return
+        if (state.value.busy || state.value.current?.local == true) return
         updateEntry { it.copy(query = value.take(180), searched = false, matches = emptyList(), error = null, corrected = true) }
         persist()
     }
     fun searchCurrent() = action {
         val entry = state.value.current ?: return@action
+        require(!entry.local) { "Offline pack candidates are fixed. Import a different pack to change them." }
         val matches = provider.search(entry.query) // Explicit title correction must not reapply a ROM hash guess.
         journal.saveMatches(entry.game.id, matches)
         updateEntry { it.copy(matches = matches, error = null, searched = true) }
@@ -110,6 +124,7 @@ class ScrapeCoordinator(
         val index = state.value.index
         val entry = state.value.current ?: return
         if (entry.searched) return
+        require(!entry.local) { "Saved pack candidates are missing. Import the pack again." }
         mutableState.value = state.value.copy(progress = "Searching ${index + 1} / ${state.value.entries.size}: ${entry.game.title}")
         val result = try {
             val file = withContext(ioDispatcher) { if (entry.corrected) null else File(roms, "${entry.game.id}.gba").takeIf(File::isFile) }
@@ -167,7 +182,7 @@ class ScrapeCoordinator(
         val candidate = state.value.candidate ?: return@action
         val game = refreshCurrentGame()
         val proposed = candidate.metadata.mapNotNull { (field, values) -> values.firstOrNull()?.let {
-            field to MetadataValue(it, provider.name, candidate.id, candidate.sourceUrl, candidate.license, System.currentTimeMillis()) } }.toMap()
+            field to MetadataValue(it, candidate.sourceName.ifBlank { provider.name }, candidate.id, candidate.sourceUrl, candidate.license, System.currentTimeMillis()) } }.toMap()
         val changed = repository.fillMissingMetadata(game.id, proposed)
         refreshCurrentGame()
         if (changed > 0) updateEntry { it.copy(outcome = ScrapeOutcome.Applied) }
@@ -206,7 +221,7 @@ class ScrapeCoordinator(
         val candidate = current.candidate ?: return@action
         val game = current.current?.game ?: return@action
         val accepted = current.checkedFields.associateWith { field ->
-            MetadataValue(checkNotNull(candidate.metadata[field])[current.metadataChoices[field] ?: 0], provider.name,
+            MetadataValue(checkNotNull(candidate.metadata[field])[current.metadataChoices[field] ?: 0], candidate.sourceName.ifBlank { provider.name },
                 candidate.id, candidate.sourceUrl, candidate.license, System.currentTimeMillis())
         }
         require(accepted.isNotEmpty()) { "Choose at least one metadata field" }
@@ -221,7 +236,7 @@ class ScrapeCoordinator(
         if (asset.isLabel && missingOnly && game.label != null) { message("This game already has a label. Choose All label / media choices to replace it explicitly."); return@action }
         val bytes = provider.image(asset)
         val label = withContext(ioDispatcher) { images.importStream(asset.url) { bytes.inputStream() } }.copy(
-            provenance = AssetProvenance(provider.name, candidate.id, asset.type, asset.region, asset.url,
+            provenance = AssetProvenance(candidate.sourceName.ifBlank { provider.name }, candidate.id, asset.type, asset.region, asset.originalUrl ?: asset.url,
                 "Artwork rights remain with their owners; provider grants no image licence. Data: ${candidate.license}", System.currentTimeMillis()))
         if (asset.isLabel) {
             previewPending = true
@@ -276,7 +291,7 @@ class ScrapeCoordinator(
         if (state.value.busy) return
         val focus = state.value.focus
         when (state.value.page) {
-            ScrapePage.Scope -> when (focus) { 0 -> chooseScope(true); 1, 2 -> chooseScope(false); 3 -> resumeBatch(); 4 -> targets(); 5 -> missingLabels(); 6 -> preferencePage(); else -> back() }
+            ScrapePage.Scope -> when (focus) { 0 -> chooseScope(true); 1, 2 -> chooseScope(false); 3 -> resumeBatch(); 4 -> targets(); 5 -> missingLabels(); 6 -> preferencePage(); 7 -> pickPack(); else -> back() }
             ScrapePage.Targets -> when (focus) { 0 -> beginPicked(); 1 -> pickAll(true); 2 -> pickAll(false)
                 else -> available.getOrNull(focus - 3)?.let { pick(it.id) } ?: back() }
             ScrapePage.Preferences -> when (focus) { 0 -> cyclePreference(true); 1 -> cyclePreference(false); else -> back() }
@@ -301,7 +316,7 @@ class ScrapeCoordinator(
         }
     }
     private fun actionCount() = when (state.value.page) {
-        ScrapePage.Scope -> 8
+        ScrapePage.Scope -> 9
         ScrapePage.Targets -> available.size + 4
         ScrapePage.Preferences -> 3
         ScrapePage.Review -> 7

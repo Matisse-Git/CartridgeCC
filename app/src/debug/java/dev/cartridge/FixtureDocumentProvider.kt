@@ -13,7 +13,7 @@ import java.io.File
 class FixtureDocumentProvider : ContentProvider() {
     private fun file(uri: Uri): File {
         val name = uri.lastPathSegment
-        require(name in setOf("probe-one.gba", "probe-two.gba", "battery-probe.gba", "red-label.png", "blue-label.png", "invalid.png"))
+        require(name in setOf("probe-one.gba", "probe-two.gba", "battery-probe.gba", "red-label.png", "blue-label.png", "invalid.png", "original-pack.zip"))
         return File(checkNotNull(context).filesDir, "m1-fixtures/$name")
     }
     override fun onCreate() = true

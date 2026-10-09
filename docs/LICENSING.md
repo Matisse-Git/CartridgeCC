@@ -92,3 +92,8 @@ No new third-party dependency or artwork is bundled. The public RetroBase OpenAP
 and live response keys were rechecked on 2026-10-09 for source tags; no additional usage/redistribution
 rights are inferred. Preference ranking and private undo retain provider/rightsholder provenance.
 Existing GPL-compatible complete-source and provider/image distribution gates remain unresolved.
+
+Offline scrape packs add original ZIP/JSON/import/helper code only, using Android/Java/Python standard
+APIs. No commercial pack or artwork is committed/bundled. Private imported candidates keep the source
+provider/licence/URL; internal local URLs do not grant redistribution rights. The PC helper never includes
+ROM bytes. Provider/GPL release obligations remain, including for a user-exported redistributable pack.

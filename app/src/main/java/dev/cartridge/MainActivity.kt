@@ -72,6 +72,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     private var chooseGame: (() -> Unit)? = null
     private var chooseLabel: (() -> Unit)? = null
     private var chooseDirectory: (() -> Unit)? = null
+    private var choosePack: (() -> Unit)? = null
+    private lateinit var packStore: ScrapePackStore
     private var addingGame = false
     private lateinit var mediaSound: MediaSound
     private var soundEnabled by mutableStateOf(false)
@@ -88,6 +90,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     protected open fun createArtworkProvider(): ArtworkProvider = RetroBaseProvider(File(cacheDir, "scrape-candidates"))
     protected open fun createScrapeJournal(): ScrapeJournal = FileScrapeJournal(File(filesDir, "scrape-job"))
     protected open fun createScrapePreferences(): ScrapePreferenceStore = SharedScrapePreferences(this)
+    protected open fun createPackStore(): ScrapePackStore = ScrapePackStore(File(filesDir, "scrape-packs"))
     protected open fun persistDirectoryPermission(uri: Uri) {
         contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
@@ -118,11 +121,12 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         autoScan = preferences.getBoolean("autoScan", true)
         mediaSound = MediaSound(this)
         repository = createRepository()
+        packStore = createPackStore()
         coordinator = CollectionCoordinator(engine, repository, object : RendererHandoff {
             override fun releaseLibrary() { cartridgeSurface?.close(); cartridgeSurface = null }
             override fun releaseEmulator() { emulatorHost?.release(); emulatorHost = null }
         }, lifecycleScope, preferences.getBoolean("reducedMotion", false), preferences.getBoolean("alternateShortcut", false))
-        scraper = ScrapeCoordinator(createArtworkProvider(), repository, labelStore, File(filesDir, "roms"), lifecycleScope, createScrapeJournal(), createScrapePreferences()) { game, label ->
+        scraper = ScrapeCoordinator(PackAwareProvider(createArtworkProvider(), packStore), repository, labelStore, File(filesDir, "roms"), lifecycleScope, createScrapeJournal(), createScrapePreferences(), choosePack = { choosePack?.invoke() }) { game, label ->
             if (coordinator.state.value.allGames.any { it.id == game.id }) coordinator.previewScrapedLabel(game, label)
             else { coordinator.notify("This game is no longer in the collection"); scraper.previewFinished() }
         }
@@ -257,6 +261,13 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         val current = coordinator.state.value
         if (current.loaded && !current.busy && current.screen == CollectionScreen.Library) scraper.open(current.allGames, current.selectedGame)
     }
+    private fun importPack(uri: Uri) {
+        lifecycleScope.launch {
+            coordinator.state.first { it.loaded && !it.busy && it.screen == CollectionScreen.Library }
+            openScraper()
+            scraper.importPack { packStore.import(contentResolver, uri) }
+        }
+    }
 
     @Composable private fun CartridgeApp() {
         val state by coordinator.state.collectAsStateWithLifecycle()
@@ -283,16 +294,18 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         }
         val labelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importLabel) }
         val directoryPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { it?.let(::scanDirectory) }
+        val packPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importPack) }
         DisposableEffect(gamePicker, labelPicker) {
             chooseGame = { if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) { addingGame = true; gamePicker.launch(arrayOf("*/*")) } }
             chooseDirectory = { if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) directoryPicker.launch(null) }
+            choosePack = { if (!scraper.state.value.busy) packPicker.launch(arrayOf("application/zip", "application/octet-stream")) }
             chooseLabel = {
                 if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) {
                     if (coordinator.state.value.selectedGame == null) coordinator.notify("Choose a game before assigning its label.")
                     else labelPicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
                 }
             }
-            onDispose { chooseGame = null; chooseLabel = null; chooseDirectory = null }
+            onDispose { chooseGame = null; chooseLabel = null; chooseDirectory = null; choosePack = null }
         }
         MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFD8C7A8), background = Color(0xFF191817))) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {

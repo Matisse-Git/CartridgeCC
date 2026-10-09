@@ -5,7 +5,7 @@ real 3D Fit/Crop/rotation preview and independent persistent labels. RP5 tests p
 cancel, identical-ROM reimport and database reopening. Real RetroBase API scraping now adds one-title
 and current-GBA-collection search, ranked multiple candidates, regional thumbnails, independent
 label/media/metadata choices and accepted provenance. M3 adds selected scopes, preferences, protected
-fill-missing, faster reviewed batches and undo. Packs/multi-console scopes remain future work. Offline
+fill-missing, faster reviewed batches and undo. Private Cartridge v1 packs are implemented; multi-console scopes remain future work. Offline
 ROM launching is independent.
 
 ## User flow
@@ -117,7 +117,11 @@ A filtered target's preview uses a temporary view projection without persisting 
 Apply/cancel/recreation restore the saved collection view. Opaque scraper pages pause the Filament loop;
 the real preview resumes it. Gameplay surface/core ownership is unchanged. See M3_SCRAPE_REVIEW/ADR 0010.
 
-Remaining: selected-console scopes, multiple providers, scrape-pack import, disc templates/emulation,
+Cartridge v1 offline scrape packs now reuse this review/journal/preview pipeline with checksum-validated
+private images and exact ROM-hash matching. See SCRAPE_PACK_FORMAT/ADR 0011. Unrecognized scraper
+formats need conversion; no account or network is used for imported candidates/images.
+
+Remaining: selected-console scopes, multiple providers, disc templates/emulation,
 reference-aware garbage collection and large-batch/storage-failure validation. Incremental directory
 rescans/details/favorites/local metadata are implemented in M3_PROGRESS; scan cursors do not resume
 across recreation, but completed imports remain deduplicated. Provider data/image rights and exact

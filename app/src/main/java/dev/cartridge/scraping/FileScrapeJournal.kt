@@ -55,7 +55,7 @@ class FileScrapeJournal(private val directory: File) : ScrapeJournal {
             ScrapeEntry(LibraryGame(item.getString("id"), item.getString("title"), item.getString("source")),
                 item.getString("query"), error = item.optString("error").takeIf { it.isNotEmpty() && it != "null" },
                 searched = item.getBoolean("searched"), corrected = item.optBoolean("corrected"),
-                outcome = ScrapeOutcome.valueOf(item.optString("outcome", "Pending")))
+                outcome = ScrapeOutcome.valueOf(item.optString("outcome", "Pending")), local = item.optBoolean("local"))
         }
         if (entries.isEmpty()) return@withLock null
         val index = root.getInt("index").coerceIn(entries.indices)
@@ -71,7 +71,7 @@ class FileScrapeJournal(private val directory: File) : ScrapeJournal {
             if (sequence < guard.savedSequence) return@withLock
             val entries = JSONArray().apply { state.entries.forEach { entry -> put(JSONObject()
                 .put("id", entry.game.id).put("title", entry.game.title).put("source", entry.game.sourceUri)
-                .put("query", entry.query).put("error", entry.error).put("searched", entry.searched).put("corrected", entry.corrected).put("outcome", entry.outcome.name)) } }
+                .put("query", entry.query).put("error", entry.error).put("searched", entry.searched).put("corrected", entry.corrected).put("outcome", entry.outcome.name).put("local", entry.local)) } }
             write(File(directory, "manifest.json"), JSONObject().put("version", 2).put("index", state.index).put("entries", entries).toString())
             guard.savedSequence = sequence
         } }
@@ -99,22 +99,23 @@ class FileScrapeJournal(private val directory: File) : ScrapeJournal {
     }
     private fun json(game: GameCandidate) = JSONObject().put("id", game.id).put("title", game.title)
         .put("platform", game.platform).put("names", JSONArray(game.names)).put("url", game.sourceUrl)
-        .put("license", game.license).put("exact", game.exactHash).put("metadata", JSONObject().apply {
+        .put("license", game.license).put("exact", game.exactHash).put("sourceName", game.sourceName).put("metadata", JSONObject().apply {
             game.metadata.forEach { (field, values) -> put(field, JSONArray(values)) }
         }).put("tags", JSONObject().apply { game.metadataTags.forEach { (field, tags) -> put(field, JSONArray().apply {
             tags.forEach { put(JSONObject().put("region", it.region).put("language", it.language)) }
         }) } }).put("artwork", JSONArray().apply { game.artwork.forEach { put(JSONObject().put("type", it.type)
-            .put("region", it.region).put("url", it.url).put("checksum", it.checksum)) } })
+            .put("region", it.region).put("url", it.url).put("checksum", it.checksum).put("originalUrl", it.originalUrl)) } })
     private fun candidate(json: JSONObject): GameCandidate {
         val metadata = json.getJSONObject("metadata")
         return GameCandidate(json.getString("id"), json.getString("title"), json.getString("platform"),
             json.getJSONArray("names").strings(), metadata.keys().asSequence().associateWith { metadata.getJSONArray(it).strings() },
             json.getJSONArray("artwork").objects().map { ArtworkCandidate(it.getString("type"), it.getString("region"),
-                it.getString("url"), it.optString("checksum").takeIf { value -> value.isNotEmpty() && value != "null" }) },
+                it.getString("url"), it.optString("checksum").takeIf { value -> value.isNotEmpty() && value != "null" },
+                it.optString("originalUrl").takeIf { value -> value.isNotEmpty() && value != "null" }) },
             json.getString("url"), json.getString("license"), json.getBoolean("exact"),
             json.optJSONObject("tags")?.let { tags -> tags.keys().asSequence().associateWith { field ->
                 tags.getJSONArray(field).objects().map { MetadataTags(it.optString("region"), it.optString("language")) }
-            } } ?: emptyMap())
+            } } ?: emptyMap(), json.optString("sourceName"))
     }
     private fun JSONArray.objects() = (0 until length()).map(::getJSONObject)
     private fun JSONArray.strings() = (0 until length()).map(::getString)

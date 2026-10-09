@@ -648,3 +648,20 @@ review navigation and X selection; API ambiguity/missing flat labels/partial tim
 preview/download/commit; restart/reboot/revoked SAF grants; large-library storage and input profiling;
 storage-full/write-failure injection. Existing real sleep, controller disconnection, sustained memory,
 audio/thermal/battery/input-latency checks remain open. Scrape packs/multi-console scopes are not shipped.
+
+## M3 offline pack increment — version 10
+
+Both APKs and required checks pass: 34 host tests, 8 assets, lint 0 errors/24 warnings. Two focused
+RP5 Pack tests passed in 3.521 s; full suite **21/21 passed in 108.076 s** with three native handoffs.
+Android 13/RP5 firmware is unchanged. Version 10 installed/launched. Original fixture PNGs and a provider
+that throws on every network call prove SAF import, real GLB preview/apply, metadata/manual protection,
+source provenance, offline resume and persistent single-step undo. Bad image checksum and unknown version
+leave no retained pack. Host tests reject traversal/absolute/data-bearing directory paths and a small ZIP
+that expands past the 12-MiB entry bound. The portable PC helper's original PNG/homebrew-hash ZIP round
+trip passed and contains only pack.json plus its image, never the ROM. A test-fixture JSON parenthesis
+error was corrected before hardware testing; behavior assertions were not weakened.
+
+Reproduce with required Gradle/asset commands, then `Test-Device.ps1 -Serial <serial> -Suite Pack` or
+`-Suite All -Cycles 3`. SCRAPE_PACK_FORMAT defines limits and the PC helper. M3 functional slices are
+implemented; very large actual collections, revoked/reboot SAF grants, storage-failure injection and
+shared sustained hardware gates remain open. Continue to M4 under the owner's through-M6 authorization.

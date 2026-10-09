@@ -28,7 +28,7 @@ import kotlin.math.max
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
                     Text("Scrape artwork & metadata", fontSize = 24.sp)
-                    Text("${coordinator.provider.name} · ${ScrapePreferences.regions.first { it.code == state.preferences.region }.title} · ${ScrapePreferences.languages.first { it.code == state.preferences.language }.title}", fontSize = 12.sp)
+                    Text("${state.candidate?.sourceName?.takeIf(String::isNotBlank) ?: if (state.current?.local == true) "Imported pack" else coordinator.provider.name} · ${ScrapePreferences.regions.first { it.code == state.preferences.region }.title} · ${ScrapePreferences.languages.first { it.code == state.preferences.language }.title}", fontSize = 12.sp)
                 }
                 TextButton(onClick = coordinator::back, modifier = Modifier.testTag("scrape-back")) { Text(if (state.busy) "Cancel" else "Back") }
             }
@@ -40,9 +40,9 @@ import kotlin.math.max
             if (state.page == ScrapePage.Matches) {
                 Row(Modifier.fillMaxWidth()) {
                     OutlinedTextField(value = state.current?.query.orEmpty(), onValueChange = coordinator::query,
-                        enabled = !state.busy, singleLine = true, label = { Text("Correct title search") },
+                        enabled = !state.busy && state.current?.local != true, singleLine = true, label = { Text(if (state.current?.local == true) "Offline pack candidates" else "Correct title search") },
                         modifier = Modifier.weight(1f).testTag("scrape-query"))
-                    TextButton(enabled = !state.busy, onClick = coordinator::searchCurrent, modifier = Modifier.testTag("scrape-search")) { Text("Search") }
+                    if (state.current?.local != true) TextButton(enabled = !state.busy, onClick = coordinator::searchCurrent, modifier = Modifier.testTag("scrape-search")) { Text("Search") }
                 }
                 state.current?.error?.let { Text(it, color = Color(0xFFE2CFAE)); TextButton(onClick = coordinator::retryRemaining) { Text("Retry failed titles") } }
                 if (!state.busy && state.current?.searched == true && state.current?.matches?.isEmpty() == true) Text("No match. Correct the search or skip this title.")
@@ -65,7 +65,8 @@ import kotlin.math.max
                         item { Action("Choose games…", 4, state, coordinator::targets) }
                         item { Action("Games missing labels · ${state.availableGames.count { it.label == null }}", 5, state, coordinator::missingLabels) }
                         item { Action("Region & language", 6, state, coordinator::preferencePage) }
-                        item { Action("Close", 7, state, coordinator::back) }
+                        item { Action("Import scrape pack…", 7, state, coordinator::pickPack) }
+                        item { Action("Close", 8, state, coordinator::back) }
                     }
                     ScrapePage.Targets -> {
                         item { Action("Search ${state.pickedIds.size} selected games", 0, state, coordinator::beginPicked) }

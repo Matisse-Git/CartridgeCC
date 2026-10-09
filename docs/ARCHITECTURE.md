@@ -225,3 +225,15 @@ A filtered-out preview target uses a transient canonical projection. It does not
 selection change. Apply/cancel/recreation therefore restore the original collection view/focus while
 writes address the target hash. Opaque scrape pages pause Filament; genuine GLB preview resumes it.
 Native/core/saves and dependencies remain unchanged. See ADR 0010 and M3_SCRAPE_REVIEW.
+
+## Offline pack boundary
+
+BoundedArchive streams ZIP into generated private filenames with compressed/expanded/entry limits;
+archive names never become output paths. ScrapePackStore validates the v1 manifest, uniqueness, every
+image SHA-256 and LabelStore format/dimension limits before promoting the bundle. Candidate sourceName
+and original media URL are independent from the private cartridge-pack URL. PackAwareProvider handles
+only validated private URLs; online calls still use the audited provider. Local journal entries cannot
+fall back to network on missing candidate files/corrected searches. ScrapeCoordinator matches canonical
+existing hashes and replaces queue progress only after a successful matching import; accepted Room data
+is untouched until explicit review. Valid cancelled/unmatched bundles may retain unreferenced files.
+No new library/native integration or change to GPU ownership; see ADR 0011.
