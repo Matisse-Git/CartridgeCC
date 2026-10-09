@@ -11,7 +11,8 @@ versioned under app/schemas; no destructive migration fallback is permitted.
 
 `SessionMachine` enforces Idle → Preparing → Running ⇄ Paused → Stopping → Idle, with Error exits.
 `LibretroEngine` exposes Flow status and serializes native operations with a Mutex. Preparing includes
-core/game setup, a SurfaceCreated barrier with battery restoration/readback before emulation starts,
+core/game setup, SurfaceCreated plus the pinned successful render-lifecycle observer registration,
+battery restoration/readback before emulation starts,
 then the first real FrameRendered event. Error recovery destroys the native
 session and returns through cleanup to Idle before retry. A process-wide atomic claim prevents a second
 LibretroDroid native frontend from being initialized concurrently.
@@ -36,6 +37,20 @@ and owns its replacement SRGB8_A8 texture. GLB/image file reads and label decodi
 resources load asynchronously and renderables are added when ready. A Choreographer callback updates
 root transforms and draws; the focus spring retargets in place. Backgrounding pauses that loop.
 
+M2 loads a CollectionAssets bundle on IO once per Activity: refined cartridge, independent receiving-slot
+GLB and original prefiltered studio KTX. Two bounded ResourceLoaders asynchronously prepare the two assets.
+Three cartridge instances still share mesh/plastic/normal/roughness resources. The official matching
+KTX1Loader supplies diffuse SH and specular cubemap; both GPU resources are destroyed at handoff. No
+skybox or runtime prefilter work runs during navigation. The slot lies beyond the far clip at rest.
+MediaMotion owns phase curves and shared durations; Compose advances its linear progress while Filament
+applies lift, alignment and descent. Motion off also snaps/reset the carousel spring. Optional original
+SoundPool audio is Activity-owned and independent of the core; Main lifecycle guards and close release it.
+
+The collection's touch tools live on an explicitly opened shelf whose visibility survives Activity
+recreation. Physical shortcuts still work with it closed. Enrichment and library semantics are unchanged.
+Debug-only frame diagnostics distinguish CPU submission from SurfaceFlinger actual presentation timestamps.
+They retain only bounded-duration original-artwork samples, never owner library/scrape data.
+
 On insertion, the shell closes Filament: remove the frame callback, detach UiHelper, destroy swapchain
 and flush, cancel asset loading, destroy asset/material/light/camera/view/scene/engine resources. Only
 after the completion barrier does it create LibretroDroid's separate EGL/GLSurfaceView. There is no GPU
@@ -59,13 +74,19 @@ Prepare loads both the single packaged core and a ROM. The UI never handles core
 surface Flow is specific to the Android host. Core initialization occurs only after a real surface exists.
 
 The adapter owns a fresh LifecycleRegistry per session and installs event/error collectors first.
-The session remains STARTED until SurfaceCreated and battery restoration/readback complete; only then
+The session remains STARTED until SurfaceCreated, successful observer registration and battery
+restoration/readback complete; only then
 RESUMED permits the first retro_run. Pause uses the registry to stop the render loop/audio. Save calls
 queue a coroutine result on the GL thread and time out after three seconds. SaveBridge captures/restores
 battery memory and captures states through the already loaded core's public ABI; state loading uses the
 upstream checked method with `useEmulationThread=false`. No leaking frontend capture buffer or ignored
 SRAM rejection result. This also avoids the upstream latch hanging on a thrown native error.
 Timeout recovery stops the GL thread before destroying native state; no concurrent save/destroy is allowed.
+SurfaceCreated alone is insufficient in pinned 0.14.0: initializeCore can swallow a failure and still
+emit it. Prime the private registry's coroutine observer, then require the additional successful
+RenderLifecycleObserver posted before that event. Check with a synchronous Main Handler after that
+upstream synchronous post, avoiding coroutine async-message sync-barrier bypass. This audited barrier avoids touching
+uninitialized mGBA memory while async error delivery races; re-audit it for any frontend version change.
 
 Files use a stable SHA-256 ROM-content identifier. SAF document import enforces `.gba`, size 192 bytes
 through 32 MiB, and bounded streaming into a private working copy. Save files are `<hash>.sram` and

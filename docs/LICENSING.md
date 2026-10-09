@@ -12,7 +12,9 @@ Socket/Slot were references only; no frontend code was copied from them.
 | blip_buf in mGBA | 1.1.0 in selected source | LGPL-2.1-or-later; compiled into the core, so source and suitable relinking/rebuild materials must be provided, not just the top-level MPL license |
 | inih in mGBA | bundled source | BSD-3-Clause; retain copyright/license/disclaimer |
 | mGBA Libretro headers | selected source | File-level permissive notices, including MIT retro_inline.h; preserve corresponding source/header notices |
-| Filament + gltfio | 1.72.1 | Apache-2.0; preserve notices/licenses and audit bundled third-party components before release |
+| Filament + gltfio + filament-utils | 1.72.1 | Apache-2.0; preserve notices/licenses and audit bundled third-party components before release. M2 uses the official KTX loader |
+| cmgen | official Filament 1.72.1 asset tool, not packaged | Apache-2.0/project notices; processes only the original analytic HDR environment. No bundled sample environment adopted |
+| Khronos glTF Validator | npm 2.0.0-dev.3.10, tools only | Apache-2.0 as inspected in its package LICENSE; ignored tool installation, not production code |
 | SceneView | v4.53.0 inspected, not linked | Apache-2.0; no SceneView binary in the APK |
 | AndroidX/Compose/AGP | pins in build scripts | Apache-2.0; retain required notices for distributed artifacts |
 | Kotlin/coroutines | 2.1.20 / 1.10.2 | Apache-2.0; retain required notices |
@@ -22,7 +24,7 @@ Socket/Slot were references only; no frontend code was copied from them.
 | Gradle wrapper | 8.13 | Apache-2.0; generated wrapper retained, distribution checksum pinned |
 | Oboe in LibretroDroid | b15f5e39c01a7ada306d959e5129620b145fb8b4 | Apache-2.0; corresponding selected source/notice included in a frontend distribution |
 | libretro-common in LibretroDroid | b0c348ea5543c4d7fb0bc479258aa6988b20c0c9 | File-level permissive licenses for the five compiled C files; preserve headers, not a guessed repository-wide license |
-| Cartridge GLB/PNG/icon/probe | original project generators/source | Original development assets, no adopted third-party art; project-wide licensing choice remains with the owner |
+| Cartridge/receiver GLB, PNG, studio IBL, contact WAV, icon/probe | original project generators/source | Original development assets, no adopted third-party art/audio/HDR photographs; project-wide licensing choice remains with the owner |
 | SaveBridge / SRAM diagnostic | original C/JNI and ARM assembly | No frontend implementation or third-party assets copied; uses public Libretro ABI and Android/NDK platform APIs. Combined-app GPL/source obligations remain |
 
 Inspected sources:

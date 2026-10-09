@@ -14,8 +14,8 @@ android {
         applicationId = "dev.cartridge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.1.0-m1-saves"
+        versionCode = 7
+        versionName = "0.2.0-m2-studio"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
@@ -54,6 +54,7 @@ dependencies {
     ksp("androidx.room:room-compiler:2.7.2")
     implementation("com.google.android.filament:filament-android:1.72.1")
     implementation("com.google.android.filament:gltfio-android:1.72.1")
+    implementation("com.google.android.filament:filament-utils-android:1.72.1")
     implementation("com.github.Swordfish90:LibretroDroid:0.14.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")

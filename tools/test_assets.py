@@ -75,6 +75,63 @@ class CartridgeAssetTest(unittest.TestCase):
         self.assertEqual(b'\x89PNG\r\n\x1a\n', self.binary[offset:offset + 8])
         self.assertFalse(any('uri' in i for i in self.doc['images']))
 
+    def test_refined_geometry_and_material_budget(self):
+        primitives = self.doc['meshes'][0]['primitives']
+        self.assertEqual(4, len(primitives))
+        self.assertLess(sum(self.doc['accessors'][p['indices']]['count']//3 for p in primitives), 15_000)
+        plastic = self.doc['materials'][0]
+        self.assertIn('normalTexture', plastic)
+        self.assertIn('metallicRoughnessTexture', plastic['pbrMetallicRoughness'])
+        self.assertEqual(3, len(self.doc['images']))
+        normals, _ = self.values(primitives[0]['attributes']['NORMAL'])
+        self.assertTrue(any(.1 < abs(n) < .9 for n in normals))
+
+    def test_label_recess_and_top_left_uv_contract(self):
+        primitive = next(p for p in self.doc['meshes'][0]['primitives'] if p['material'] == 2)
+        positions, _ = self.values(primitive['attributes']['POSITION'])
+        uv, _ = self.values(primitive['attributes']['TEXCOORD_0'])
+        points = list(zip(positions[0::3], positions[1::3], positions[2::3], uv[0::2], uv[1::2]))
+        self.assertAlmostEqual(.00371, max(p[2] for p in points), places=6)
+        self.assertTrue(all(0 <= p[3] <= 1 and 0 <= p[4] <= 1 for p in points))
+        top = max(points, key=lambda p: p[1]); bottom = min(points, key=lambda p: p[1])
+        self.assertLess(top[4], bottom[4])
+        self.assertLess(min(points, key=lambda p:p[0])[3], max(points, key=lambda p:p[0])[3])
+
+    def test_receiver_is_real_geometry_with_slot_clearance(self):
+        raw = MODEL.with_name('gba_receiver.glb').read_bytes()
+        size = struct.unpack_from('<I', raw, 12)[0]
+        doc = json.loads(raw[20:20+size])
+        self.assertEqual('2.0', doc['asset']['version'])
+        self.assertEqual(2, len(doc['materials']))
+        self.assertLess(len(raw), 128*1024)
+        binary = raw[28+size:]
+        primitive = doc['meshes'][0]['primitives'][0]
+        accessor = doc['accessors'][primitive['attributes']['POSITION']]
+        view = doc['bufferViews'][accessor['bufferView']]
+        positions = struct.unpack_from('<'+'f'*(accessor['count']*3), binary, view['byteOffset'])
+        index_accessor = doc['accessors'][primitive['indices']]
+        index_view = doc['bufferViews'][index_accessor['bufferView']]
+        indices = struct.unpack_from('<'+'H'*index_accessor['count'], binary, index_view['byteOffset'])
+        sides = []
+        for i in range(0, len(indices), 3):
+            triangle = [positions[3*n:3*n+3] for n in indices[i:i+3]]
+            if min(p[2] for p in triangle) < 0 < max(p[2] for p in triangle) and all(p[0] > .025 for p in triangle):
+                sides.extend(p[0] for p in triangle)
+        self.assertGreater(min(sides)*2, .060)  # Measured mesh clearance admits the lip.
+        self.assertEqual(0, doc['materials'][1]['pbrMetallicRoughness']['metallicFactor'])
+
+    def test_studio_has_prefiltered_cubemap_and_spherical_harmonics(self):
+        raw = (MODEL.parents[1]/'lighting/studio_ibl.ktx').read_bytes()
+        self.assertEqual(b'\xabKTX 11\xbb\r\n\x1a\n', raw[:12])
+        fields = struct.unpack_from('<13I', raw, 12)
+        self.assertEqual(0x04030201, fields[0])
+        self.assertEqual((128,128), fields[6:8])
+        self.assertEqual(6, fields[10])
+        self.assertGreaterEqual(fields[11], 4)
+        self.assertGreater(fields[12], 27*4)
+        self.assertIn(b'sh\0', raw[64:64+fields[12]])
+        self.assertLess(len(raw), 600*1024)
+
 
 if __name__ == '__main__':
     unittest.main()

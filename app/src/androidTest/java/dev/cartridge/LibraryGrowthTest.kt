@@ -38,7 +38,7 @@ class LibraryGrowthTest {
         Intents.init()
         try {
             intending(hasAction(action)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(uri)))
-            ui.onNodeWithTag(tag).performClick(); ui.waitForIdle()
+            ui.tool(tag).performClick(); ui.waitForIdle()
         } finally { Intents.release() }
     }
     private fun bluePixels(scenario: ActivityScenario<DebugCollectionActivity>) {
@@ -84,7 +84,7 @@ class LibraryGrowthTest {
                     assertEquals(6, it.coordinator.state.value.selection.count)
                     assertTrue(it.coordinator.state.value.message.orEmpty().contains("5 added · 2 duplicates · 1 failed"))
                 }
-                ui.onNodeWithTag("rescan").performClick()
+                ui.tool("rescan").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message.orEmpty().contains("0 added · 7 duplicates · 1 failed") }
                 scenario.onActivity { assertEquals(6, it.coordinator.state.value.slots.size); it.coordinator.navigate(5) }
                 ui.waitForIdle()
@@ -103,7 +103,7 @@ class LibraryGrowthTest {
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 scenario.onActivity { assertEquals(6, it.coordinator.state.value.slots.size); assertEquals(5, it.coordinator.state.value.selection.index) }
                 bluePixels(scenario)
-                ui.onNodeWithTag("insert").performClick()
+                ui.tool("insert").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Running }
                 ui.onNodeWithTag("pause").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Paused }
@@ -113,30 +113,30 @@ class LibraryGrowthTest {
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.screen == CollectionScreen.Library && it.coordinator.state.value.rendererReady }
                 scenario.onActivity { assertEquals(5, it.coordinator.state.value.selection.index) }
                 bluePixels(scenario)
-                ui.onNodeWithTag("rescan").performClick()
+                ui.tool("rescan").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message.orEmpty().contains("0 added · 7 duplicates · 1 failed") }
                 var gameId = ""
                 scenario.onActivity { gameId = it.coordinator.state.value.selectedGame!!.id }
                 val save = File(context.filesDir, "saves/$gameId.state")
                 val savedBytes = save.readBytes()
                 assertTrue(savedBytes.isNotEmpty())
-                ui.onNodeWithTag("collection-menu").performClick(); ui.onNodeWithTag("collection-action-1").performClick()
+                ui.tool("collection-menu").performClick(); ui.onNodeWithTag("collection-action-1").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.slots.size == 5 }
-                ui.onNodeWithTag("rescan").performClick()
+                ui.tool("rescan").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message.orEmpty().startsWith("Scan complete") }
                 scenario.onActivity { assertEquals(5, it.coordinator.state.value.slots.size) }
                 assertArrayEquals(savedBytes, save.readBytes())
                 assertTrue(File(context.filesDir, "roms/$gameId.gba").isFile)
                 assertTrue(File(tree, "g5.gba").isFile)
-                ui.onNodeWithTag("collection-menu").performClick(); ui.onNodeWithTag("collection-action-2").performClick()
+                ui.tool("collection-menu").performClick(); ui.onNodeWithTag("collection-action-2").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.id == gameId }
                 scenario.onActivity { assertEquals(6, it.coordinator.state.value.slots.size); assertEquals(5, it.coordinator.state.value.selection.index) }
                 bluePixels(scenario)
-                ui.onNodeWithTag("collection-menu").performClick(); ui.onNodeWithTag("collection-action-1").performClick()
+                ui.tool("collection-menu").performClick(); ui.onNodeWithTag("collection-action-1").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.slots.size == 5 }
                 scenario.recreate()
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
-                ui.onNodeWithTag("rescan").performClick()
+                ui.tool("rescan").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message.orEmpty().startsWith("Scan complete") }
                 scenario.onActivity { assertEquals(5, it.coordinator.state.value.slots.size) }
                 File(fixtures, "probe-two.gba").writeBytes(File(tree, "g5.gba").readBytes())

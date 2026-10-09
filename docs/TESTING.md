@@ -125,7 +125,7 @@ probe, installs both APKs, pushes the fixture, wakes the screen, runs instrument
 JUnit result (ADB's process exit code alone is insufficient). `-Suite Surface` is the default and runs
 one test; `-Suite Collection` runs two ordinary UI tests; `-Suite Scrape` runs five parser/migration/chooser
 tests; `-Suite Library` runs two folder/durable-queue tests; `-Suite Battery` runs two battery-save tests;
-`-Suite All` runs all twelve deterministic tests.
+`-Suite Render` runs two GPU orientation/settings/presentation tests; `-Suite All` runs all fourteen tests.
 `-Suite Live` opts into one real API test using
 a fresh candidate cache, requiring device internet. It retrieves no commercial image or ROM. Logs stay in
 ignored `.tools/device-test.log`. Collection tests stub only document-picker results, then use the real
@@ -429,3 +429,85 @@ audio/frame timing and controller disconnection. Sudden termination may lose pro
 completed checkpoint; scheduler delays and storage errors can extend that interval. No comparative PSS,
 frame-pacing or leak-free claim is made from this run. M0 remains passed; M1 is in progress.
 See SAVE_RELIABILITY.md and ADR 0007 for implementation and source API reasoning.
+
+## M2 media, lighting, motion and presentation — 2026-10-09
+
+Version 0.2.0-m2-studio, versionCode 7, same RP5/Android 13/API 33/arm64/Adreno 650/GLES 3.2,
+1920×1080 at 60 Hz and firmware `RP5_V1.0.0.189_20251128_174732_user`. M2 is active at the owner's
+request, retaining M1's longer stability gates. Both APKs build; **21 host tests** (nine coordinator,
+five domain, three queue, two SaveStore, two motion) and **eight asset tests** pass. Lint reports
+**zero errors/22 warnings**; the additional warning is the intentionally pinned matching Filament utils
+version. Both GLBs pass Khronos Validator 2.0.0-dev.3.10 with **zero errors/zero warnings**, no ignored
+issues. Cartridge/receiver/audio regeneration is byte-for-byte identical on this host.
+
+**All 14 RP5 tests pass with 50 native handoffs in 113.466 s on the final source.** The preceding full
+run passed in 113.482 s before synchronous-handler hardening of the setup barrier. The targeted native
+invalid-load/existing-SRAM proof passed with three cycles in 2.815 s. Version 7 is installed/open.
+
+The new ordinary-UI test starts with Tools closed, explicitly opens it to choose original files, then
+imports moderate red/green/blue/yellow quadrant print swatches onto the actual shared mesh. GPU PixelCopy
+verifies all four positions (no vertical/horizontal flip), with existing label upload/apply gates.
+Motion off snaps focus to the selected index. Motion and alternate shortcut both persist across
+Activity recreation; the isolated debug preferences are reset afterward. The owner database/art/ROMs
+are untouched. Existing independent-label/folder/removal/queue/save/native checks all remain in All.
+
+CollectionProfileActivity is debug-only and uses three instances with original ORBIT FIELD labels.
+It matches the immersive 1920×1080 viewport, waits for assets and one second of warmup, then renders
+10 seconds at rest, 20 seconds of retargeting every 150 ms, and six seconds of repeated insertion/ejection.
+The test polls SurfaceFlinger every second, deduplicates actual presentation timestamps (column two),
+rejects zero/pending fences and applies 0.5-second margins at phase boundaries. Median/p95/p99 below
+measure actual presentation, rather than Compose frame callbacks or just accepted beginFrame calls.
+
+| Original viewport phase | Frames | Median ms | p95 ms | p99 ms | Intervals >25 ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Rest | 540 | 16.664 | 16.752 | 16.828 | 0 |
+| Rapid navigation | 1,140 | 16.664 | 16.750 | 16.818 | 0 |
+| Insertion/ejection | 300 | 16.665 | 16.739 | 16.823 | 0 |
+
+Separately measured CPU submission p95: **1.526 ms**, **2,161/2,161 callbacks submitted**. Performance
+assertions require >100 real presentation samples per phase and p95 ≤1.5 reported refresh periods;
+the threshold was not changed. This is a short isolated viewport test, not all owner artwork workloads,
+whole-app input latency, ten-minute sustained thermals or a memory-stability assertion.
+After restoring the ordinary owner library, one aggregate snapshot was **183,874 KiB PSS (~179.6 MiB)**,
+including **8,908 KiB GL mtrack**. It is not a comparative leak/plateau measurement.
+
+Initial failures were fixed and rerun: empty-Compose-rule helper type/import mistakes; legacy chooser
+helpers needed to open Tools; Compose updates needed flushing before independently clocked GPU sampling;
+UiAutomation passes argv directly, so shell quotes were literal. Fully saturated green was desaturated
+by the filmic highlight mapper; original mid-tone print swatches retain the same quadrant assertions.
+The recreation check exposed a genuine toggle race: compute the next value once before emitting Flow,
+then persist that value. No assertion was skipped or performance gate relaxed.
+
+A repeated native run exposed SIGSEGV in mGBA save-memory access after a rejected ROM with an existing
+battery file. Pinned GLRetroView can emit SurfaceCreated after initializeCore swallows a load error;
+async error delivery can arrive later. The adapter now primes its private lifecycle scope observer and
+checks successful RenderLifecycleObserver registration using a synchronous Main Handler queued after
+upstream's synchronous post. It restores SRAM only after that success barrier, still before retro_run.
+The fixture now always seeds battery bytes for the invalid-ROM recovery test, then performs valid
+sessions. All final 50 cycles and original battery tests pass. ADR 0007 records the implementation
+dependency that must be re-audited when changing the frontend version. No crash is hidden by deleting
+the save, weakening invalid-ROM recovery or substituting mock frames.
+
+Reproduce after the normal build:
+
+```powershell
+python tools/generate_cartridge.py
+python tools/generate_sound.py
+python tools/test_assets.py
+node tools/validate_assets.cjs
+.\tools\Test-Device.ps1 -Serial <serial> -Suite Render
+.\tools\Test-Device.ps1 -Serial <serial> -Suite All -Cycles 50
+adb -s <serial> logcat -d -s CartridgePacing:I '*:S'
+```
+
+See ASSET_PIPELINE for the pinned validator installation and offline studio-generation command.
+Only original source/assets and aggregate results are committed; screenshots/private device logs are
+ignored. [Android 13 FrameTracker](https://android.googlesource.com/platform/frameworks/native/+/android-13.0.0_r1/services/surfaceflinger/FrameTracker.cpp)
+and [UiAutomationConnection](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-13.0.0_r1/core/java/android/app/UiAutomationConnection.java)
+were inspected for timestamp ordering and direct argv execution.
+
+Owner review of material/slot/motion and optional sound is requested on the installed build. Still
+required: speaker/headphone contact/audio timing, asymmetric real-scan fidelity, manual close-up art
+direction, longer real-library/gameplay CPU/GPU/PSS/audio/thermals/battery/latency, physical sleep/reboot,
+OS process death and held-controller disconnection. M0 remains passed; M1/M2 sustained acceptance stays
+open. Scripted mesh refinement does not imply manual production Blender polish.

@@ -1,21 +1,68 @@
 # Cartridge asset pipeline
 
-## Current engineering asset
+## Current M2 source assets
 
-Blender was unavailable. `tools/generate_cartridge.py` deterministically creates an original 79,780-byte
-glTF 2.0 binary using real indexed triangles, physical depth, chamfer rings, a top grip lip, shell seam,
-label rim and 16 plated contacts. It embeds a 512×256 original fictional ORBIT FIELD PNG. Materials
-are plastic/recess/replaceable label/metal, with distinct metallic and roughness values. No external
-artwork or model is copied. `tools/test_assets.py` checks bounds, indices, normals, winding and texture.
+Blender is unavailable on this host. `tools/generate_cartridge.py` and `tools/glb_geometry.py` create an
+original 494,152-byte glTF 2.0 cartridge: 6,866 triangles, four materials, smooth segmented bevel normals,
+recessed rounded label, grip ribs, an outside shell seam and 16 plated contacts. The label is below the
+front plane rather than overlaid on a complete front face. It retains a 512×256 fictional ORBIT FIELD
+PNG, with 128×128 original normal and roughness/metal textures. Tangents are explicitly orthogonalized
+per vertex from face UVs; Blender/MikkTSpace remains available for final hand-authored textures.
+
+The independent receiving-slot GLB is 61,564 bytes/1,180 triangles/two materials. Its measured 62 mm
+opening admits the 60 mm cartridge lip. Geometry blocks the front of the descending shell. It is hidden
+beyond the far clip at rest, not a permanently visible console. No external model or artwork is copied.
 
 ```powershell
 python tools/generate_cartridge.py
+python tools/generate_sound.py
 python tools/test_assets.py
 ```
 
-The asset is deliberately an M0 geometry study. It does not claim production seams, smooth bevels,
-micro-normal detail, realistic label recess milling or studio reflection quality. The diffuse spherical
-harmonic environment and sun are temporary; there is no prefiltered studio specular cubemap yet.
+Eight structural tests check ranges, indices, metre-scale dimensions, unit normals/winding, mesh/material
+budget, embedded textures, recessed label/top-left UVs, receiver clearance and KTX faces/mips/SH. The
+official Khronos validator additionally checks both GLBs with zero errors/warnings:
+
+```powershell
+npm.cmd install --prefix .tools/gltf-validation --ignore-scripts --no-audit --no-fund gltf-validator@2.0.0-dev.3.10
+node tools/validate_assets.cjs
+```
+
+The npm package integrity is `sha512-odJ4k0tRkGXiDGn78yDBg+fBbAIvBnXxh3RwAta0emSxGtyagFE8B4xELB1oYe3S5RD8Ci3uZAsZaascH2LAEQ==`.
+The script reports all issues and fails for errors or warnings; no ignored-issue list. Reports remain
+under ignored `.tools/`. Only runtime assets and original generators belong in Git.
+
+This is the first scripted M2 refinement, not a claim that an artist has manually finished a production
+Blender asset. Further shoulder/grip/cavity accuracy, close-up art direction and lighting calibration can
+be refined in Blender. The reproducible generator remains a useful baseline and genuine physical mesh.
+
+## Original studio lighting and contact sound
+
+`tools/generate_studio.py` creates a 512×256 linear HDR Radiance source from analytic softboxes with warm
+neutral/cool fill lighting. No photograph, third-party environment or sample cmgen asset is used.
+Matching **Filament cmgen 1.72.1** generates GGX-prefiltered specular levels and three-band diffuse SH.
+The 128-pixel/six-face/four-level KTX1 is 522,616 bytes; it is the sole packaged environment. No skybox
+or runtime prefilter is needed. Filament, gltfio and filament-utils all pin 1.72.1. KTX1Loader owns both
+the light and cubemap, and the renderer explicitly releases both at handoff.
+
+Download the appropriate [official Filament 1.72.1 tools](https://github.com/google/filament/releases/tag/v1.72.1)
+into an ignored tool directory. This host extracted only `bin/cmgen.exe` from the Windows archive;
+its archive SHA-256 is `d013c17d27e2acbbaadc172e9136acee75f9a54c919a5703c877dd6c0079fd5f`.
+No download occurs during an ordinary APK build; the generated KTX is versioned.
+
+```powershell
+.\tools\Build-Studio.ps1 -Cmgen C:/path/to/filament-1.72.1/bin/cmgen.exe
+```
+
+On other hosts: generate the HDR with Python, then run
+`cmgen --quiet --size=128 --format=ktx --deploy=.tools/studio/prefilter .tools/studio/cartridge_studio.hdr`
+and copy `prefilter_ibl.ktx` to `app/src/main/assets/lighting/studio_ibl.ktx`. Source/output folder names
+determine cmgen's output name. Matching tool version matters; multithreaded floating-point generation
+can have insignificant platform differences, so do not infer bitwise cross-platform reproducibility.
+
+`generate_sound.py` writes an original 100 ms mono 16 kHz PCM contact to `res/raw/media_click.wav`.
+Its decaying oscillation/noise is seeded, quiet and contains no sampled audio. Sound defaults off;
+Motion off suppresses the transition sound. SoundPool loads once per Activity and closes at destruction.
 
 ## Blender handoff
 
@@ -30,7 +77,9 @@ harmonic environment and sun are temporary; there is no prefiltered studio specu
    One template mesh is instanced for the collection; never export a unique shell for every game.
    Preserve the material name `Replaceable fictional label`, with exactly one label primitive per
    instance. CartridgeLabels locates this name and replaces the gltfio `baseColorMap` binding.
-   The current UVs cover a rectangular 2:1 region facing +Z; verify asymmetric label orientation on RP5.
+   The UVs cover a 2:1 region facing +Z with rounded geometry masking the corners. U grows right;
+   V grows down: top-left=(0,0). Do not apply a second vertical flip. RP5 tests sample four original
+   asymmetric print swatches from the real GPU surface; retain this contract after Blender export.
 5. Use glTF-compatible Principled BSDF materials: plastic metallic 0, roughness ~0.65–0.85; label
    ~0.55–0.75; plated contacts metallic ~0.8–1, roughness ~0.25–0.4. Avoid stylized dirt, scratches
    and glossy toy surfaces. Albedo is sRGB; roughness/metal/AO/normal data is linear. Pack ORM as
@@ -49,7 +98,11 @@ The provided export helper exports selected mesh objects and validates a nonempt
 
 ## Compression and label loading
 
-The M0 PNG avoids another texture-tool dependency. For final assets evaluate KTX2/Basis Universal
+The cartridge PNGs avoid another runtime texture-tool dependency. Roughness is linear in G, metallic
+is zero in B, and R is constant 255 (no baked occlusion claim). The normal texture is linear OpenGL
+tangent-space with scale 0.22. Grain is restrained; no artificial dirt/scratches. Plastic UVs repeat
+at 14 mm with mipmaps. Label albedo remains sRGB and supports existing per-game replacement.
+For final assets evaluate KTX2/Basis Universal
 with the pinned gltfio runtime, test ETC2/ASTC capability on RP5, and compare GPU memory/visual quality.
 Never assume a glTF WebP/extension provider exists. Draco/meshopt compression remains deferred. M1's
 LabelStore decodes ordinary user PNG/JPEG/WebP on IO into 512×256 RGBA; CartridgeLabels uploads distinct
@@ -59,7 +112,8 @@ current GPU label textures are retained per viewport; navigation reuses them.
 
 The RP5 label proof assigns different original red/blue images to instances of this one mesh, reads
 actual GPU pixels, and restores accepted textures after cancel/recreation/database reopening. This
-proves independence, not the fidelity of a production scan or the orientation of asymmetric artwork.
+proves independence, not the fidelity of a production scan. The M2 swatch test extends this to
+asymmetric orientation.
 Publish label UV orientation, aspect ratio and a mask with each polished template.
 Future disc templates also define outer radius and centre-hole masking. Distinguish flat label artwork
 from photographs of entire media and case/box art. See [LABEL_SCRAPING.md](LABEL_SCRAPING.md).

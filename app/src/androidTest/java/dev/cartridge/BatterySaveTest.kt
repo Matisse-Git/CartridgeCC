@@ -52,13 +52,13 @@ class BatterySaveTest {
         try {
             intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
                 Intent().setData(Uri.parse("content://dev.cartridge.fixture/battery-probe.gba"))))
-            ui.onNodeWithTag("choose-game").performClick(); ui.waitForIdle()
+            ui.tool("choose-game").performClick(); ui.waitForIdle()
         } finally { Intents.release() }
         await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.id == id }
         return scenario to File(context.filesDir, "saves/$id.sram")
     }
     private fun insert(scenario: ActivityScenario<DebugCollectionActivity>) {
-        ui.onNodeWithTag("insert").performClick()
+        ui.tool("insert").performClick()
         await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Running }
     }
     private fun pause(scenario: ActivityScenario<DebugCollectionActivity>) {
@@ -122,7 +122,7 @@ class BatterySaveTest {
             val valid = save.readBytes()
             val invalid = valid.copyOf(128 * 1024 + 1)
             save.writeBytes(invalid)
-            ui.onNodeWithTag("insert").performClick()
+            ui.tool("insert").performClick()
             await(it) { !it.coordinator.state.value.busy && it.coordinator.state.value.message.orEmpty().contains("too large") }
             assertArrayEquals("Failed preparation must preserve the stored file", invalid, save.readBytes())
             save.writeBytes(valid)

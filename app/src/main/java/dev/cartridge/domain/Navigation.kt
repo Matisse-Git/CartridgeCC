@@ -29,6 +29,7 @@ class AxisRepeater(private val deadZone: Float = 0.35f) {
 /** Critically damped retargetable motion: no queue, no overshoot after rapid navigation. */
 class FocusSpring(var position: Float = 0f) {
     private var velocity = 0f
+    fun snapTo(target: Float): Float { position = target; velocity = 0f; return position }
     fun step(target: Float, deltaSeconds: Float): Float {
         val dt = deltaSeconds.coerceIn(0f, 0.05f)
         val omega = 14f

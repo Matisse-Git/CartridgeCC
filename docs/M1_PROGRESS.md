@@ -54,14 +54,15 @@ replaced with mocked rendering. No RP5 60 FPS or long-term memory-stability clai
 
 ## Open M1 work
 
-The cartridge is still faceted engineering geometry, without final plastic normal/roughness textures,
-studio cubemap or a receiving slot. Motion needs physical polish. One state slot and a label per game
+The owner requested M2 now: rounded/recessed geometry, plastic normal/roughness textures,
+original studio cubemap and a receiving slot are implemented in that refinement (M2_PROGRESS).
+One state slot and a label per game
 are supported. The third increment grows the collection through SAF imports and saves scrape batches;
 disc templates/cores, incremental indexing, complete batch policies and very-large-library profiling
 remain pending. The second increment added real API choices and independent media/metadata.
 Backgrounding ends gameplay; seamless state restoration remains deferred. Periodic battery checkpoints
 and boot restoration are proved by an original SRAM diagnostic on RP5. Force-stop cannot guarantee a
-final save beyond the latest completed checkpoint. Validate asymmetric artwork, held inputs/disconnection, sleep, sustained frame pacing,
+final save beyond the latest completed checkpoint. Validate held inputs/disconnection, sleep, sustained frame pacing,
 audio timing, memory and battery on RP5.
 
 The owner requested immediate priority for database/API scraping and Socket/Slot-style labels after

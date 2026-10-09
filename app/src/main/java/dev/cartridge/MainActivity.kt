@@ -16,12 +16,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,8 +44,11 @@ import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.LibretroEngine
 import dev.cartridge.input.ControllerRouter
 import dev.cartridge.input.InputMode
+import dev.cartridge.input.MediaSound
 import dev.cartridge.library.*
 import dev.cartridge.rendering.CartridgeSurface
+import dev.cartridge.rendering.CollectionAssets
+import dev.cartridge.domain.MediaMotion
 import dev.cartridge.session.*
 import dev.cartridge.scraping.*
 import dev.cartridge.storage.*
@@ -68,6 +72,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     private var chooseLabel: (() -> Unit)? = null
     private var chooseDirectory: (() -> Unit)? = null
     private var addingGame = false
+    private lateinit var mediaSound: MediaSound
+    private var soundEnabled by mutableStateOf(false)
     private lateinit var repository: CollectionRepository
     internal val collectionSurface get() = cartridgeSurface
     protected open fun createRepository(): CollectionRepository = RoomCollectionRepository(this)
@@ -98,6 +104,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         engine = LibretroEngine(this, lifecycleScope)
         labelStore = createLabelStore()
         val preferences = getPreferences(MODE_PRIVATE)
+        soundEnabled = preferences.getBoolean("mediaSound", false)
+        mediaSound = MediaSound(this)
         repository = createRepository()
         coordinator = CollectionCoordinator(engine, repository, object : RendererHandoff {
             override fun releaseLibrary() { cartridgeSurface?.close(); cartridgeSurface = null }
@@ -187,9 +195,17 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         val status by engine.status.collectAsStateWithLifecycle()
         val scrape by scraper.state.collectAsStateWithLifecycle()
         val emulator by engine.surface.collectAsStateWithLifecycle()
-        var glb by remember { mutableStateOf<ByteArray?>(null) }
+        var glb by remember { mutableStateOf<CollectionAssets?>(null) }
+        var toolsVisible by rememberSaveable { mutableStateOf(false) }
+        LaunchedEffect(state.screen, soundEnabled) {
+            if (soundEnabled && !state.reducedMotion) when (state.screen) {
+                CollectionScreen.Inserting -> { delay(450); if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mediaSound.contact() }
+                CollectionScreen.Ejecting -> { delay(60); if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mediaSound.contact(eject = true) }
+                else -> Unit
+            }
+        }
         LaunchedEffect(Unit) {
-            glb = withContext(Dispatchers.IO) { assets.open("models/gba_cartridge.glb").use { it.readBytes() } }
+            glb = withContext(Dispatchers.IO) { CollectionAssets.read(assets) }
         }
         val gamePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importGame) }
         val labelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importLabel) }
@@ -216,25 +232,37 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                             fontSize = 12.sp, color = Color(0xFF9C968B), modifier = Modifier.padding(top = 8.dp))
                     }
                     if (state.screen == CollectionScreen.Library) {
-                        Row(Modifier.align(Alignment.TopEnd).padding(16.dp)) {
-                            TextButton(enabled = !state.busy && state.loaded, onClick = { chooseGame?.invoke() }, modifier = Modifier.testTag("choose-game")) { Text("Add .gba") }
-                            TextButton(enabled = !state.busy && state.loaded, onClick = { chooseDirectory?.invoke() }, modifier = Modifier.testTag("choose-folder")) { Text("Folder") }
-                            TextButton(enabled = !state.busy && state.loaded, onClick = ::openScraper, modifier = Modifier.testTag("scrape")) { Text("Scrape") }
-                            TextButton(enabled = !state.busy && state.selectedGame != null, onClick = { chooseLabel?.invoke() }, modifier = Modifier.testTag("choose-label")) { Text("Image") }
-                            if (state.selectedGame?.label != null) TextButton(enabled = !state.busy, onClick = coordinator::removeLabel) { Text("Reset label") }
-                            TextButton(enabled = !state.busy && state.rendererReady && state.loaded, onClick = coordinator::insert, modifier = Modifier.testTag("insert")) { Text("Insert") }
+                        TextButton(onClick = { toolsVisible = !toolsVisible }, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).testTag("toggle-tools")) {
+                            Text(if (toolsVisible) "Close tools" else "Tools")
                         }
-                        Row(Modifier.align(Alignment.TopStart).padding(16.dp)) {
-                            TextButton(enabled = !state.busy, onClick = {
-                                coordinator.settings(reducedMotion = !state.reducedMotion)
-                                getPreferences(MODE_PRIVATE).edit { putBoolean("reducedMotion", !state.reducedMotion) }
-                            }) { Text(if (state.reducedMotion) "Motion off" else "Motion on") }
-                            TextButton(enabled = !state.busy, onClick = {
-                                coordinator.settings(alternateShortcut = !state.alternateShortcut)
-                                getPreferences(MODE_PRIVATE).edit { putBoolean("alternateShortcut", !state.alternateShortcut) }
-                            }) { Text(if (state.alternateShortcut) "Menu: Start + Select" else "Menu: L3 + R3") }
-                            TextButton(enabled = !state.busy, onClick = { scanDirectory(null) }, modifier = Modifier.testTag("rescan")) { Text("Rescan") }
-                            TextButton(enabled = !state.busy && state.loaded, onClick = coordinator::openLibraryMenu, modifier = Modifier.testTag("collection-menu")) { Text("Collection") }
+                        if (toolsVisible) Column(Modifier.align(Alignment.TopCenter).padding(top = 56.dp)
+                            .background(Color(0xEE191817)).padding(8.dp)) {
+                            Row {
+                                TextButton(enabled = !state.busy && state.loaded, onClick = { chooseGame?.invoke() }, modifier = Modifier.testTag("choose-game")) { Text("Add .gba") }
+                                TextButton(enabled = !state.busy && state.loaded, onClick = { chooseDirectory?.invoke() }, modifier = Modifier.testTag("choose-folder")) { Text("Folder") }
+                                TextButton(enabled = !state.busy && state.loaded, onClick = ::openScraper, modifier = Modifier.testTag("scrape")) { Text("Scrape") }
+                                TextButton(enabled = !state.busy && state.selectedGame != null, onClick = { chooseLabel?.invoke() }, modifier = Modifier.testTag("choose-label")) { Text("Image") }
+                                if (state.selectedGame?.label != null) TextButton(enabled = !state.busy, onClick = coordinator::removeLabel) { Text("Reset label") }
+                                TextButton(enabled = !state.busy && state.rendererReady && state.loaded, onClick = coordinator::insert, modifier = Modifier.testTag("insert")) { Text("Insert") }
+                            }
+                            Row {
+                                TextButton(enabled = !state.busy, onClick = {
+                                    val next = !state.reducedMotion
+                                    coordinator.settings(reducedMotion = next)
+                                    getPreferences(MODE_PRIVATE).edit { putBoolean("reducedMotion", next) }
+                                }, modifier = Modifier.testTag("motion-setting")) { Text(if (state.reducedMotion) "Motion off" else "Motion on") }
+                                TextButton(enabled = !state.busy, onClick = {
+                                    soundEnabled = !soundEnabled
+                                    getPreferences(MODE_PRIVATE).edit { putBoolean("mediaSound", soundEnabled) }
+                                }) { Text(if (soundEnabled) "Sound on" else "Sound off") }
+                                TextButton(enabled = !state.busy, onClick = {
+                                    val next = !state.alternateShortcut
+                                    coordinator.settings(alternateShortcut = next)
+                                    getPreferences(MODE_PRIVATE).edit { putBoolean("alternateShortcut", next) }
+                                }, modifier = Modifier.testTag("shortcut-setting")) { Text(if (state.alternateShortcut) "Menu: Start + Select" else "Menu: L3 + R3") }
+                                TextButton(enabled = !state.busy, onClick = { scanDirectory(null) }, modifier = Modifier.testTag("rescan")) { Text("Rescan") }
+                                TextButton(enabled = !state.busy && state.loaded, onClick = coordinator::openLibraryMenu, modifier = Modifier.testTag("collection-menu")) { Text("Collection") }
+                            }
                         }
                         if (state.scanning) TextButton(onClick = coordinator::cancelScan, modifier = Modifier.align(Alignment.Center).testTag("cancel-scan")) { Text("Cancel scan") }
                         TextButton(enabled = !state.busy, onClick = { coordinator.navigate(-1) }, modifier = Modifier.align(Alignment.CenterStart).testTag("previous")) { Text("‹") }
@@ -293,7 +321,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         }
     }
 
-    @Composable private fun LibraryViewport(bytes: ByteArray, state: CollectionState) {
+    @Composable private fun LibraryViewport(bytes: CollectionAssets, state: CollectionState) {
         var surface by remember { mutableStateOf<CartridgeSurface?>(null) }
         var pixels by remember { mutableStateOf<List<LabelPixels?>>(List(3) { null }) }
         val cache = remember { linkedMapOf<String, LabelPixels>() }
@@ -314,7 +342,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         LaunchedEffect(state.screen, state.reducedMotion) {
             val target = if (state.screen == CollectionScreen.Inserting && !state.reducedMotion) 1f else 0f
             if (state.reducedMotion) motion.snapTo(target)
-            else motion.animateTo(target, tween(if (state.screen == CollectionScreen.Ejecting) 420 else 540, easing = FastOutSlowInEasing))
+            else motion.animateTo(target, tween(if (state.screen == CollectionScreen.Ejecting) MediaMotion.EJECT_MS else MediaMotion.INSERT_MS, easing = LinearEasing))
         }
         AndroidView(modifier = Modifier.fillMaxSize(), factory = {
             CartridgeSurface(it, bytes, state.selection.index,
@@ -323,6 +351,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             ).also { renderer -> surface = renderer; cartridgeSurface = renderer }
         }, update = {
             it.selection = state.selection.index; it.windowStart = state.windowStart; it.collectionCount = state.selection.count; it.insertion = motion.value
+            it.reducedMotion = state.reducedMotion
             it.setLabels(if (pixels.map { pixel -> pixel?.key } == labels.map { label -> label?.textureKey }) pixels else List(3) { null })
         }, onRelease = { it.close() })
         DisposableEffect(surface) {
@@ -359,6 +388,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         engine.releaseOnDestroy()
         emulatorHost?.release()
         cartridgeSurface?.close()
+        if (::mediaSound.isInitialized) mediaSound.close()
         super.onDestroy()
     }
     override fun onInputDeviceAdded(deviceId: Int) = Unit

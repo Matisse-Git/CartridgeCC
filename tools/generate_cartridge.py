@@ -1,6 +1,6 @@
-"""Original M0 geometry. Pure Python, deterministic glTF 2.0 binary + fictional label.
+"""Original refined geometry. Pure Python, deterministic glTF 2.0 binary + fictional label.
 
-Coordinates: metres, +Y up, label faces +Z. This is an engineering asset, not M1 polish.
+Coordinates: metres, +Y up, label faces +Z. Rounded bevels, recessed label and original micrograin; no proprietary geometry.
 Run: python tools/generate_cartridge.py
 """
 import json
@@ -51,7 +51,7 @@ def label_png():
             x += 6 * scale
     text('ORBIT', 32, 61, 5, (48, 56, 54))
     text('FIELD', 32, 111, 5, (48, 56, 54))
-    text('M0', 32, 221, 2, (202, 181, 139))
+    text('ORBIT', 32, 221, 2, (202, 181, 139))
 
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
@@ -61,99 +61,59 @@ def label_png():
 
 
 def generate():
-    binary = bytearray()
-    views, accessors, primitives = [], [], []
-
-    def append(data, target=None):
-        binary.extend(b'\0' * (-len(binary) % 4))
-        view = dict(buffer=0, byteOffset=len(binary), byteLength=len(data))
-        if target:
-            view['target'] = target
-        views.append(view)
-        binary.extend(data)
-        return len(views) - 1
-
-    def accessor(values, count, kind, components, component=5126, bounds=False):
-        view = append(struct.pack('<' + ('f' if component == 5126 else 'H') * len(values), *values),
-                      34963 if component == 5123 else 34962)
-        record = dict(bufferView=view, componentType=component, count=count, type=kind)
-        if bounds:
-            record['min'] = [min(values[c::components]) for c in range(components)]
-            record['max'] = [max(values[c::components]) for c in range(components)]
-        accessors.append(record)
-        return len(accessors) - 1
-
-    def mesh(faces, material, textured=False):
-        positions, normals, uv, indices = [], [], [], []
-        for points in faces:
-            a, b, c = points[:3]
-            u, v = [b[i] - a[i] for i in range(3)], [c[i] - a[i] for i in range(3)]
-            n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]
-            length = math.sqrt(sum(x * x for x in n))
-            n = [x / length for x in n]
-            base = len(positions) // 3
-            for i, point in enumerate(points):
-                positions.extend(point)
-                normals.extend(n)
-                uv.extend([(0, 1), (1, 1), (1, 0), (0, 0)][i % 4])
-            for i in range(1, len(points) - 1):
-                indices.extend([base, base + i, base + i + 1])
-        attrs = dict(POSITION=accessor(positions, len(positions) // 3, 'VEC3', 3, bounds=True),
-                     NORMAL=accessor(normals, len(normals) // 3, 'VEC3', 3))
-        if textured:
-            attrs['TEXCOORD_0'] = accessor(uv, len(uv) // 2, 'VEC2', 2)
-        primitives.append(dict(attributes=attrs, indices=accessor(indices, len(indices), 'SCALAR', 1, 5123),
-                               material=material))
-
-    def body(width, height, depth, bevel, material, center=(0, 0, 0)):
-        # Convex, chamfered profile with a real thickness and sloped edge ring.
-        w, h = width / 2, height / 2
-        outline = [(-w + bevel, -h), (w - bevel, -h), (w, -h + bevel), (w, h - bevel),
-                   (w - bevel, h), (-w + bevel, h), (-w, h - bevel), (-w, -h + bevel)]
-        rings = []
-        for z, inset in [(-depth / 2, bevel / 3), (-depth / 2 + bevel / 3, 0),
-                         (depth / 2 - bevel / 3, 0), (depth / 2, bevel / 3)]:
-            rings.append([(x * (1 - inset / w) + center[0], y * (1 - inset / h) + center[1],
-                           z + center[2]) for x, y in outline])
-        faces = [list(reversed(rings[0])), rings[-1]]
-        for lower, upper in zip(rings, rings[1:]):
-            for i in range(8):
-                j = (i + 1) % 8
-                faces.append([lower[i], lower[j], upper[j], upper[i]])
-        mesh(faces, material)
-
-    body(.059, .034, .008, .0022, 0)
-    body(.060, .0035, .0086, .0007, 0, (0, .0157, 0))  # top grip lip
-    body(.0592, .032, .00028, .0018, 1)  # contrasting shell seam
-    body(.047, .0235, .0007, .0012, 1, (0, .0007, .0041))  # label recess rim
-    mesh([[(-.0226, -.0101, .00449), (.0226, -.0101, .00449),
-           (.0226, .0115, .00449), (-.0226, .0115, .00449)]], 2, True)
-    # Visible connector opening and individual plated contact fingers at the bottom edge.
-    body(.039, .0016, .0042, .0003, 1, (0, -.0167, -.001))
-    for index in range(16):
-        body(.0015, .0022, .00025, .00012, 3, ((index - 7.5) * .0023, -.016, .0013))
-    image_view = append(label_png())
-    document = dict(
-        asset=dict(version='2.0', generator='Project Cartridge original deterministic M0 generator'),
-        scene=0, scenes=[dict(nodes=[0])], nodes=[dict(mesh=0, name='GBA engineering template')],
-        meshes=[dict(primitives=primitives)], buffers=[dict(byteLength=len(binary))],
-        bufferViews=views, accessors=accessors,
-        materials=[
-            dict(name='Molded charcoal plastic', pbrMetallicRoughness=dict(baseColorFactor=[.19, .20, .19, 1], metallicFactor=0, roughnessFactor=.78)),
-            dict(name='Seam and label recess', pbrMetallicRoughness=dict(baseColorFactor=[.07, .08, .075, 1], metallicFactor=0, roughnessFactor=.86)),
-            dict(name='Replaceable fictional label', pbrMetallicRoughness=dict(baseColorTexture=dict(index=0), metallicFactor=0, roughnessFactor=.65)),
-            dict(name='Contact plating', pbrMetallicRoughness=dict(baseColorFactor=[.72, .54, .21, 1], metallicFactor=.82, roughnessFactor=.3)),
-        ], images=[dict(bufferView=image_view, mimeType='image/png')],
-        textures=[dict(source=0, sampler=0)], samplers=[dict(magFilter=9729, minFilter=9987, wrapS=33071, wrapT=33071)])
-    encoded = json.dumps(document, separators=(',', ':')).encode()
-    encoded += b' ' * (-len(encoded) % 4)
-    binary += b'\0' * (-len(binary) % 4)
-    glb = (struct.pack('<III', 0x46546C67, 2, 12 + 8 + len(encoded) + 8 + len(binary))
-           + struct.pack('<II', len(encoded), 0x4E4F534A) + encoded
-           + struct.pack('<II', len(binary), 0x004E4942) + binary)
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_bytes(glb)
-    print(f'{OUTPUT}: {len(glb)} bytes, {len(primitives)} primitives')
+    from glb_geometry import Geometry, rounded, png
+    materials = [
+        dict(name='Molded charcoal plastic', pbrMetallicRoughness=dict(baseColorFactor=[.10, .115, .11, 1],
+             metallicFactor=0, roughnessFactor=1, metallicRoughnessTexture=dict(index=1)),
+             normalTexture=dict(index=2, scale=.22)),
+        dict(name='Seam and label recess', pbrMetallicRoughness=dict(baseColorFactor=[.028, .032, .03, 1], metallicFactor=0, roughnessFactor=.84)),
+        dict(name='Replaceable fictional label', pbrMetallicRoughness=dict(baseColorTexture=dict(index=0), metallicFactor=0, roughnessFactor=.62)),
+        dict(name='Contact plating', pbrMetallicRoughness=dict(baseColorFactor=[.72, .54, .21, 1], metallicFactor=.92, roughnessFactor=.28)),
+    ]
+    geometry = Geometry(materials)
+    # An actual recessed opening, not a raised label rectangle pasted over a front face.
+    geometry.body(.059, .034, .008, .0021, .00055, 0,
+                  hole=(.047, .024, .0015, 0, .0005, .00032), segments=8, bevel_steps=4)
+    geometry.body(.060, .0023, .0088, .00085, .00018, 0, (0, .0164, 0))
+    # Parting seam only around the outside shell; it never crosses the label.
+    profile, _ = rounded(.05906, .03406, .00213)
+    for i in range(len(profile)):
+        j = (i+1) % len(profile)
+        a, b = profile[i], profile[j]
+        geometry.face([(*a, -.00010), (*b, -.00010), (*b, .00010), (*a, .00010)], 1)
+    # Narrow moulded grip ribs at the top, smooth enough to catch the studio highlights.
+    for i in range(7):
+        geometry.body(.032, .00032, .00022, .00014, .00004, 0, (0, .0135+i*.00040, .00405))
+    label, _ = rounded(.0452, .0226, .001, (0, .0005))
+    points = [(x, y, .00371) for x, y in label]
+    geometry.face(points, 2, uv=[(max(0, min(1, (x+.0226)/.0452)),
+                                max(0, min(1, 1-(y+.0108)/.0226))) for x, y in label])
+    # Dark connector recess and individually visible plated fingers. No console logos.
+    geometry.body(.0388, .0020, .0034, .00065, .00018, 1, (0, -.0164, -.0005))
+    for i in range(16):
+        geometry.body(.00145, .0017, .00020, .00012, .000035, 3, ((i-7.5)*.0023, -.0164, .00132))
+    orm, normal = bytearray(), bytearray()
+    for y in range(128):
+        for x in range(128):
+            grain = ((x*73856093 ^ y*19349663) & 255)
+            orm.extend((255, 185+grain//18, 0, 255))
+            normal.extend((126+grain%5, 126+(grain//5)%5, 255, 255))
+    geometry.write(OUTPUT, 'Original GBA refined template',
+                   [label_png(), png(128, 128, orm), png(128, 128, normal)],
+                   [dict(source=0, sampler=0), dict(source=1, sampler=1), dict(source=2, sampler=1)],
+                   [dict(magFilter=9729, minFilter=9987, wrapS=33071, wrapT=33071),
+                    dict(magFilter=9729, minFilter=9987, wrapS=10497, wrapT=10497)])
+    receiver = Geometry([
+        dict(name='Receiver graphite', pbrMetallicRoughness=dict(baseColorFactor=[.045,.05,.047,1], metallicFactor=.25, roughnessFactor=.68)),
+        dict(name='Receiver interior', pbrMetallicRoughness=dict(baseColorFactor=[.008,.009,.008,1], metallicFactor=0, roughnessFactor=.95)),
+    ])
+    # Slot width/clearance fits the template. Front lip physically occludes the inserted shell.
+    receiver.body(.071, .019, .008, .002, .0006, 0, (0,-.0095,.014))
+    receiver.body(.071, .019, .008, .002, .0006, 0, (0,-.0095,-.006))
+    for x in (-.03325, .03325):
+        receiver.body(.0045, .019, .018, .0013, .0004, 0, (x,-.0095,.004))
+    receiver.body(.063, .003, .012, .001, .0003, 1, (0,-.019,.004))
+    receiver.write(OUTPUT.with_name('gba_receiver.glb'), 'Original minimal receiving slot')
 
 
 if __name__ == '__main__':

@@ -43,7 +43,7 @@ class ScrapeResumeTest {
         try {
             intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
                 Intent().setData(Uri.parse("content://dev.cartridge.fixture/$filename"))))
-            ui.onNodeWithTag("choose-game").performClick(); ui.waitForIdle()
+            ui.tool("choose-game").performClick(); ui.waitForIdle()
         } finally { Intents.release() }
     }
     @Test fun cancelledBatchReopensFromDiskWithoutRepeatingCompletedSearches() {

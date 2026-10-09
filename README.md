@@ -1,7 +1,7 @@
 # Project Cartridge
 
 Native Android, controller-first physical-media collection with **embedded** GBA emulation.
-This repository implements M0 and focused M1 increments, not the finished product. No RetroArch
+This repository implements M0, focused M1 increments and active M2 refinement, not the finished product. No RetroArch
 installation, external emulator intents or browser renderer is used. No commercial ROM, BIOS or
 proprietary artwork is bundled; users can scrape artwork into their private collection.
 
@@ -9,11 +9,15 @@ proprietary artwork is bundled; users can scrape artwork into their private coll
 scraping, independent media/metadata choices, 3D Fit/Crop/rotation preview and a tested session
 coordinator. Folder imports now grow the collection and saved scrape batches resume after reopening.
 Battery saves now restore before gameplay and checkpoint during play/pause. Both APKs build;
-19 unit tests and four asset checks pass. Twelve RP5 tests cover real native
+21 unit tests and eight asset checks pass. Fourteen RP5 tests cover real native
 handoffs, ordinary UI recovery, independent labels, schema migrations, folder imports and resumed scraping; a separate
 live API test passes. The owner confirmed physical navigation, gameplay/audio, save/load and local labels.
-M1 remains in progress: the mesh and motion are engineering assets and long-duration validation
-is outstanding. See [docs/SAVE_RELIABILITY.md](docs/SAVE_RELIABILITY.md),
+M2 is active at the owner's request: refined GBA mesh/PBR, original studio reflections, receiving slot,
+phased insertion/ejection, optional contact sound and carousel reduced motion. A short isolated RP5
+viewport benchmark measured 16.74–16.75 ms presentation p95 across rest/navigation/media motion.
+Long-duration validation
+remains open, alongside M1's sleep/reboot gates. See [docs/M2_PROGRESS.md](docs/M2_PROGRESS.md),
+[docs/SAVE_RELIABILITY.md](docs/SAVE_RELIABILITY.md),
 [docs/LIBRARY_PROGRESS.md](docs/LIBRARY_PROGRESS.md) and [docs/TESTING.md](docs/TESTING.md).
 
 ## Prerequisites
@@ -62,7 +66,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n dev.cartridge/.MainActivity
 ```
 
-The empty collection shows one study cartridge and grows as games are imported. At most three visible instances
+The empty collection shows one study cartridge and grows as games are imported. **Tools** opens the
+touch shelf for imports/scraping, motion/sound/shortcut preferences and collection actions. It starts
+closed; controller shortcuts work independently. At most three visible instances
 reuse one GLB, regardless of collection size. Browse with D-pad left/right, left stick, or touch arrows.
 Press X / Add .gba to add an uncompressed `.gba`
 document or focus its existing entry, then A / Insert to play. The picker uses SAF and requests a persistable
@@ -110,8 +116,9 @@ Back also pauses. D-pad up/down selects menu actions; A activates and B resumes.
 A/B go directly to the corresponding Libretro A/B; verify Retroid's selected button-layout mode.
 The first button of a two-button shortcut may reach the game before the second is pressed.
 
-Insertion now lifts, aligns and slides the cartridge over 540 ms; ejection reverses it over 420 ms.
-Motion off bypasses both. A receiving slot, production model/materials, incremental directory indexing,
+Insertion lifts, aligns and slides the cartridge into a small physical receiving slot over 540 ms;
+ejection reverses it over 420 ms. Motion off bypasses both and snaps carousel selection. Optional
+original contact sound defaults off. Final manual art direction, incremental directory indexing,
 details, selected-title/region preferences, disc media, other layouts and HOME registration remain planned.
 Backgrounding ends the current session after saving RAM; full session sleep/resume comes later.
 
@@ -126,6 +133,7 @@ Backgrounding ends the current session after saving RAM; full session sleep/resu
 - [Architecture and lifecycle](docs/ARCHITECTURE.md)
 - [Milestones](docs/ROADMAP.md)
 - [Asset pipeline](docs/ASSET_PIPELINE.md)
+- [M2 refinement and physical presentation results](docs/M2_PROGRESS.md)
 - [Tests and actual results](docs/TESTING.md)
 - [License audit and distribution obligations](docs/LICENSING.md)
 - [M0 report and created files](docs/M0_REPORT.md)

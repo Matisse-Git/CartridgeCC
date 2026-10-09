@@ -34,8 +34,22 @@ Empty study slots cannot launch. Metadata does not block a user-selected game.
 - RP5 ordinary UI tests cover pause/save/load/eject, backgrounding, Activity recreation, cancelled
   insertion and recovery. Reopening the Room database restores the independent labels and focus.
 
-The cartridge model, lighting and motion still need product polish and a receiving mechanism. This
-increment proves the local label path; it does not claim M1 completion.
+That increment proved the local label path; it did not claim M1 completion. The owner's subsequent M2
+request brings forward the media/lighting/motion refinement below, retaining unfinished stability checks.
+
+## Active M2 refinement
+
+The cartridge has rounded bevels, a recessed rounded label, grip ribs, a side seam, visible plated
+contacts and restrained micrograin/roughness variation. An original prefiltered HDR studio environment
+provides calm diffuse/specular lighting. A small receiving slot appears only during insertion/ejection;
+its geometry occludes the descending shell. The normalized lift/align/slide choreography uses 540 ms
+insertion and 420 ms reverse ejection. Readiness still waits for real core initialization/frame output.
+
+Motion off bypasses both media transitions and carousel spring movement. Optional original contact
+audio defaults off. Motion/sound/shortcut settings and touch import/scrape controls are behind Tools;
+the collection at rest shows its objects, title, small hints and Tools. Existing controller shortcuts
+operate without opening it. Scraper UX redesign remains deferred as requested. No new confirmation
+dialog, proprietary asset, always-moving decoration, disc system or alternate layout is introduced.
 
 ## Implemented online scraping increment
 
@@ -73,8 +87,8 @@ See [LABEL_SCRAPING.md](LABEL_SCRAPING.md) for the complete required workflow an
 
 ## Explicitly deferred
 
-The final believable slot/insertion/ejection choreography and mechanical sound, production mesh/textures,
-full gameplay touch controls, per-button remapping, details/media panels, incremental directory indexing,
+Manual final art direction and broader lighting calibration, full gameplay touch controls,
+per-button remapping, details/media panels, incremental directory indexing,
 directory removal/availability UI, favorites, scheduled unattended scraping, vertical/grid layouts, additional systems,
 HOME launcher mode and backup. Backgrounding currently ends the session after persisting RAM;
 the app does not claim seamless resume of a lost EGL context.

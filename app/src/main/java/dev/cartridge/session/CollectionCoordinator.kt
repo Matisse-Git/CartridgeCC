@@ -175,7 +175,7 @@ class CollectionCoordinator(
             mutableState.value = state.value.copy(screen = CollectionScreen.Inserting, message = null)
             coroutineScope {
                 val request = async { repository.gameRequest(game) }
-                if (!selected.reducedMotion) delay(540)
+                if (!selected.reducedMotion) delay(dev.cartridge.domain.MediaMotion.INSERT_MS.toLong())
                 val readyRequest = request.await()
                 mutableState.value = state.value.copy(screen = CollectionScreen.Handoff, rendererReady = false)
                 renderers.releaseLibrary()
@@ -294,7 +294,7 @@ class CollectionCoordinator(
         val shouldAnimate = animate && foreground && hadSession && !state.value.reducedMotion
         mutableState.value = state.value.copy(screen = if (shouldAnimate) CollectionScreen.Ejecting else CollectionScreen.Library,
             rendererReady = false, viewportGeneration = state.value.viewportGeneration + 1, labelDraft = null, message = failure)
-        if (shouldAnimate) { delay(420); mutableState.value = state.value.copy(screen = CollectionScreen.Library) }
+        if (shouldAnimate) { delay(dev.cartridge.domain.MediaMotion.EJECT_MS.toLong()); mutableState.value = state.value.copy(screen = CollectionScreen.Library) }
     }
     fun foreground() { foreground = true }
     fun background() {

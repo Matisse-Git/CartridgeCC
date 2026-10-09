@@ -59,7 +59,7 @@ class CollectionUiTest {
         try {
             intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
                 Intent().setData(Uri.parse("content://dev.cartridge.fixture/$filename"))))
-            ui.onNodeWithTag(tag).performClick()
+            ui.tool(tag).performClick()
             ui.waitForIdle()
         } finally { Intents.release() }
     }
@@ -165,7 +165,7 @@ class CollectionUiTest {
             await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
             choose("choose-game", "probe-one.gba")
             await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame != null }
-            ui.onNodeWithTag("insert").performClick()
+            ui.tool("insert").performClick()
             await(scenario) { it.engine.status.value.state == SessionState.Running && !it.coordinator.state.value.busy }
             ui.onNodeWithTag("pause").performClick()
             await(scenario) { it.engine.status.value.state == SessionState.Paused && !it.coordinator.state.value.busy }
@@ -179,7 +179,7 @@ class CollectionUiTest {
             await(scenario) { it.engine.status.value.state == SessionState.Idle && !it.coordinator.state.value.busy }
             scenario.moveToState(Lifecycle.State.RESUMED)
             await(scenario) { it.coordinator.state.value.screen == CollectionScreen.Library && it.coordinator.state.value.rendererReady }
-            ui.onNodeWithTag("insert").performClick()
+            ui.tool("insert").performClick()
             await(scenario) { it.engine.status.value.state == SessionState.Running && !it.coordinator.state.value.busy }
             scenario.recreate()
             await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
@@ -187,7 +187,7 @@ class CollectionUiTest {
             await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Idle }
             scenario.onActivity { it.coordinator.foreground() }
             await(scenario) { it.coordinator.state.value.rendererReady }
-            ui.onNodeWithTag("insert").performClick()
+            ui.tool("insert").performClick()
             await(scenario) { it.engine.status.value.state == SessionState.Running && !it.coordinator.state.value.busy }
             ui.onNodeWithTag("pause").performClick()
             await(scenario) { it.engine.status.value.state == SessionState.Paused && !it.coordinator.state.value.busy }

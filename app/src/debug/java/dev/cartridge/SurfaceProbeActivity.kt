@@ -18,6 +18,7 @@ import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.GameRequest
 import dev.cartridge.emulation.LibretroEngine
 import dev.cartridge.rendering.CartridgeSurface
+import dev.cartridge.rendering.CollectionAssets
 import dev.cartridge.storage.SaveStore
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
@@ -43,7 +44,7 @@ class SurfaceProbeActivity : ComponentActivity() {
         engine = LibretroEngine(this, lifecycleScope)
         lifecycleScope.launch {
             try {
-                val bytes = withContext(Dispatchers.IO) { assets.open("models/gba_cartridge.glb").use { it.readBytes() } }
+                val bytes = withContext(Dispatchers.IO) { CollectionAssets.read(assets) }
                 val request = GameRequest(File(checkNotNull(intent.getStringExtra("rom"))), "c".repeat(64))
                 verifyFailedPreparationRecovery(request)
                 val cycles = intent.getIntExtra("cycles", 3).coerceIn(1, 50)

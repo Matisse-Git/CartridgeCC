@@ -113,3 +113,18 @@ then starts emulation and waits for FrameRendered. An original C11/JNI SaveBridg
 Libretro memory and captures states from the existing loaded core, avoiding the pinned frontend's
 capture-buffer leak/ignored SRAM result. No new dependency or second core; changed RAM checkpoints
 on GL/IO with explicit bounds and visible errors. See ADR 0007, SAVE_RELIABILITY and TESTING.
+
+## M2 authorized refinement
+
+The owner requested M2 now, retaining unfinished M1 stability validation. Refine the original GLB
+generator/PBR maps and add an independent physical receiving-slot GLB. Generate original HDR
+softboxes and prefilter offline with cmgen 1.72.1; pin filament-utils 1.72.1 for the official KTX loader.
+Keep three cartridge instances, bounded per-game label textures and exclusive GPU handoff unchanged.
+Centralize phase poses/durations, apply reduced motion to the carousel, add optional original contact
+sound and move touch controls onto a quiet temporary shelf. Measure actual SurfaceFlinger presentation
+and separately report CPU submission; do not infer sustained performance from a short sample.
+
+The regression also exposed a pinned-frontend startup race: SurfaceCreated can follow a failed core
+load before its async error is received. Require the successful render-lifecycle observer registration
+before battery access; always test invalid ROM with existing SRAM. See ADR 0007's correction and
+ADR 0008/M2_PROGRESS for API evidence, physical results and remaining art/performance limits.
