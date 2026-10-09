@@ -1,10 +1,13 @@
 package dev.cartridge.emulation
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.coroutineScope
 import com.swordfish.libretrodroid.GLRetroView
 import com.swordfish.libretrodroid.GLRetroViewData
 import com.swordfish.libretrodroid.Variable
@@ -102,9 +105,24 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 }
                 // GLRetroView owns core initialization on its renderer thread, after onCreate.
                 session.registry.addObserver(view)
+                // Prime the event scope so its observer cannot be mistaken for successful core setup.
+                session.lifecycle.coroutineScope
+                val setupObservers = session.registry.observerCount
                 // Create the GL surface/core while RenderLifecycleObserver cannot run retro_run.
                 session.registry.currentState = Lifecycle.State.STARTED
                 withTimeout(15_000) { initialized.await() }
+                // In pinned 0.14.0 SurfaceCreated also fires after a swallowed load error. Only
+                // successful initializeCore posts RenderLifecycleObserver BEFORE that event.
+                // The private session registry has no other observer producers (no reflection).
+                // A synchronous Handler check follows the upstream synchronous observer post.
+                // Coroutine Main dispatch uses async messages, which can bypass UI sync barriers.
+                val setupConfirmed = CompletableDeferred<Unit>()
+                Handler(Looper.getMainLooper()).post {
+                    if (session.registry.observerCount > setupObservers) setupConfirmed.complete(Unit)
+                    else setupConfirmed.completeExceptionally(IllegalStateException(
+                        "The embedded core did not finish loading the game. The battery save was kept."))
+                }
+                withTimeout(15_000) { setupConfirmed.await() }
                 if (savedRam != null && savedRam.isNotEmpty()) {
                     check(onGl {
                         SaveBridge.restore(corePath, savedRam) && SaveBridge.read(corePath).let { restored ->

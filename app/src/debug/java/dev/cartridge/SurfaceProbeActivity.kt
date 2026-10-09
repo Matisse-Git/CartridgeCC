@@ -18,6 +18,7 @@ import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.GameRequest
 import dev.cartridge.emulation.LibretroEngine
 import dev.cartridge.rendering.CartridgeSurface
+import dev.cartridge.storage.SaveStore
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
 import java.io.File
@@ -87,6 +88,9 @@ class SurfaceProbeActivity : ComponentActivity() {
     }
 
     private suspend fun verifyFailedPreparationRecovery(request: GameRequest) {
+        // Always exercise failed initialization WITH existing battery bytes; SurfaceCreated is
+        // not upstream proof of success. This synthetic fixture ID never identifies an owner ROM.
+        withContext(Dispatchers.IO) { SaveStore(File(filesDir, "saves")).write(request.id, "sram", ByteArray(32 * 1024) { 1 }) }
         phase = "missing ROM recovery"
         val missing = File(filesDir, "missing-m0-probe.gba")
         check(!missing.exists())

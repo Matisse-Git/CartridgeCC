@@ -11,6 +11,17 @@ Keep the session LifecycleRegistry STARTED while the app-owned GL surface initia
 SurfaceCreated, restore bounded battery bytes on that GL thread, verify readback, then RESUME and wait
 for a real FrameRendered. Failed restoration releases the core and preserves the stored file.
 
+M2 regression correction: pinned 0.14.0 emits SurfaceCreated even after initializeCore swallowed a load
+error, while error delivery is asynchronous. With stored SRAM this could race into an uninitialized
+mGBA memory API. Prime the private session's lifecycle coroutine observer before setup, record its
+observer count, and require the successful RenderLifecycleObserver registration before any SaveBridge
+restore. Audited initializeCore posts this observer to Main before SurfaceCreated only after load and
+native surface setup succeed. A synchronous Main Handler check follows that synchronous upstream post;
+this avoids coroutine async messages bypassing UI synchronization barriers. No fixed delay/reflection.
+The session registry has no unrelated observer producers. This guard depends on the pinned frontend
+implementation and must be re-audited for any dependency change. The physical invalid-ROM fixture now
+always seeds existing battery bytes, then checks Error→Idle and subsequent valid native sessions.
+
 SaveBridge is original C/JNI glue over the loaded core's public Libretro memory/serialization exports.
 RTLD_NOLOAD acquires/relinquishes a reference; it never loads or initializes another core. Every call
 runs on the existing GL queue under the engine's session mutex. GBA SaveRAM is capped at 128 KiB;
