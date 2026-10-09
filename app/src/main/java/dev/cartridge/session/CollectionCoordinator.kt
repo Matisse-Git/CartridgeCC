@@ -8,8 +8,10 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
-enum class CollectionScreen { Library, LibraryMenu, Inserting, Handoff, Emulator, Ejecting, LabelPreview }
+enum class CollectionScreen { Library, LibraryMenu, Details, Inserting, Handoff, Emulator, Ejecting, LabelPreview }
 data class LabelDraft(val gameId: String, val label: LabelRef)
 data class RemovedEntry(val gameId: String, val position: Int)
 data class CollectionState(
@@ -28,9 +30,12 @@ data class CollectionState(
     val labelPreviewReady: Boolean = false,
     val scanning: Boolean = false,
     val removedEntry: RemovedEntry? = null,
+    val allGames: List<LibraryGame> = emptyList(),
+    val query: LibraryQuery = LibraryQuery(),
+    val historyWarning: String? = null,
 ) {
     val selectedGame get() = slots[selection.index]
-    val title get() = selectedGame?.title ?: "Empty cartridge ${selection.index + 1}"
+    val title get() = selectedGame?.title ?: if (allGames.isNotEmpty()) "No matching games" else "Your collection is empty"
     val labels get() = slots.subList(windowStart, (windowStart + 3).coerceAtMost(slots.size)).map { game ->
         if (game?.id == labelDraft?.gameId && labelDraft != null) labelDraft.label else game?.label }
     val windowStart get() = (selection.index - 1).coerceIn(0, (slots.size - 3).coerceAtLeast(0))
@@ -50,6 +55,8 @@ class CollectionCoordinator(
     private val scope: CoroutineScope,
     reducedMotion: Boolean = false,
     alternateShortcut: Boolean = false,
+    private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
+    private val wallMillis: () -> Long = System::currentTimeMillis,
 ) {
     private val mutableState = MutableStateFlow(CollectionState(reducedMotion = reducedMotion, alternateShortcut = alternateShortcut))
     val state = mutableState.asStateFlow()
@@ -60,16 +67,24 @@ class CollectionCoordinator(
     private var foreground = true
     private var destroyed = false
     private val observers = mutableListOf<Job>()
+    private var canonical = LibrarySnapshot()
+    private val playClock = PlayClock()
+    private val playMutex = Mutex()
+    private var playJob: Job? = null
+    private var playingId: String? = null
+    private var playActive = false
+    private val pendingHistory = mutableMapOf<String, Pair<Long, Long?>>()
+    private var playStartedAt: Long? = null
 
     init {
         observers += scope.launch {
             try {
                 val initial = repository.initialize()
-                mutableState.value = state.value.copy(slots = initial.slots, selection = Selection(initial.selectedSlot, initial.slots.size), loaded = true)
+                applySnapshot(initial, forceFocus = true)
+                mutableState.value = state.value.copy(loaded = true)
                 repository.snapshots.collect { snapshot ->
-                    val membershipChanged = snapshot.slots.map { it?.id } != state.value.slots.map { it?.id }
-                    mutableState.value = state.value.copy(slots = snapshot.slots,
-                        selection = Selection(if (membershipChanged) snapshot.selectedSlot else state.value.selection.index.coerceAtMost(snapshot.slots.lastIndex), snapshot.slots.size))
+                    canonical = snapshot
+                    if (state.value.screen in setOf(CollectionScreen.Library, CollectionScreen.LibraryMenu, CollectionScreen.Details)) applySnapshot(snapshot)
                 }
             } catch (failure: Exception) {
                 if (failure is CancellationException) throw failure
@@ -78,10 +93,67 @@ class CollectionCoordinator(
         }
         observers += scope.launch {
             engine.status.collect { status ->
+                if (status.state == SessionState.Running && playingId != null) {
+                    if (!playActive) { playActive = true; playClock.running(monotonicMillis()); playStartedAt = wallMillis(); savePlay(true) }
+                    if (playJob?.isActive != true) playJob = scope.launch {
+                        while (isActive) { delay(15_000); savePlay(true) }
+                    }
+                } else if (playActive) { playActive = false; playJob?.cancel(); savePlay(false) }
                 if (status.state == SessionState.Error && !state.value.busy && !destroyed) {
                     runAction { eject(status.error, animate = false) }
                 }
             }
+        }
+    }
+    private fun applySnapshot(snapshot: LibrarySnapshot, forceFocus: Boolean = false) {
+        canonical = snapshot
+        val focus = if (forceFocus) snapshot.slots[snapshot.selectedSlot]?.id else state.value.selectedGame?.id ?: snapshot.slots[snapshot.selectedSlot]?.id
+        val games = snapshot.slots.filterNotNull()
+        val matching = snapshot.query.apply(games)
+        val projected: List<LibraryGame?> = if (matching.isEmpty()) listOf(null) else matching
+        val index = projected.indexOfFirst { it?.id == focus }.takeIf { it >= 0 }
+            ?: state.value.selection.index.coerceAtMost(projected.lastIndex)
+        mutableState.value = state.value.copy(slots = projected, selection = Selection(index, projected.size), allGames = games, query = snapshot.query)
+    }
+    private suspend fun savePlay(keepRunning: Boolean) = playMutex.withLock {
+        val id = playingId ?: return@withLock
+        val pending = pendingHistory[id]
+        pendingHistory[id] = ((pending?.first ?: 0) + playClock.checkpoint(monotonicMillis(), keepRunning)) to (playStartedAt ?: pending?.second)
+        playStartedAt = null
+        for ((gameId, checkpoint) in pendingHistory.toMap()) {
+            try {
+                repository.recordPlay(gameId, checkpoint.first, checkpoint.second)
+                pendingHistory.remove(gameId)
+            } catch (failure: Exception) {
+                if (failure is CancellationException) throw failure
+                mutableState.value = state.value.copy(historyWarning = "Could not save play history: ${failure.message}")
+            }
+        }
+        if (pendingHistory.isEmpty()) mutableState.value = state.value.copy(historyWarning = null)
+    }
+    fun query(query: LibraryQuery) {
+        if (state.value.screen !in setOf(CollectionScreen.Library, CollectionScreen.LibraryMenu)) return
+        runAction { focusJob?.cancelAndJoin(); repository.setQuery(query); applySnapshot(repository.initialize()) }
+    }
+    fun favorite() {
+        if (state.value.screen !in setOf(CollectionScreen.Library, CollectionScreen.Details)) return
+        val game = state.value.selectedGame ?: return
+        runAction {
+            repository.setFavorite(game.id, !game.favorite); applySnapshot(repository.initialize())
+            if (state.value.screen == CollectionScreen.Details && state.value.selectedGame?.id != game.id) closeDetails()
+        }
+    }
+    fun details() {
+        if (state.value.screen == CollectionScreen.Library && !state.value.busy && state.value.selectedGame != null)
+            mutableState.value = state.value.copy(screen = CollectionScreen.Details, menuIndex = 0, message = null)
+    }
+    fun closeDetails() { if (!state.value.busy) mutableState.value = state.value.copy(screen = CollectionScreen.Library) }
+    fun editMetadata(values: Map<String, String>) {
+        val game = state.value.selectedGame ?: return
+        if (state.value.screen != CollectionScreen.Details) return
+        runAction {
+            repository.setMetadata(game.id, values.mapValues { MetadataValue(it.value.trim(), "Local", game.id, "", "User provided", wallMillis()) })
+            applySnapshot(repository.initialize()); notify("Metadata saved")
         }
     }
 
@@ -99,7 +171,9 @@ class CollectionCoordinator(
         if (destroyed || !foreground || state.value.busy || !state.value.loaded) return
         val current = state.value
         if (current.screen == CollectionScreen.LibraryMenu) {
-            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 2))
+            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 6))
+        } else if (current.screen == CollectionScreen.Details) {
+            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 4))
         } else if (current.screen == CollectionScreen.LabelPreview || engine.status.value.state == SessionState.Paused) {
             mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 3))
         } else if (current.screen == CollectionScreen.Library) {
@@ -107,7 +181,7 @@ class CollectionCoordinator(
             mutableState.value = current.copy(selection = selection, message = null)
             focusJob?.cancel()
             focusJob = scope.launch {
-                try { repository.select(selection.index) }
+                try { state.value.slots[selection.index]?.id?.let { id -> repository.select(canonical.slots.indexOfFirst { it?.id == id }.coerceAtLeast(0)) } }
                 catch (failure: Exception) {
                     if (failure is CancellationException) throw failure
                     mutableState.value = state.value.copy(message = "Could not remember selection: ${failure.message}")
@@ -126,6 +200,7 @@ class CollectionCoordinator(
     fun back() {
         if (state.value.busy) return
         if (state.value.screen == CollectionScreen.Library) openLibraryMenu()
+        else if (state.value.screen == CollectionScreen.Details) closeDetails()
         else if (state.value.screen == CollectionScreen.LibraryMenu) libraryAction(0)
         else if (state.value.screen == CollectionScreen.LabelPreview) cancelLabel()
         else if (engine.status.value.state == SessionState.Paused) menuAction(0)
@@ -139,7 +214,7 @@ class CollectionCoordinator(
         when (index) {
             0 -> mutableState.value = state.value.copy(screen = CollectionScreen.Library)
             1 -> state.value.selectedGame?.let { game ->
-                val entry = RemovedEntry(game.id, state.value.selection.index)
+                val entry = RemovedEntry(game.id, canonical.slots.indexOfFirst { it?.id == game.id })
                 runAction {
                     focusJob?.cancelAndJoin()
                     repository.remove(game.id)
@@ -156,11 +231,14 @@ class CollectionCoordinator(
                     mutableState.value = state.value.copy(screen = CollectionScreen.Library, removedEntry = null, message = "Entry restored")
                 }
             }
+            3 -> query(state.value.query.copy(sort = LibrarySort.entries[(state.value.query.sort.ordinal + 1) % LibrarySort.entries.size]))
+            4 -> query(state.value.query.copy(favoritesOnly = !state.value.query.favoritesOnly))
+            5 -> query(LibraryQuery())
         }
     }
     private suspend fun refreshLibrary() {
         val snapshot = repository.initialize()
-        mutableState.value = state.value.copy(slots = snapshot.slots, selection = Selection(snapshot.selectedSlot, snapshot.slots.size))
+        applySnapshot(snapshot, forceFocus = true)
     }
     fun settings(reducedMotion: Boolean = state.value.reducedMotion, alternateShortcut: Boolean = state.value.alternateShortcut) {
         if (!state.value.busy) mutableState.value = state.value.copy(reducedMotion = reducedMotion, alternateShortcut = alternateShortcut)
@@ -180,6 +258,7 @@ class CollectionCoordinator(
                 mutableState.value = state.value.copy(screen = CollectionScreen.Handoff, rendererReady = false)
                 renderers.releaseLibrary()
                 mutableState.value = state.value.copy(screen = CollectionScreen.Emulator)
+                playingId = game.id
                 engine.prepare(readyRequest)
             }
             if (engine.status.value.state != SessionState.Running) error(engine.status.value.error ?: "The core did not start")
@@ -187,7 +266,7 @@ class CollectionCoordinator(
     }
     fun pause() {
         if (engine.status.value.state != SessionState.Running) return
-        runAction { engine.pause(); mutableState.value = state.value.copy(menuIndex = 0) }
+        runAction { playJob?.cancel(); savePlay(false); playActive = false; engine.pause(); mutableState.value = state.value.copy(menuIndex = 0) }
     }
     fun menuAction(index: Int) {
         if (engine.status.value.state != SessionState.Paused) return
@@ -211,6 +290,7 @@ class CollectionCoordinator(
             val game = import()
             focusJob?.cancelAndJoin()
             val added = repository.add(game, restoreRemoved = true)
+            repository.setQuery(state.value.query.copy(favoritesOnly = false, search = ""))
             val snapshot = repository.initialize()
             repository.select(snapshot.slots.indexOfFirst { it?.id == game.id }.coerceAtLeast(0))
             refreshLibrary()
@@ -286,7 +366,9 @@ class CollectionCoordinator(
     }
     private suspend fun eject(message: String? = null, animate: Boolean = true) {
         val hadSession = state.value.screen == CollectionScreen.Emulator
+        playJob?.cancel(); savePlay(false); playActive = false
         engine.stop()
+        playingId = null
         renderers.releaseEmulator()
         renderers.releaseLibrary()
         val failure = engine.status.value.error ?: message
@@ -295,6 +377,7 @@ class CollectionCoordinator(
         mutableState.value = state.value.copy(screen = if (shouldAnimate) CollectionScreen.Ejecting else CollectionScreen.Library,
             rendererReady = false, viewportGeneration = state.value.viewportGeneration + 1, labelDraft = null, message = failure)
         if (shouldAnimate) { delay(dev.cartridge.domain.MediaMotion.EJECT_MS.toLong()); mutableState.value = state.value.copy(screen = CollectionScreen.Library) }
+        refreshLibrary()
     }
     fun foreground() { foreground = true }
     fun background() {
@@ -315,6 +398,7 @@ class CollectionCoordinator(
     fun destroy() {
         destroyed = true
         actionJob?.cancel(); backgroundJob?.cancel(); focusJob?.cancel()
+        playJob?.cancel()
         observers.forEach(Job::cancel)
     }
 }

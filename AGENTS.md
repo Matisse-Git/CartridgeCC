@@ -35,6 +35,9 @@
   enrichment; persisted exclusions must survive Rescan. Test legacy migrations and restore/Undo.
 - Restore battery data before the first emulated frame. SaveBridge may access only the already-loaded
   core on its GL thread under the session mutex. Keep failed writes visible and previous saves intact.
-- M2 is active by owner request. Generate original media/lighting/audio from versioned source; keep
+- M3 library management is active by owner request. Keep M2 sustained validation open. Generate original media/lighting/audio from versioned source; keep
   cmgen/runtime versions matched and KTX light/texture ownership explicit. Preserve the named label
   primitive/UV contract. Measure SurfaceView presentation separately from CPU/Compose frame callbacks.
+- Persist query preferences separately from canonical slots; sorting/filtering must retain focused game
+  identity and saves. Index only trustworthy positive document stamps; Verify all always hashes. Never
+  mark unseen documents missing after cancellation or an incomplete traversal. Count only Running time.

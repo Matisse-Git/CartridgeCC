@@ -29,6 +29,10 @@ class ScrapeQueueTest {
         override suspend fun setLabel(gameId: String, label: LabelRef?) { writes++ }
         override suspend fun setMetadata(gameId: String, values: Map<String, MetadataValue>) { writes++; accepted += values }
         override suspend fun setMedia(gameId: String, media: MediaSelection) { writes++ }
+        override suspend fun setFavorite(gameId: String, favorite: Boolean) = Unit
+        override suspend fun setQuery(query: LibraryQuery) { snapshots.value = snapshots.value.copy(query = query) }
+        override suspend fun recordPlay(gameId: String, elapsedMs: Long, startedAt: Long?) = Unit
+        override suspend fun facts(gameId: String) = LibraryFacts(true, "Fixture", 0, 0)
         override suspend fun gameRequest(game: LibraryGame) = GameRequest(File("unused.gba"), game.id)
     }
     private class Provider : ArtworkProvider {

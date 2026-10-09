@@ -37,7 +37,7 @@ Empty study slots cannot launch. Metadata does not block a user-selected game.
 That increment proved the local label path; it did not claim M1 completion. The owner's subsequent M2
 request brings forward the media/lighting/motion refinement below, retaining unfinished stability checks.
 
-## Active M2 refinement
+## Implemented M2 refinement
 
 The cartridge has rounded bevels, a recessed rounded label, grip ribs, a side seam, visible plated
 contacts and restrained micrograin/roughness variation. An original prefiltered HDR studio environment
@@ -88,8 +88,7 @@ See [LABEL_SCRAPING.md](LABEL_SCRAPING.md) for the complete required workflow an
 ## Explicitly deferred
 
 Manual final art direction and broader lighting calibration, full gameplay touch controls,
-per-button remapping, details/media panels, incremental directory indexing,
-directory removal/availability UI, favorites, scheduled unattended scraping, vertical/grid layouts, additional systems,
+per-button remapping, expanded additional-artwork presentation, scheduled unattended scraping, vertical/grid layouts, additional systems,
 HOME launcher mode and backup. Backgrounding currently ends the session after persisting RAM;
 the app does not claim seamless resume of a lost EGL context.
 
@@ -117,3 +116,31 @@ Unapplied preview/metadata drafts are discarded on recreation. See LIBRARY_PROGR
 
 Owner feedback: saved-batch resume works, but the review flow is tedious. A simpler controller-led
 scraper UX remains required and is deferred to a later version at the owner's request.
+
+## Active M3 library management
+
+R1 opens optional details with metadata, playtime, last played, local save dates, cached-ROM readiness,
+last scan's source availability and accepted artwork/metadata provenance. L1 toggles favorite. The
+collection menu offers import/title/recent/most-played sorting, favorites filtering, reset and a
+folder/search panel. Search intersects favorites and matches title/developer/genre words. Preference
+changes retain focus by hash; no match renders an explicit empty state. Canonical membership and
+all-library scraper scopes remain independent of the visible filter. All labels still use the bounded
+three-instance pool; opaque details/folder/edit panels pause its render loop.
+
+Edit metadata changes only edited fields and records local provenance; blank optional fields clear,
+blank title restores the filename. Locate same ROM requires matching hash and preserves enrichment/saves.
+Text entry uses Android/Compose keyboard/focus with touch as a secondary input; controller actions
+and panel back/navigation remain separate from gameplay. Drafts are not implicitly accepted on recreation.
+
+Remembered SAF roots scan automatically on open by default, with a persisted opt-out. Progress/cancel
+keep completed imports. Size/mtime indexing skips unchanged, positively stamped documents only when
+a matching working copy exists. Verify all rehashes every ROM. A same-name changed ROM creates a new
+identity; it cannot inherit another ROM's saves. Complete enumeration may mark unseen indexed documents
+missing; cancellation/subfolder failures never infer deletion. Cached originals stay playable offline.
+Forgetting a root keeps games/media/saves and stops its scans; choosing the root again reauthorizes access.
+
+History accrues during Running only, with 15-second checkpoints and pause/eject/background flushes.
+Pending failed writes remain attached to their original hash for retry and display a persistent warning.
+Last played reflects a successful running/resumed session, not the insertion animation. There is no
+zero-loss process-death promise beyond completed checkpoints. Multi-system/scoped scraped-pack and
+review-flow extensions remain planned; no online automatic replacement is added by this milestone.

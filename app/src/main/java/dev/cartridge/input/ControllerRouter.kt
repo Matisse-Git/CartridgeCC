@@ -6,7 +6,7 @@ import android.view.MotionEvent
 import dev.cartridge.domain.AxisRepeater
 import kotlin.math.abs
 
-enum class InputMode { Library, Gameplay, Menu, Locked }
+enum class InputMode { Library, Gameplay, Menu, Text, Locked }
 
 /** One route per event. Physical A/B are separate from the collection's action mapping. */
 class ControllerRouter(
@@ -22,6 +22,8 @@ class ControllerRouter(
     private val chooseDirectory: () -> Unit = {},
     private val alternate: () -> Unit = {},
     private val cancelOperation: () -> Unit = {},
+    private val details: () -> Unit = {},
+    private val favorite: () -> Unit = {},
 ) {
     var mode = InputMode.Library
         set(value) { if (field != value) reset(); field = value }
@@ -38,6 +40,13 @@ class ControllerRouter(
 
     fun key(event: KeyEvent): Boolean {
         val code = event.keyCode
+        if (mode == InputMode.Text) {
+            if (code in setOf(KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE)) {
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) back()
+                return true
+            }
+            return false // Text entry/focus goes to ordinary Android/Compose controls.
+        }
         if (code !in gameplayKeys && code !in setOf(KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_BUTTON_Y,
                 KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE)) return false
         if (event.action != KeyEvent.ACTION_DOWN && event.action != KeyEvent.ACTION_UP) return true
@@ -63,6 +72,8 @@ class ControllerRouter(
             KeyEvent.KEYCODE_BUTTON_Y -> if (mode == InputMode.Library) chooseScrape()
             KeyEvent.KEYCODE_BUTTON_SELECT -> if (mode == InputMode.Library) chooseLabel()
             KeyEvent.KEYCODE_BUTTON_START -> if (mode == InputMode.Library) chooseDirectory()
+            KeyEvent.KEYCODE_BUTTON_R1 -> if (mode == InputMode.Library) details()
+            KeyEvent.KEYCODE_BUTTON_L1 -> if (mode == InputMode.Library) favorite()
         }
         return true
     }

@@ -4,7 +4,7 @@ One Android module keeps the feasibility work reviewable. Packages separate pure
 logic, input routing, file handling, renderer ownership and the emulator adapter. MainActivity owns
 Android views/lifecycle; an Android-free CollectionCoordinator owns selection, operations and handoff
 decisions. Native objects are never retained in a ViewModel or global UI singleton. RoomCollectionRepository
-persists ordered slots, ROM identities/source URIs, focus and accepted label recipes. Schema JSON is
+persists ordered slots, ROM identities/source URIs, focus, query preferences, history and accepted label recipes. Schema JSON is
 versioned under app/schemas; no destructive migration fallback is permitted.
 
 ## State and input
@@ -17,7 +17,7 @@ then the first real FrameRendered event. Error recovery destroys the native
 session and returns through cleanup to Idle before retry. A process-wide atomic claim prevents a second
 LibretroDroid native frontend from being initialized concurrently.
 
-The coordinator independently tracks Library, LibraryMenu, Inserting, Handoff, Emulator, Ejecting and LabelPreview,
+The coordinator independently tracks Library, LibraryMenu, Details, Inserting, Handoff, Emulator, Ejecting and LabelPreview,
 selection, viewport generation and busy state. The
 busy flag locks input during preparation/save/ejection. It does not declare an emulator Ready state.
 `ControllerRouter` sends each event to exactly one route: Library, Gameplay, Menu or Locked. Android
@@ -170,3 +170,37 @@ persist, while an interrupted scan restarts/deduplicates on explicit Rescan.
 Selected subsets/consoles, fill-missing automation, scrape packs, accepted-artwork undo, incremental rescanning and
 directory-removal UI remain planned. See LABEL_SCRAPING and ADRs 0005/0006. Renderer/native surface
 ownership is unchanged by the scraper and directory importer.
+
+## M3 projection, index and history
+
+Room v5 extends GameRecord with favorite/playMs/lastPlayed, CollectionRecord with sort/favoritesOnly/search,
+DirectoryRecord with name/lastScan/error, and introduces indexed_documents keyed by root/document URI.
+Explicit 4→5 migration joins the existing chain; no destructive fallback or rewriting saved game data.
+LibraryQuery is a pure stable projection over canonical import order. The coordinator stores that
+canonical snapshot separately, remembers focused hash, and maps visible navigation back to canonical
+positions for persistence/removal/Undo. Query writes persist independently. A null placeholder handles
+empty results; allGames retains canonical entries for all-library scraping. Native/preview screens
+freeze the projection, then refresh after ejection, so history updates cannot change an inserted identity.
+
+DirectoryScanner queries DocumentsContract on IO, retaining URI grants. Positive matching provider
+size/mtime plus a present same-sized private ROM permit an incremental skip; zero/null/unknown stamps
+force import/hash. Verify all bypasses the optimization, addressing providers that reuse stamps.
+Each success commits its hash/index; an incomplete/cancelled enumeration never marks unseen files
+missing. Completed scans mark only missing indexed documents for that root. Duplicate sources may map
+to the same game; source status reflects the last scans and is not a live file-existence guarantee.
+Forgotten roots drop index/registration and release that grant, preserving membership/enrichment/caches.
+No WorkManager/scheduled/background index or automatic collection deletion is introduced.
+
+PlayClock uses a monotonic clock and engine Running boundaries. The coordinator's mutex serializes
+history writes, periodic checkpoints and pause/eject flushes. Pending failed checkpoints are keyed by
+hash and retry independently on later session writes. History errors remain separate from native save
+warnings; the previous DB totals stay intact. Activity/process death may discard unsaved deltas.
+MainActivity's metadata/search text overlays route input to Android/Compose; controller actions are
+application-owned. LibraryPanels presents optional facts without requiring metadata for launch. Opaque
+panels pause, rather than destroy/recreate, the existing Filament viewport. Picker add/recovery intent
+flags survive Activity recreation; ROM results wait for a loaded/unlocked library before dispatch.
+
+Storage/migration API references were rechecked against official Android documentation:
+[SAF documents](https://developer.android.com/training/data-storage/shared/documents-files) and
+[Room migrations](https://developer.android.com/training/data-storage/room/migrating-db-versions).
+Pinned dependencies and the native/3D surface strategy are unchanged.

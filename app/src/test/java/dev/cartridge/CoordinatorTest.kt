@@ -16,7 +16,7 @@ class CoordinatorTest {
     private class Library : CollectionRepository {
         val one = LibraryGame("a".repeat(64), "First", "content://first")
         val two = LibraryGame("b".repeat(64), "Second", "content://second")
-        override val snapshots = MutableStateFlow(LibrarySnapshot(listOf(one, two, null), 1))
+        override val snapshots = MutableStateFlow(LibrarySnapshot(listOf(one, two), 1))
         var requestFailure = false
         var labelWrites = 0
         override suspend fun initialize() = snapshots.value
@@ -47,6 +47,18 @@ class CoordinatorTest {
         }
         override suspend fun setMetadata(gameId: String, values: Map<String, MetadataValue>) = Unit
         override suspend fun setMedia(gameId: String, media: MediaSelection) = Unit
+        override suspend fun setFavorite(gameId: String, favorite: Boolean) {
+            snapshots.value = snapshots.value.copy(slots = snapshots.value.slots.map { if (it?.id == gameId) it.copy(favorite = favorite) else it })
+        }
+        override suspend fun setQuery(query: LibraryQuery) { snapshots.value = snapshots.value.copy(query = query) }
+        var played = 0L
+        var historyFailure = false
+        val playedById = mutableMapOf<String, Long>()
+        override suspend fun recordPlay(gameId: String, elapsedMs: Long, startedAt: Long?) {
+            check(!historyFailure) { "History store unavailable" }
+            played += elapsedMs; playedById[gameId] = (playedById[gameId] ?: 0) + elapsedMs
+        }
+        override suspend fun facts(gameId: String) = LibraryFacts(true, "Fixture", 0, 0)
     }
     private class Engine : EmulationEngine {
         override val status = MutableStateFlow(EngineStatus())
@@ -174,16 +186,16 @@ class CoordinatorTest {
         val coordinator = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope)
         runCurrent()
         repeat(5) { coordinator.addGame { library.one.copy(id = (it + 1).toString().repeat(64), title = "Added $it") }; runCurrent() }
-        assertEquals(8, coordinator.state.value.selection.count)
-        assertEquals(7, coordinator.state.value.selection.index)
+        assertEquals(7, coordinator.state.value.selection.count)
+        assertEquals(6, coordinator.state.value.selection.index)
         coordinator.navigate(20); runCurrent()
-        assertEquals(7, coordinator.state.value.selection.index)
-        assertEquals(5, coordinator.state.value.windowStart)
+        assertEquals(6, coordinator.state.value.selection.index)
+        assertEquals(4, coordinator.state.value.windowStart)
         val label = LabelRef("e".repeat(64))
         coordinator.previewLabel { label }; runCurrent()
         coordinator.labelsReady(0, listOf(null, null, label.textureKey), firstIndex = 0)
         assertFalse(coordinator.state.value.labelPreviewReady)
-        coordinator.labelsReady(0, listOf(null, null, label.textureKey), firstIndex = 5)
+        coordinator.labelsReady(0, listOf(null, null, label.textureKey), firstIndex = 4)
         assertTrue(coordinator.state.value.labelPreviewReady)
         coordinator.destroy()
     }
@@ -193,7 +205,7 @@ class CoordinatorTest {
         runCurrent()
         coordinator.back(); coordinator.navigate(1); coordinator.select(); runCurrent()
         assertEquals(CollectionScreen.Library, coordinator.state.value.screen)
-        assertEquals(2, coordinator.state.value.slots.size)
+        assertEquals(1, coordinator.state.value.slots.size)
         assertEquals(library.two.id, coordinator.state.value.removedEntry!!.gameId)
         coordinator.back(); coordinator.navigate(2); coordinator.select(); runCurrent()
         assertEquals(library.two.id, coordinator.state.value.selectedGame!!.id)
@@ -213,10 +225,53 @@ class CoordinatorTest {
             awaitCancellation()
         }
         runCurrent(); coordinator.cancelScan(); runCurrent()
-        assertEquals(4, coordinator.state.value.slots.size)
+        assertEquals(3, coordinator.state.value.slots.size)
         assertFalse(coordinator.state.value.scanning)
         assertFalse(coordinator.state.value.busy)
         assertEquals(0, engine.stops)
+        coordinator.destroy()
+    }
+
+    @Test fun sortingKeepsIdentityAndNavigationPersistsCanonicalIndex() = runTest {
+        val library = Library()
+        val coordinator = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope)
+        runCurrent()
+        coordinator.query(LibraryQuery(LibrarySort.Title)); runCurrent()
+        assertEquals(library.two.id, coordinator.state.value.selectedGame!!.id)
+        coordinator.navigate(-1); runCurrent()
+        assertEquals(library.one.id, coordinator.state.value.selectedGame!!.id)
+        assertEquals(0, library.snapshots.value.selectedSlot)
+        coordinator.query(LibraryQuery(search = "unmatched")); runCurrent()
+        assertNull(coordinator.state.value.selectedGame)
+        assertEquals(2, coordinator.state.value.allGames.size)
+        coordinator.query(LibraryQuery()); runCurrent()
+        assertEquals(library.one.id, coordinator.state.value.selectedGame!!.id)
+        coordinator.destroy()
+    }
+    @Test fun historyExcludesPauseAndFinishesBeforeEjection() = runTest {
+        val library = Library(); val engine = Engine(); var now = 0L
+        val coordinator = CollectionCoordinator(engine, library, Surfaces(), backgroundScope, reducedMotion = true, monotonicMillis = { now })
+        runCurrent(); coordinator.rendererReady(0); coordinator.insert(); runCurrent()
+        now = 1200; coordinator.pause(); runCurrent()
+        assertEquals(1200L, library.played)
+        now = 20_000; coordinator.menuAction(0); runCurrent()
+        now = 21_300; coordinator.pause(); runCurrent()
+        coordinator.menuAction(3); runCurrent()
+        assertEquals(2500L, library.played)
+        assertEquals(CollectionScreen.Library, coordinator.state.value.screen)
+        coordinator.destroy()
+    }
+    @Test fun failedHistoryRetriesForItsOwnGameAcrossSessions() = runTest {
+        val library = Library().apply { historyFailure = true }; val engine = Engine(); var now = 0L
+        val coordinator = CollectionCoordinator(engine, library, Surfaces(), backgroundScope, reducedMotion = true, monotonicMillis = { now })
+        runCurrent(); coordinator.rendererReady(0); coordinator.insert(); runCurrent()
+        now = 1000; coordinator.pause(); runCurrent(); coordinator.menuAction(3); runCurrent()
+        assertTrue(coordinator.state.value.historyWarning.orEmpty().contains("History store unavailable"))
+        library.historyFailure = false
+        coordinator.navigate(-1); runCurrent(); coordinator.rendererReady(coordinator.state.value.viewportGeneration); coordinator.insert(); runCurrent()
+        now = 1400; coordinator.pause(); runCurrent(); coordinator.menuAction(3); runCurrent()
+        assertEquals(1000L, library.playedById[library.two.id])
+        assertEquals(400L, library.playedById[library.one.id])
         coordinator.destroy()
     }
 }

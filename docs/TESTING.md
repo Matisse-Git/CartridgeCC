@@ -511,3 +511,71 @@ required: speaker/headphone contact/audio timing, asymmetric real-scan fidelity,
 direction, longer real-library/gameplay CPU/GPU/PSS/audio/thermals/battery/latency, physical sleep/reboot,
 OS process death and held-controller disconnection. M0 remains passed; M1/M2 sustained acceptance stays
 open. Scripted mesh refinement does not imply manual production Blender polish.
+
+## M3 library management — 2026-10-09
+
+Final version 0.3.0-m3-library / code 8, same RP5 Android 13 / API 33 / firmware
+`RP5_V1.0.0.189_20251128_174732_user`, Adreno 650 / GLES 3.2 / 1920×1080 landscape at 60 Hz.
+JDK/Gradle/SDK/NDK and dependency pins remain unchanged. No test result below implies a device reboot,
+OS process-death, SD-removal or sustained thousand-game workload result.
+
+| Check | Actual result |
+| --- | --- |
+| Both APK builds + host tests + lint | BUILD SUCCESSFUL, final required task group 14 s |
+| Host tests | 27, zero failures/errors: coordinator 12, query/clock 3, domain 5, motion 2, saves 2, scrape queue 3 |
+| Lint | 0 errors / 23 warnings; added URI KTX style warning, no broad suppressions |
+| Structural assets | 8 pass; M2 production GLBs/KTX/WAV unchanged |
+| Focused management suite | 2 pass / 8.046 s before final picker/history hardening |
+| Final All suite | 16 pass / 119.638 s, 50 real native handoffs, final picker/history source |
+| Installed app | code 8 / 0.3.0-m3-library, MainActivity launched after suite |
+
+The controller/details test injects ordinary L1/R1/A/B keys and a D-pad hold through a display frame.
+It uses the production UI/Room/Filament/native core with isolated original ROMs. It edits title/year,
+sorts a second-imported title ahead of the first while preserving focused hash, filters favorites,
+recreates, persists an empty search, resets, runs internal emulation, pauses/ejects and recreates to
+check saved playtime/last-played. Missing metadata renders "Not set" and does not block launching.
+
+The v4 schema fixture upgrades explicitly to v5, indexes a nested original DocumentsProvider and
+checks a second scan performs **zero additional ROM reads** for seven positively stamped documents.
+Verify all reads all seven. A failing nested query cannot mark unseen files missing. A subsequent
+complete scan detects the deleted original, retains a playable cache and accepted metadata/favorite.
+Deleting that test cache makes launch fail; restoring its original and rescanning repairs the same
+hash. Changed bytes under the same document name create a new hash and retain the old enrichment.
+Two overlapping roots deduplicate; forgetting both keeps seven library entries and metadata.
+Existing migration tests now exercise the full v1/v2/v3→v5 chains without destructive fallback.
+
+Host tests separately verify stable ties/same-title distinct hashes, search/favorites intersection,
+canonical focus persistence, empty-view recovery, pause-time exclusion and per-game failed-history
+retry across two sessions. Initial count failures came from legacy empty-slot fixtures; updated
+fixtures preserve the same behavior assertions. The first device edit test used key-down/up within
+one frame; an 80 ms hold matches navigation's Choreographer polling. All failures were corrected.
+
+The unchanged isolated M2 presentation gate also passes: 540 rest / 1,140 navigation / 300 media-motion
+intervals; presentation p95 16.732188 / 16.731927 / 16.726042 ms, respectively, zero >25 ms gaps.
+CPU submission p95 1.411094 ms, 2,161/2,161 submitted. It samples 36 seconds after warmup with phase
+margins; this is a renderer regression gate, not large-library/thermal/audio/input-latency profiling.
+
+Reproduce with the existing ignored local toolchain (or configured SDK/JDK):
+
+```powershell
+$env:JAVA_HOME = 'C:\Program Files\Android\openjdk\jdk-21.0.8'
+$env:GRADLE_USER_HOME = Join-Path (Get-Location) '.tools/gradle-home'
+.\gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug --console=plain
+python tools/test_assets.py
+.\tools\Test-Device.ps1 -Serial <device-serial> -Suite Manage
+.\tools\Test-Device.ps1 -Serial <device-serial> -Suite All -Cycles 50
+```
+
+Before calling full M3 acceptance complete, physically review a real collection with:
+
+- R1 details/L1 favorite; rapid navigation after each sort/filter; no-match and reset recovery.
+- Local metadata edits/clears and scraped label/media/metadata provenance retained after relaunch.
+- Automatic discovery of a new ROM on open; opt-out; explicit Rescan/Verify all; cancel while scanning.
+- Persisted grants across reboot, revoked/reselected roots, removable SD absence, overlapping roots.
+- Same hash added/moved/recovered without duplicate entries or loss of saves, favorites or accepted labels.
+- Missing original with/without working copy, wrong-ROM recovery rejection and reselecting the exact ROM.
+- Large-library input/CPU/memory/private-storage profiling; disk-full/index/history write failures.
+- Longer gameplay, controller disconnection, sleep/background/process death, thermal/battery/audio checks.
+
+Scrape packs, selected-subset/preferred-region workflows and the deferred scraper review redesign remain
+open. Existing live API proof is historical; no new provider API/schema/dependency changes were made.

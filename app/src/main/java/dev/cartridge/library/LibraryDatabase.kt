@@ -18,6 +18,9 @@ data class GameRecord(
     val labelProvenance: String? = null,
     val metadataJson: String? = null,
     val mediaJson: String? = null,
+    @ColumnInfo(defaultValue = "0") val favorite: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val playMs: Long = 0,
+    @ColumnInfo(defaultValue = "0") val lastPlayed: Long = 0,
 )
 
 @Entity(tableName = "slots", foreignKeys = [ForeignKey(entity = GameRecord::class,
@@ -26,17 +29,27 @@ data class GameRecord(
 data class SlotRecord(@PrimaryKey val slot: Int, val gameId: String? = null)
 
 @Entity(tableName = "collection_state")
-data class CollectionRecord(@PrimaryKey val singleton: Int = 0, val selectedSlot: Int = 0)
+data class CollectionRecord(@PrimaryKey val singleton: Int = 0, val selectedSlot: Int = 0,
+    @ColumnInfo(defaultValue = "'Added'") val sort: String = "Added",
+    @ColumnInfo(defaultValue = "0") val favoritesOnly: Boolean = false,
+    @ColumnInfo(defaultValue = "''") val search: String = "")
 
 @Entity(tableName = "directories")
-data class DirectoryRecord(@PrimaryKey val uri: String)
+data class DirectoryRecord(@PrimaryKey val uri: String,
+    @ColumnInfo(defaultValue = "''") val name: String = "",
+    @ColumnInfo(defaultValue = "0") val lastScan: Long = 0, val error: String? = null)
+
+@Entity(tableName = "indexed_documents", primaryKeys = ["treeUri", "documentUri"], indices = [Index("gameId")])
+data class IndexedDocument(val treeUri: String, val documentUri: String, val gameId: String,
+    val bytes: Long, val modified: Long, val missing: Boolean = false)
 
 @Entity(tableName = "removed_games")
 data class RemovedGameRecord(@PrimaryKey val gameId: String)
 
 data class SlotRow(val slot: Int, val selectedSlot: Int, val id: String?, val title: String?,
     val sourceUri: String?, val labelAssetId: String?, val labelFit: String?, val labelQuarterTurns: Int?, val labelSourceUri: String?,
-    val labelProvenance: String?, val metadataJson: String?, val mediaJson: String?)
+    val labelProvenance: String?, val metadataJson: String?, val mediaJson: String?,
+    val favorite: Boolean?, val playMs: Long?, val lastPlayed: Long?, val sort: String, val favoritesOnly: Boolean, val search: String)
 
 @Dao
 interface LibraryDao {
@@ -47,6 +60,16 @@ interface LibraryDao {
     @Query("SELECT selectedSlot FROM collection_state WHERE singleton = 0") suspend fun selectedSlot(): Int?
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun directory(directory: DirectoryRecord)
     @Query("SELECT uri FROM directories ORDER BY uri") suspend fun directories(): List<String>
+    @Query("SELECT * FROM directories ORDER BY uri") suspend fun directoryRecords(): List<DirectoryRecord>
+    @Query("UPDATE directories SET name = :name, lastScan = :time, error = :error WHERE uri = :uri")
+    suspend fun scanFinished(uri: String, name: String, time: Long, error: String?)
+    @Query("DELETE FROM directories WHERE uri = :uri") suspend fun forgetDirectory(uri: String)
+    @Query("DELETE FROM indexed_documents WHERE treeUri = :uri") suspend fun forgetIndex(uri: String)
+    @Query("SELECT * FROM indexed_documents WHERE treeUri = :uri") suspend fun index(uri: String): List<IndexedDocument>
+    @Query("SELECT * FROM indexed_documents WHERE gameId = :id") suspend fun sources(id: String): List<IndexedDocument>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun index(document: IndexedDocument)
+    @Query("UPDATE indexed_documents SET missing = 1 WHERE treeUri = :tree AND documentUri = :document")
+    suspend fun missing(tree: String, document: String)
     @Query("SELECT * FROM slots ORDER BY slot") suspend fun slots(): List<SlotRecord>
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertGame(game: GameRecord)
     @Query("UPDATE games SET title = :title, sourceUri = :uri WHERE id = :id")
@@ -60,20 +83,40 @@ interface LibraryDao {
     @Query("SELECT * FROM games WHERE id = :id") suspend fun game(id: String): GameRecord?
     @Query("UPDATE games SET metadataJson = :json WHERE id = :id") suspend fun metadata(id: String, json: String)
     @Query("UPDATE games SET mediaJson = :json WHERE id = :id") suspend fun media(id: String, json: String)
-    @Query("""SELECT slots.slot, collection_state.selectedSlot, games.* FROM slots
+    @Query("UPDATE games SET favorite = :favorite WHERE id = :id") suspend fun favorite(id: String, favorite: Boolean)
+    @Query("UPDATE collection_state SET sort = :sort, favoritesOnly = :favorites, search = :search WHERE singleton = 0")
+    suspend fun query(sort: String, favorites: Boolean, search: String)
+    @Query("UPDATE games SET playMs = playMs + :elapsed, lastPlayed = CASE WHEN :started IS NULL THEN lastPlayed ELSE :started END WHERE id = :id")
+    suspend fun play(id: String, elapsed: Long, started: Long?)
+    @Query("""SELECT slots.slot, collection_state.selectedSlot, collection_state.sort, collection_state.favoritesOnly, collection_state.search, games.* FROM slots
         CROSS JOIN collection_state LEFT JOIN games ON slots.gameId = games.id
         WHERE collection_state.singleton = 0 ORDER BY slots.slot""")
     fun observe(): Flow<List<SlotRow>>
-    @Query("""SELECT slots.slot, collection_state.selectedSlot, games.* FROM slots
+    @Query("""SELECT slots.slot, collection_state.selectedSlot, collection_state.sort, collection_state.favoritesOnly, collection_state.search, games.* FROM slots
         CROSS JOIN collection_state LEFT JOIN games ON slots.gameId = games.id
         WHERE collection_state.singleton = 0 ORDER BY slots.slot""")
     suspend fun read(): List<SlotRow>
 }
 
-@Database(entities = [GameRecord::class, SlotRecord::class, CollectionRecord::class, DirectoryRecord::class, RemovedGameRecord::class], version = 4, exportSchema = true)
+@Database(entities = [GameRecord::class, SlotRecord::class, CollectionRecord::class, DirectoryRecord::class, RemovedGameRecord::class, IndexedDocument::class], version = 5, exportSchema = true)
 abstract class LibraryDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
     companion object {
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE games ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE games ADD COLUMN playMs INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE games ADD COLUMN lastPlayed INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE collection_state ADD COLUMN sort TEXT NOT NULL DEFAULT 'Added'")
+                db.execSQL("ALTER TABLE collection_state ADD COLUMN favoritesOnly INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE collection_state ADD COLUMN search TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE directories ADD COLUMN name TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE directories ADD COLUMN lastScan INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE directories ADD COLUMN error TEXT")
+                db.execSQL("CREATE TABLE indexed_documents (treeUri TEXT NOT NULL, documentUri TEXT NOT NULL, gameId TEXT NOT NULL, bytes INTEGER NOT NULL, modified INTEGER NOT NULL, missing INTEGER NOT NULL, PRIMARY KEY(treeUri, documentUri))")
+                db.execSQL("CREATE INDEX index_indexed_documents_gameId ON indexed_documents(gameId)")
+            }
+        }
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS removed_games (gameId TEXT NOT NULL PRIMARY KEY)")
@@ -94,7 +137,7 @@ abstract class LibraryDatabase : RoomDatabase() {
         @Volatile private var instance: LibraryDatabase? = null
         fun get(context: Context): LibraryDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, LibraryDatabase::class.java, "library.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
         }
     }
 }

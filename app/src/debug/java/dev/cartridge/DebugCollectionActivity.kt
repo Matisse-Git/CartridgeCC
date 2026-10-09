@@ -17,7 +17,7 @@ class DebugCollectionActivity : MainActivity() {
         require(name.matches(Regex("m1-test-[a-f0-9-]+")))
         val database = synchronized(databases) {
             databases.getOrPut(name) { Room.databaseBuilder(applicationContext, LibraryDatabase::class.java, "$name.db")
-                .addMigrations(LibraryDatabase.MIGRATION_1_2, LibraryDatabase.MIGRATION_2_3, LibraryDatabase.MIGRATION_3_4).build() }
+                .addMigrations(LibraryDatabase.MIGRATION_1_2, LibraryDatabase.MIGRATION_2_3, LibraryDatabase.MIGRATION_3_4, LibraryDatabase.MIGRATION_4_5).build() }
         }
         return RoomCollectionRepository(this, database)
     }

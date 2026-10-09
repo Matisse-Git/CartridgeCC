@@ -6,25 +6,36 @@ import android.provider.DocumentsContract
 import dev.cartridge.library.CollectionRepository
 import dev.cartridge.library.DirectoryRepository
 import dev.cartridge.library.LibraryGame
+import dev.cartridge.library.IndexedDocument
 import kotlinx.coroutines.*
 import java.io.File
 import kotlin.coroutines.coroutineContext
 
-data class ScanResult(val added: Int, val duplicates: Int, val failed: Int, val visited: Int, val errors: List<String>) {
+data class ScanResult(val added: Int, val duplicates: Int, val failed: Int, val visited: Int, val errors: List<String>, val unchanged: Int = 0) {
     val message get() = "Scan complete: $added added · $duplicates duplicates · $failed failed" +
-        errors.firstOrNull()?.let { ". $it" }.orEmpty()
+        " · $unchanged unchanged" + errors.firstOrNull()?.let { ". $it" }.orEmpty()
 }
 
 /** Read-only traversal of a user-granted tree; completed imports are committed individually. */
 class DirectoryScanner(private val resolver: ContentResolver, private val roms: File,
     private val repository: CollectionRepository, private val directories: DirectoryRepository) {
-    suspend fun scan(tree: Uri, progress: suspend (String) -> Unit): ScanResult = withContext(Dispatchers.IO) {
+    suspend fun scan(tree: Uri, progress: suspend (String) -> Unit, verifyAll: Boolean = false): ScanResult = withContext(Dispatchers.IO) {
         require(DocumentsContract.isTreeUri(tree)) { "Choose a ROM folder through the Android picker" }
         directories.rememberDirectory(tree.toString())
+        val indexed = directories.indexed(tree.toString()).associateBy { it.documentUri }
+        val documents = mutableSetOf<String>()
+        var complete = true
+        var folderName = DocumentsContract.getTreeDocumentId(tree).substringAfterLast('/').substringAfterLast(':')
+        runCatching {
+            resolver.query(DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree)),
+                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) folderName = it.getString(0).orEmpty()
+            }
+        }
         val pending = ArrayDeque<Pair<String, Int>>()
         pending.add(DocumentsContract.getTreeDocumentId(tree) to 0)
         val seen = mutableSetOf<String>()
-        var added = 0; var duplicates = 0; var failed = 0; var visited = 0
+        var added = 0; var duplicates = 0; var failed = 0; var visited = 0; var unchanged = 0
         val errors = mutableListOf<String>()
         fun failure(message: String) { failed++; if (errors.size < 8) errors += message }
         val importer = RomImporter(resolver, roms)
@@ -32,11 +43,12 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
             coroutineContext.ensureActive()
             val (parent, depth) = pending.removeFirst()
             if (!seen.add(parent)) continue
-            if (depth > 16) { failure("A folder exceeds the 16-level scan limit"); continue }
+            if (depth > 16) { complete = false; failure("A folder exceeds the 16-level scan limit"); continue }
             val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parent)
             try {
                 val projection = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                    DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE)
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE,
+                    DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED)
                 val cursor = checkNotNull(resolver.query(children, projection, null, null, null)) { "The folder is unavailable" }
                 cursor.use {
                     while (it.moveToNext()) {
@@ -49,9 +61,21 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
                             withContext(Dispatchers.Main) { progress("Scanning $name · $added added · $duplicates duplicates · $failed failed") }
                             try {
                                 val uri = DocumentsContract.buildDocumentUriUsingTree(tree, documentId)
+                                documents += uri.toString()
+                                val bytes = if (it.isNull(3)) -1 else it.getLong(3)
+                                val modified = if (it.isNull(4)) 0 else it.getLong(4)
+                                val old = indexed[uri.toString()]
+                                val cached = old?.let { entry -> File(roms, "${entry.gameId}.gba") }
+                                if (!verifyAll && old != null && bytes > 0 && modified > 0 &&
+                                    old.bytes == bytes && old.modified == modified && cached?.isFile == true && cached.length() == bytes) {
+                                    if (repository.add(LibraryGame(old.gameId, name.substringBeforeLast('.'), uri.toString()))) added++ else duplicates++
+                                    directories.index(old.copy(missing = false)); unchanged++
+                                    continue
+                                }
                                 val taskContext = coroutineContext
                                 val game = importer.import(uri) { taskContext.ensureActive() }
                                 if (repository.add(LibraryGame(game.request.id, game.title, uri.toString()))) added++ else duplicates++
+                                directories.index(IndexedDocument(tree.toString(), uri.toString(), game.request.id, bytes, modified))
                             } catch (exception: Exception) {
                                 if (exception is CancellationException) throw exception
                                 failure("$name: ${exception.message ?: "Cannot import this file"}")
@@ -61,10 +85,12 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
                 }
             } catch (exception: Exception) {
                 if (exception is CancellationException) throw exception
+                complete = false
                 failure(exception.message ?: "Cannot read this folder")
                 if (visited >= 10_000) break
             }
         }
-        ScanResult(added, duplicates, failed, visited, errors)
+        directories.finishScan(tree.toString(), folderName, documents, complete, errors.firstOrNull())
+        ScanResult(added, duplicates, failed, visited, errors, unchanged)
     }
 }

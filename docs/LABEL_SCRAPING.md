@@ -106,3 +106,8 @@ views and disc templates/emulation are future work. Directory rescans rehash fil
 not resumed after recreation, but completed imports remain deduplicated.
 Cancelled imports can leave unreferenced originals; reference-aware garbage collection is pending.
 The provider's source checksum is not verified; cached originals have the app's own SHA-256 identity.
+
+M3 library projection keeps full canonical entries separate from favorites/search/sort views.
+The GBA/all scraper scopes still include the whole active collection; filters do not silently shrink
+those scopes. Details offers a direct single-title entry and local changed-field edits with independent
+provenance. Existing reviewed labels/media and saved batches are unchanged. See M3_PROGRESS.

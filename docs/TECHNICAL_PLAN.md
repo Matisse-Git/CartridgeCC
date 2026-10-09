@@ -128,3 +128,15 @@ The regression also exposed a pinned-frontend startup race: SurfaceCreated can f
 load before its async error is received. Require the successful render-lifecycle observer registration
 before battery access; always test invalid ROM with existing SRAM. See ADR 0007's correction and
 ADR 0008/M2_PROGRESS for API evidence, physical results and remaining art/performance limits.
+
+
+## M3 continuation — 2026-10-09
+
+Owner requested M3 after the verified M2 increment. Keep all native/3D/dependency pins and exclusive
+surface barriers. Add Room v5 migration, canonical identity-preserving view projection, optional
+metadata/details, favorites/order/search, conservative SAF size/mtime indexing and Running-only history.
+The implementation/validation is in M3_PROGRESS/ADR 0009/TESTING. Provider stamps cannot establish
+content identity, so full verification remains explicit; incomplete traversal cannot imply deletion.
+Large-library scaling and physical reboot/revoked-grant tests remain gates, alongside earlier sustained
+M1/M2 checks. API scraping remains the primary artwork path; its deferred review redesign and
+subset/region/pack extensions remain open. No new core/system/layout dependency is adopted.

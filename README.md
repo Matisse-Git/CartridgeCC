@@ -1,7 +1,7 @@
 # Project Cartridge
 
 Native Android, controller-first physical-media collection with **embedded** GBA emulation.
-This repository implements M0, focused M1 increments and active M2 refinement, not the finished product. No RetroArch
+This repository implements M0, focused M1/M2 increments and active M3 library management, not the finished product. No RetroArch
 installation, external emulator intents or browser renderer is used. No commercial ROM, BIOS or
 proprietary artwork is bundled; users can scrape artwork into their private collection.
 
@@ -9,10 +9,10 @@ proprietary artwork is bundled; users can scrape artwork into their private coll
 scraping, independent media/metadata choices, 3D Fit/Crop/rotation preview and a tested session
 coordinator. Folder imports now grow the collection and saved scrape batches resume after reopening.
 Battery saves now restore before gameplay and checkpoint during play/pause. Both APKs build;
-21 unit tests and eight asset checks pass. Fourteen RP5 tests cover real native
+27 unit tests and eight asset checks pass. Sixteen RP5 tests cover real native
 handoffs, ordinary UI recovery, independent labels, schema migrations, folder imports and resumed scraping; a separate
 live API test passes. The owner confirmed physical navigation, gameplay/audio, save/load and local labels.
-M2 is active at the owner's request: refined GBA mesh/PBR, original studio reflections, receiving slot,
+M2 refinement is implemented: refined GBA mesh/PBR, original studio reflections, receiving slot,
 phased insertion/ejection, optional contact sound and carousel reduced motion. A short isolated RP5
 viewport benchmark measured 16.74–16.75 ms presentation p95 across rest/navigation/media motion.
 Long-duration validation
@@ -118,9 +118,33 @@ The first button of a two-button shortcut may reach the game before the second i
 
 Insertion lifts, aligns and slides the cartridge into a small physical receiving slot over 540 ms;
 ejection reverses it over 420 ms. Motion off bypasses both and snaps carousel selection. Optional
-original contact sound defaults off. Final manual art direction, incremental directory indexing,
-details, selected-title/region preferences, disc media, other layouts and HOME registration remain planned.
+original contact sound defaults off. Final manual art direction,
+selected-title/region preferences, disc media, other layouts and HOME registration remain planned.
 Backgrounding ends the current session after saving RAM; full session sleep/resume comes later.
+
+## M3 library controls
+
+R1 / Tools → Details opens optional metadata, playtime, last-played and save/source information.
+L1 toggles favorite. B → Collection cycles import order, title, recent and most-played sorting,
+filters favorites, or resets the view. Folders & search manages registered roots, title/developer/genre
+search, fast rescans, full hash verification and automatic scanning on open (on by default).
+An empty search has an explicit "No matching games" state; it does not hide data from all-library scraping.
+Explicit Add clears active search/favorite filters so its existing/new identity is visible.
+
+Details → Edit metadata uses ordinary text entry; only changed fields replace previous choices, with
+local provenance. Clearing title falls back to the ROM filename. Details → Locate same ROM requires
+identical bytes/hash and preserves labels/saves. Forgetting a folder unregisters scanning and releases
+that root grant, keeping games and private cached files. Missing originals are reported after a
+complete scan and cached games remain playable. Reauthorize a revoked root using Start / Folder.
+
+Fast rescans reuse positive matching size/mtime stamps and a present working copy. Unknown stamps or
+missing copies are reimported. Verify all rehashes every ROM, including same-size/time replacements.
+Play history counts Running time, excludes pause/preparation, checkpoints every 15 seconds and flushes
+on pause/eject/background. Failed history writes remain visible and retry for the correct game while
+the Activity lives. Process death can lose history since the latest completed checkpoint.
+
+See [M3 progress](docs/M3_PROGRESS.md) and ADR 0009. Scraper review redesign, selected subsets,
+scrape-pack formats and preferred-region ranking remain open; existing reviewed API scopes stay intact.
 
 ## Engineering record
 
@@ -134,6 +158,7 @@ Backgrounding ends the current session after saving RAM; full session sleep/resu
 - [Milestones](docs/ROADMAP.md)
 - [Asset pipeline](docs/ASSET_PIPELINE.md)
 - [M2 refinement and physical presentation results](docs/M2_PROGRESS.md)
+- [M3 library management and validation](docs/M3_PROGRESS.md)
 - [Tests and actual results](docs/TESTING.md)
 - [License audit and distribution obligations](docs/LICENSING.md)
 - [M0 report and created files](docs/M0_REPORT.md)

@@ -83,3 +83,6 @@ unless a prior agreement is obtained. Check current terms, approval, quotas and 
 before implementation/distribution. A provider subscription or an API response is not assumed to grant
 redistribution rights over every image. Preserve imported-asset provenance and never commit scraped
 commercial artwork. See [LABEL_SCRAPING.md](LABEL_SCRAPING.md) for the requested workflow.
+
+M3 introduces original Kotlin library UI/query/index/history code and no third-party dependency,
+artwork, ROM or BIOS. Existing scraper provenance and GPL/source-distribution gates still apply.

@@ -14,6 +14,11 @@ import java.io.File
 interface DirectoryRepository {
     suspend fun rememberDirectory(uri: String)
     suspend fun directories(): List<String>
+    suspend fun directoryRecords(): List<DirectoryRecord>
+    suspend fun forgetDirectory(uri: String)
+    suspend fun indexed(uri: String): List<IndexedDocument>
+    suspend fun index(document: IndexedDocument)
+    suspend fun finishScan(uri: String, name: String, seen: Set<String>, complete: Boolean, error: String?)
 }
 
 class RoomCollectionRepository(context: Context, private val database: LibraryDatabase = LibraryDatabase.get(context)) : CollectionRepository, DirectoryRepository {
@@ -93,6 +98,14 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
     }
     override suspend fun rememberDirectory(uri: String) { dao.directory(DirectoryRecord(uri)) }
     override suspend fun directories() = dao.directories()
+    override suspend fun directoryRecords() = dao.directoryRecords()
+    override suspend fun forgetDirectory(uri: String) = database.withTransaction { dao.forgetDirectory(uri); dao.forgetIndex(uri) }
+    override suspend fun indexed(uri: String) = dao.index(uri)
+    override suspend fun index(document: IndexedDocument) { dao.index(document) }
+    override suspend fun finishScan(uri: String, name: String, seen: Set<String>, complete: Boolean, error: String?) = database.withTransaction {
+        if (complete) dao.index(uri).filterNot { it.documentUri in seen }.forEach { dao.missing(uri, it.documentUri) }
+        dao.scanFinished(uri, name, System.currentTimeMillis(), error)
+    }
     override suspend fun select(slot: Int) { require(slot >= 0); dao.select(slot) }
     override suspend fun setLabel(gameId: String, label: LabelRef?) {
         require(gameId.matches(Regex("[a-f0-9]{64}")))
@@ -105,7 +118,7 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
         require(values.values.all { it.value.length <= 16_384 }) { "The metadata field is too large" }
         database.withTransaction {
             val game = checkNotNull(dao.game(gameId)) { "This game is no longer in the library" }
-            dao.metadata(gameId, LibraryJson.metadata(LibraryJson.metadata(game.metadataJson) + values))
+            dao.metadata(gameId, LibraryJson.metadata((LibraryJson.metadata(game.metadataJson) + values).filterValues { it.value.isNotBlank() }))
         }
     }
     override suspend fun setMedia(gameId: String, media: MediaSelection) {
@@ -113,6 +126,21 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
             val game = checkNotNull(dao.game(gameId)) { "This game is no longer in the library" }
             dao.media(gameId, LibraryJson.media(LibraryJson.media(game.mediaJson) + (media.type to media)))
         }
+    }
+    override suspend fun setFavorite(gameId: String, favorite: Boolean) { dao.favorite(gameId, favorite) }
+    override suspend fun setQuery(query: LibraryQuery) { dao.query(query.sort.name, query.favoritesOnly, query.search) }
+    override suspend fun recordPlay(gameId: String, elapsedMs: Long, startedAt: Long?) {
+        require(elapsedMs >= 0) { "Invalid playtime checkpoint" }
+        dao.play(gameId, elapsedMs, startedAt)
+    }
+    override suspend fun facts(gameId: String): LibraryFacts = withContext(Dispatchers.IO) {
+        val sources = dao.sources(gameId)
+        val saves = File(context.filesDir, "saves")
+        LibraryFacts(File(roms, "$gameId.gba").isFile,
+            when { sources.isEmpty() -> "Original not checked by a folder scan"
+                sources.all { it.missing } -> "Original missing at last complete scan"
+                else -> "Original found at last scan" },
+            File(saves, "$gameId.sram").lastModified(), File(saves, "$gameId.state").lastModified())
     }
     override suspend fun gameRequest(game: LibraryGame): GameRequest = withContext(Dispatchers.IO) {
         val file = File(roms, "${game.id}.gba")
@@ -130,8 +158,10 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
                 val metadata = LibraryJson.metadata(row.metadataJson)
                 LibraryGame(it, metadata["title"]?.value ?: row.title ?: "Untitled game", row.sourceUri.orEmpty(),
                     row.labelAssetId?.let { asset -> LabelRef(asset, LabelFit.valueOf(row.labelFit ?: "Fit"), row.labelQuarterTurns ?: 0,
-                        row.labelSourceUri, LibraryJson.provenance(row.labelProvenance)) }, metadata, LibraryJson.media(row.mediaJson))
+                        row.labelSourceUri, LibraryJson.provenance(row.labelProvenance)) }, metadata, LibraryJson.media(row.mediaJson),
+                    row.favorite ?: false, row.playMs ?: 0, row.lastPlayed ?: 0)
             }
-        } }, rows.firstOrNull()?.selectedSlot?.coerceIn(0, count - 1) ?: 0)
+        } }, rows.firstOrNull()?.selectedSlot?.coerceIn(0, count - 1) ?: 0,
+            rows.firstOrNull()?.let { LibraryQuery(LibrarySort.valueOf(it.sort), it.favoritesOnly, it.search) } ?: LibraryQuery())
     }
 }

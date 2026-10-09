@@ -56,7 +56,7 @@ class ProviderContractTest {
             db.version = 1
         }
         fun open() = Room.databaseBuilder(context, LibraryDatabase::class.java, name)
-            .addMigrations(LibraryDatabase.MIGRATION_1_2, LibraryDatabase.MIGRATION_2_3, LibraryDatabase.MIGRATION_3_4).build()
+            .addMigrations(LibraryDatabase.MIGRATION_1_2, LibraryDatabase.MIGRATION_2_3, LibraryDatabase.MIGRATION_3_4, LibraryDatabase.MIGRATION_4_5).build()
         var database = open()
         try {
             var repository = RoomCollectionRepository(context, database)
@@ -105,7 +105,7 @@ class ProviderContractTest {
                 LibraryJson.metadata(mapOf("year" to year)), LibraryJson.media(mapOf(media.type to media))))
             db.execSQL("INSERT INTO slots VALUES (2, ?)", arrayOf(id)); db.execSQL("INSERT INTO collection_state VALUES (0, 2)"); db.version = 2
         }
-        val database = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(LibraryDatabase.MIGRATION_2_3, LibraryDatabase.MIGRATION_3_4).build()
+        val database = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(LibraryDatabase.MIGRATION_2_3, LibraryDatabase.MIGRATION_3_4, LibraryDatabase.MIGRATION_4_5).build()
         try {
             val repository = RoomCollectionRepository(context, database)
             val restored = repository.initialize()
@@ -143,7 +143,7 @@ class ProviderContractTest {
             db.execSQL("INSERT INTO slots VALUES (3,?)", arrayOf(regionalId))
             db.execSQL("INSERT INTO collection_state VALUES (0,2)"); db.version = 3
         }
-        fun open() = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(LibraryDatabase.MIGRATION_3_4).build()
+        fun open() = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(LibraryDatabase.MIGRATION_3_4, LibraryDatabase.MIGRATION_4_5).build()
         var database = open()
         try {
             var repository = RoomCollectionRepository(context, database)
