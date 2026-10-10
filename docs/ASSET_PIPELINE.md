@@ -1,5 +1,11 @@
 # Cartridge asset pipeline
 
+PS1 adds `python tools/generate_disc.py`: an original 120 mm × 1.2 mm optical disc with 15 mm actual
+center hole, reflective underside, hub and named replaceable label primitive. Metres, +Y up, +Z print;
+512×512 label UVs map the full artwork square, clipped by the annular geometry. It shares the existing
+Filament texture lifecycle and matching runtime/validator. 1,792 triangles, three PBR materials,
+106,416 bytes. Development template: no claim of artist-final tray motion or iridescent response.
+
 ## Current M2 source assets
 
 Blender is unavailable on this host. `tools/generate_cartridge.py` and `tools/glb_geometry.py` create an
@@ -115,7 +121,8 @@ actual GPU pixels, and restores accepted textures after cancel/recreation/databa
 proves independence, not the fidelity of a production scan. The M2 swatch test extends this to
 asymmetric orientation.
 Publish label UV orientation, aspect ratio and a mask with each polished template.
-Future disc templates also define outer radius and centre-hole masking. Distinguish flat label artwork
+The initial PS1 template uses 512×512 label UVs and actual annular geometry for its outer radius and
+centre hole (see the PS1 addition above). Future disc variants retain that contract. Distinguish flat label artwork
 from photographs of entire media and case/box art. See [LABEL_SCRAPING.md](LABEL_SCRAPING.md).
 
 The API adapter now requests regional support-texture flat labels and routes them through this same

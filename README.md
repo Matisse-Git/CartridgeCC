@@ -1,19 +1,28 @@
 # Project Cartridge
 
-Native Android, controller-first physical-media collection with **embedded** GBA, GB and GBC emulation.
+Native Android, controller-first physical-media collection with **embedded** GBA, GB, GBC and PS1 emulation.
 This repository now contains the development implementation through M6: shared 3D collection layouts,
-API label/metadata review, internal GBA/GB/GBC play, console setup/settings, optional Android HOME,
+API label/metadata review, internal GBA/GB/GBC/PS1 play, console setup/settings, optional Android HOME,
 completed-session recovery and portable backup/restore. It remains a private development build;
 art direction, broad game/peripheral compatibility and public-release rights/source obligations are open.
 No RetroArch installation, external emulator intents or browser renderer is used. Commercial ROMs,
 BIOS and proprietary artwork are excluded from Git/APK assets.
 
+**PS1 increment (v17):** source-built embedded PCSX ReARMed, CUE/BIN folder imports, optional SBI,
+CHD/PBP/ISO files, real 3D discs, per-game memory card, pause/save/load/eject and session recovery.
+Import your BIOS in Console settings, then choose your CUE/BIN folder with Start / Folder.
+Initial PS1 controller is digital; M3U/disc swapping and analog-required games are deferred.
+See [PS1 progress, exact validation and remaining checks](docs/PS1_PROGRESS.md).
+
 **Verified:** M0 passed on the physical RP5. The owner confirmed physical controller navigation,
 gameplay/audio, pause/eject, save/load, label thumbnails/apply/persistence and imports. Both APKs,
-44 host tests, lint, ten asset checks and three GLB validators pass. A separate live GBA/GB/GBC API probe passes. The final full regression passed
-32 RP5 tests with 50 native handoffs and eight 500-title recreations. Actual sleep/wake, process-death,
+48 host tests, lint, 12 asset checks and four GLB validators pass. The final PS1-inclusive regression passed
+35 RP5 tests with 50 native handoffs and eight 500-title recreations. PS1 video/input/PCM/card/state,
+disc-label pixels, CUE/SBI import and backup checks pass using original diagnostics. Actual M6 sleep/wake, process-death,
 reboot recovery and the ten-minute sustained diagnostic pass. Their exact scope and results are recorded
 in [M6_PROGRESS](docs/M6_PROGRESS.md) and [TESTING](docs/TESTING.md).
+The live GBA/GB/GBC/PlayStation API probe passes. Owner BIOS-backed PS1 games, speaker output and
+longer title-specific performance remain physical checks in [PS1_PROGRESS](docs/PS1_PROGRESS.md).
 
 See [ROADMAP](docs/ROADMAP.md) for exact scope and remaining manual gates. Collection presentation
 p95 measured 16.74–16.75 ms on RP5 across three layouts; this is a bounded viewport measurement,
@@ -42,10 +51,11 @@ python tools/test_assets.py
 ```
 
 On macOS/Linux use `./gradlew` in place of `.\gradlew.bat`. The wrapper pins Gradle 8.13
-and verifies its distribution SHA-256. The CMake build fetches the **hash-pinned mGBA 0.10.5
-source**, builds the arm64 Libretro core, and packages `libmgba_libretro.so` in the APK.
-There is no separately downloaded core binary. An existing source checkout can be used with
-`"-PmgbaSource=C:/absolute/path/to/mgba-0.10.5"`.
+and verifies its distribution SHA-256. CMake fetches **hash-pinned mGBA 0.10.5 and PCSX ReARMed
+c8816799 source**, builds arm64 Libretro cores and packages `libmgba_libretro.so` and
+`libpcsx_rearmed_libretro.so`. There are no separately downloaded core binaries. Existing exact
+source checkouts can be supplied with `"-PmgbaSource=C:/absolute/path/to/mgba-0.10.5"` and
+`"-PpcsxSource=C:/absolute/path/to/pinned-pcsx"`. See ADR 0017 for the full source pin/hash.
 
 Output: `app/build/outputs/apk/debug/app-debug.apk`.
 
@@ -80,20 +90,22 @@ emulated frame and checkpoint when changed every 15 seconds during play, on paus
 and ejection. A save warning remains visible until a successful retry; sudden termination can still
 lose changes since the latest completed checkpoint. Automatic session checkpoints are separate from manual states; wake restores paused and cold launch offers Resume session.
 
-Press **Start / Folder** to import a GBA, GB or GBC directory and its subfolders through SAF. Read permissions and
+Press **Start / Folder** to import a GBA, GB, GBC or PS1 directory and its subfolders through SAF. Read permissions and
 multiple roots persist. New content hashes append; duplicates keep accepted
 labels/metadata. **Rescan** revisits saved roots without adding duplicate games. **B / Cancel scan** keeps
 completed imports. Legacy repeated assignments collapse on startup by hash; identical titles with
 different ROM content stay separate. **B / Collection → Remove selected entry** hides the game while
 keeping ROMs, saves and artwork. Rescan respects removal. **Undo last removal** restores its position
-in the current Activity session; after reopening, **X / Add .gba** restores a hidden game and its data.
-Uncompressed .gba, .gb and .gbc files are supported. Scans stop with an error at 10,000 entries or 16 levels;
+in the current Activity session; after reopening, **X / Add game** restores a hidden game and its data.
+Cartridges support .gba, .gb and .gbc. PS1 supports CUE/BIN folders and single CHD/PBP/ISO/PS-X EXE;
+BIN tracks belong to their CUE and never become separate entries. Reimport a hidden CUE through Folder.
+Scans stop with an error at 10,000 entries or 16 levels;
 invalid files are reported while valid siblings continue. Originals are never changed or deleted.
 
 Press **Y / Scrape** for the main artwork workflow. Choose This title, Choose consoles, All games,
 Choose games, or Games missing labels. A toggles selected titles; X selects all/clears. Region & language
 saves your preferred label/title region and description language. Preferences rank all alternatives;
-they do not hide options or accept choices. Console selection covers any imported GBA/GB/GBC subset; All games includes games hidden by collection filters.
+they do not hide options or accept choices. Console selection covers any imported GBA/GB/GBC/PS1 subset; All games includes games hidden by collection filters.
 
 The current title is searched first. Choose a RetroBase match, preview its preferred flat label on the
 real cartridge, then Fill missing metadata or Next. Existing label/metadata choices stay protected.
@@ -116,7 +128,8 @@ Press Select / Image for optional local PNG, JPEG or WebP import, including an a
 Preview it on the actual cartridge, toggle Fit/Crop, rotate in 90° steps, then Apply or Cancel.
 Use D-pad up/down and A in this panel; B cancels. Reset label restores the fictional study artwork.
 Original images are cached unchanged; only accepted recipes are saved. Adjacent games retain their
-own labels. Images are limited to 12 MiB and decoded off Main into 512×256 GBA or 512×448 GB/GBC label textures.
+own labels. Images are limited to 12 MiB and decoded off Main into 512×256 GBA, 512×448 GB/GBC or
+512×512 PS1 label textures. The disc's real geometry clips the print to its annulus and center hole.
 
 L3 + R3 opens the app-owned pause menu; Start + Select is an alternate configurable combination.
 Back also pauses. D-pad up/down selects menu actions; A activates and B resumes. Android gameplay
@@ -125,8 +138,9 @@ The first button of a two-button shortcut may reach the game before the second i
 
 Insertion lifts, aligns and slides the cartridge into a small physical receiving slot over 540 ms;
 ejection reverses it over 420 ms. Motion off bypasses both and snaps carousel selection. Optional
-original contact sound defaults off. Final manual art direction,
-disc media remain future increments; all three collection layouts and optional HOME registration are implemented.
+original contact sound defaults off. PS1 uses the same transition with the cartridge slot suppressed;
+final disc-loading motion and manual art direction remain open. All three collection layouts and
+optional HOME registration are implemented.
 Backgrounding saves a completed state and releases the current session. Same-Activity wake restores paused; cold launch offers Resume session in Tools or Console settings.
 
 ## M3 library controls

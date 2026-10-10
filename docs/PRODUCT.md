@@ -1,5 +1,11 @@
 # Product scope and UX
 
+The 2026-10-10 PS1 increment adds internal PlayStation gameplay and original 3D optical discs.
+CUE/BIN folder import is the owner's first workflow; CHD/PBP/ISO single files and explicit BIOS import
+are also implemented. Disc label scraping remains the primary artwork workflow and reuses existing
+review scopes. Digital controller, one memory card and single-disc operation define the initial scope;
+see PS1_PROGRESS for implemented behavior, device evidence and remaining compatibility checks.
+
 Project Cartridge is one native, offline-first console experience: physical media collection →
 insertion → internal gameplay → app-owned pause/save/load → ejection → collection. The cartridge
 is the centerpiece. Warm charcoal, quiet lighting, restrained text and controller-first navigation

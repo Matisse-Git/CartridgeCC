@@ -1,5 +1,14 @@
 # Tests and actual results
 
+PS1 increment, 2026-10-10: the source-built arm64 PCSX core, scoped disc imports and actual native
+video/audio/card/state/recreation tests run on the connected RP5. Both APKs build, 48 host tests and
+35 device regression tests pass; lint has zero errors/26 warnings, 12 asset checks and four GLB
+validators pass. The focused PS1 suite passes 3/3 in 25.173 s; full regression is 213.877 s with
+50 handoffs. See [PS1_PROGRESS](PS1_PROGRESS.md) for dated results,
+failures corrected, exact scope and reproducible `Test-Device.ps1 -Suite PS1` / `-Suite All` commands.
+Owner BIOS-backed commercial games, disc label review, PAL compatibility, controller mode/audio latency,
+and longer play remain explicit physical checks. Historical M0–M6 results below retain their dates.
+
 ## M0 host results — 2026-10-09
 
 Validated on Windows with Microsoft OpenJDK 21.0.8, Gradle 8.13, SDK 35, NDK 27.2.12479018 and

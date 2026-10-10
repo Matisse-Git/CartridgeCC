@@ -34,7 +34,7 @@ class ProviderLiveTest {
             if (jpIndex >= 0) assertEquals(exactTitle.metadata["title"]!![jpIndex], ranked.metadata["title"]!!.first())
             // Each implemented console uses its own real provider route. This retrieves only
             // metadata and image URLs; artwork remains user-selected and is never bundled.
-            for ((system, query) in listOf(GameSystem.GB to "Tetris", GameSystem.GBC to "Zelda")) {
+            for ((system, query) in listOf(GameSystem.GB to "Tetris", GameSystem.GBC to "Zelda", GameSystem.PS1 to "Crash Bandicoot")) {
                 val additional = withTimeout(60_000) { RetroBaseProvider(cache).search(query, system = system) }
                 assertTrue("No ${system.title} candidates from the public API", additional.isNotEmpty())
                 assertTrue(additional.all { it.platform == system.title })

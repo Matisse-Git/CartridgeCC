@@ -1,5 +1,25 @@
 # License audit — feasibility integration
 
+PS1 audit addition (2026-10-10): PCSX ReARMed commit `c8816799b50388e61cfe237fe2cdbb7d8175f20a`,
+archive SHA-256 `5e1b15f17d0e97225d8b2eb29a8412fb0d3b03ff242c5456d055ec2967667a83`.
+The compiled frontend, PSX core, NEON and arm64 dynarec source headers specify GPL-2.0-or-later;
+preserve the full COPYING text and corresponding source, including the original callback wrapper
+and CMake build recipe. The existing GPL-3.0-or-later combined-application release gate remains.
+No PCSX standalone frontend/libpicofe, Lightrec or bundled external core binary is used.
+
+Compiled CHD dependencies: libchdr BSD-3-Clause (also retain its MAME/Aaron Giles file notices),
+LZMA SDK 26.02 public domain, Zstandard 1.5.7 under its offered BSD-3-Clause option, and dr_flac
+0.13.3 under its offered MIT-0 option. Android system zlib is linked; public Libretro header notices
+remain in the pinned corresponding source. Added licence texts in docs/licenses are packaged by
+the existing notice sync task. Full transitive source/notice packaging still precedes public release.
+
+Primary sources: [pinned Android recipe](https://github.com/libretro/pcsx_rearmed/blob/c8816799b50388e61cfe237fe2cdbb7d8175f20a/jni/Android.mk),
+[frontend header](https://github.com/libretro/pcsx_rearmed/blob/c8816799b50388e61cfe237fe2cdbb7d8175f20a/frontend/libretro.c),
+[core documentation](https://docs.libretro.com/library/pcsx_rearmed/).
+The disc mesh, fictional print, MIPS/ISO/CHD diagnostic generator and ADPCM test tone are original.
+No commercial ROM, BIOS, logos or media are added. The owner supplies firmware through SAF;
+it is excluded from backups, repository and APK assets. Provider artwork rights remain independent.
+
 Audit date: 2026-10-09. This records selected sources and known obligations. It is not a completed
 public-release source/notice package. No commercial ROM, BIOS, copyrighted game art or branded media
 model is bundled. Runtime user-selected artwork is privately cached with provenance. Cannoli/Lemuroid,

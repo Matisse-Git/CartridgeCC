@@ -1,5 +1,10 @@
 # Architecture
 
+The PS1 increment adds explicit system-selected cores and immutable scoped disc bundles without
+changing the single-session/surface ownership strategy. See ADR 0017 and PS1_PROGRESS for the source
+pin, CUE track confinement, BIOS ownership, 27-instance bounded media pool and per-core save revisions.
+Historical M0–M6 sections below describe their original scope; PS1 details take precedence where noted.
+
 One Android module keeps the feasibility work reviewable. Packages separate pure navigation/session
 logic, input routing, file handling, renderer ownership and the emulator adapter. MainActivity owns
 Android views/lifecycle; an Android-free CollectionCoordinator owns selection, operations and handoff
