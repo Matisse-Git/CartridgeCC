@@ -72,8 +72,11 @@ class LabelStore(private val directory: File) {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, bounds)
         require(bounds.outWidth > 0 && bounds.outHeight > 0) { "The cached label is missing or invalid. Import it again." }
+        // Decode no more than the label can show: at least half again its size on both sides, never above 2048.
+        val turned = label.quarterTurns % 2 != 0
+        val wide = if (turned) bounds.outHeight else bounds.outWidth; val tall = if (turned) bounds.outWidth else bounds.outHeight
         var sample = 1
-        while (max(bounds.outWidth, bounds.outHeight) / sample > 2048) sample *= 2
+        while (max(wide, tall) / sample > 2048 || (wide / (sample * 2) >= 768 && tall / (sample * 2) >= system.labelHeight * 3 / 2)) sample *= 2
         val source = checkNotNull(BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply {
             inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888
         })) { "Cannot decode the label" }
@@ -90,12 +93,9 @@ class LabelStore(private val directory: File) {
                 rotate(label.quarterTurns * 90f)
                 drawBitmap(source, -source.width / 2f, -source.height / 2f, Paint(Paint.FILTER_BITMAP_FLAG))
             }
-            val pixels = IntArray(target.width * target.height)
-            target.getPixels(pixels, 0, target.width, 0, 0, target.width, target.height)
-            val bytes = ByteBuffer.allocateDirect(pixels.size * 4)
-            pixels.forEach { pixel ->
-                bytes.put((pixel shr 16).toByte()).put((pixel shr 8).toByte()).put(pixel.toByte()).put(255.toByte())
-            }
+            // The canvas was filled before drawing, so every pixel is opaque and ARGB_8888 memory is already R, G, B, A.
+            val bytes = ByteBuffer.allocateDirect(target.byteCount)
+            target.copyPixelsToBuffer(bytes)
             bytes.flip()
             return LabelPixels(label.textureKey(system), target.width, target.height, bytes)
         } finally { source.recycle(); target.recycle() }

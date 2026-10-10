@@ -89,7 +89,7 @@ class MediaTemplateTest(unittest.TestCase):
         return [(name, Glb(name), expected) for name, expected in TEMPLATES.items()]
 
     def test_buffers_and_indices_are_valid(self):
-        for name in list(TEMPLATES) + ['gba_receiver.glb']:
+        for name in TEMPLATES:
             with self.subTest(name):
                 glb = Glb(name)
                 for view in glb.doc['bufferViews']:
@@ -199,24 +199,7 @@ class MediaTemplateTest(unittest.TestCase):
         self.assertAlmostEqual(.0596, max(printed), delta=.0003)
 
 
-class ReceiverAndStudioTest(unittest.TestCase):
-    def test_receiver_is_real_geometry_that_admits_the_cartridge(self):
-        glb = Glb('gba_receiver.glb')
-        self.assertEqual('2.0', glb.doc['asset']['version'])
-        self.assertEqual(2, len(glb.doc['materials']))
-        self.assertLess(len(glb.raw), 128 * 1024)
-        primitive = glb.doc['meshes'][0]['primitives'][0]
-        positions, indices = glb.attribute(primitive, 'POSITION'), glb.values(primitive['indices'])
-        sides = []
-        for i in range(0, len(indices), 3):
-            triangle = [positions[n] for n in indices[i:i + 3]]
-            if min(p[2] for p in triangle) < 0 < max(p[2] for p in triangle) and all(p[0] > .025 for p in triangle):
-                sides.extend(p[0] for p in triangle)
-        # Measured clearance on both sides of the widest cartridge that descends into it.
-        self.assertGreater(min(sides) * 2, Glb('gba_cartridge.glb').size()[0] + .001)
-        self.assertGreater(min(sides) * 2, Glb('gb_cartridge.glb').size()[0] * .62 + .001)  # Shown at CartridgeSurface's tall scale.
-        self.assertEqual(0, glb.doc['materials'][1]['pbrMetallicRoughness']['metallicFactor'])
-
+class StudioTest(unittest.TestCase):
     def test_studio_has_prefiltered_cubemap_and_spherical_harmonics(self):
         raw = (MODELS.parent / 'lighting/studio_ibl.ktx').read_bytes()
         self.assertEqual(b'\xabKTX 11\xbb\r\n\x1a\n', raw[:12])

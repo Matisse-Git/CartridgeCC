@@ -21,6 +21,13 @@ so browsing a shelf of more than three games no longer re-labels what is in view
 [ADR 0019](docs/decisions/0019-imported-media-and-stable-pool.md); results are in
 [TESTING](docs/TESTING.md).
 
+**Console feel (2026-10-10, [ADR 0020](docs/decisions/0020-closed-screen-and-settled-focus.md)):**
+browsing no longer re-reads the library on every step, which was what made a large collection feel
+like 30 frames a second; games start and end behind a closed screen with three transitions to choose
+from; cartridges no longer use a receiving slot; a shelf opens on its first game; the right stick
+turns the focused object; a focused row is always visibly focused. Settings › Advanced › Show frame
+rate prints the library's real frame rate beside the clock.
+
 **Verified:** M0 passed on the physical RP5. The owner confirmed physical controller navigation,
 gameplay/audio, pause/eject, save/load, label thumbnails/apply/persistence and imports. Both APKs,
 48 host tests, lint, 12 asset checks and four GLB validators pass. The final PS1-inclusive regression passed
@@ -43,7 +50,7 @@ not a claim about every library/game or long-term battery use.
 - First build requires access to Google Maven, Maven Central, JitPack, and GitHub codeload.
   After dependencies and the source archive are cached, the application runs offline.
 - Physical arm64 Android device with OpenGL ES 3.0; RP5's Android 13 is the target.
-- Python 3.10+ is optional for the receiving-slot, lighting and sound generators and for structural
+- Python 3.10+ is optional for the lighting and sound generators and for structural
   validation. Blender 4.2+ is needed only to re-convert the media models
   ([ASSET_PIPELINE](docs/ASSET_PIPELINE.md)); an ordinary build uses the packaged GLBs.
 
@@ -99,11 +106,12 @@ and the read grant is persisted; no broad storage permission is requested.
 
 | Button | Does |
 |---|---|
-| D-pad / stick | Browse the shelf |
+| D-pad / left stick | Browse the shelf |
+| Right stick | Turn the focused object to look at it; it settles back when you let go |
 | A | Play: the object inserts and the game starts |
 | X | Details, beside the object |
 | Y | Favourite |
-| L1 / R1 | Previous / next shelf: each console with games, then All Games, Favorites, Recently Played |
+| L1 / R1 | Previous / next shelf: each console with games, then All Games, Favorites, Recently Played. A shelf always opens on its first game |
 | START | Menu: Add Games, Search, Artwork & Info, Refresh Library, Settings |
 | B | Back; from the library it clears a search |
 
@@ -180,9 +188,12 @@ whole image or fill, rotate, then use or cancel.
 
 ### Motion and sound
 
-Insertion lifts, aligns and slides the cartridge into its receiving slot over 540 ms; ejection
-reverses it over 420 ms. Discs use the same transition without the slot. Settings › Appearance ›
-Motion › Reduced replaces every transition with a cut. The contact sound is off by default
+Starting a game lifts the cartridge or disc, turns it to face you and lets it leave through the
+bottom of the screen over 540 ms. The screen then closes to black, and opens again only when the
+game has a picture, so neither the hand-off nor a console's blank first frames are seen; no loading
+text is shown. Leaving a game closes the screen the same way and opens it on the library, where the
+object rises back over 420 ms. Settings › Appearance › Game start chooses how the screen closes:
+Fade, Iris or Shutter. Settings › Appearance › Motion › Reduced replaces every transition with a cut. The contact sound is off by default
 (Settings › Appearance › Sound). Backgrounding saves a completed state and releases the session.
 
 ## Engineering record

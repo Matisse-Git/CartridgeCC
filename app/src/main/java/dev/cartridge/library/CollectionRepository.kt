@@ -25,6 +25,7 @@ data class LibraryFacts(val cachedRom: Boolean, val sourceStatus: String, val ba
 
 /** ROM identity, persisted choices and Android storage/rendering remain separate. */
 interface CollectionRepository {
+    /** The collection whenever its games or query change. A selection-only write need not be announced. */
     val snapshots: Flow<LibrarySnapshot>
     suspend fun initialize(): LibrarySnapshot
     suspend fun assign(slot: Int, game: LibraryGame)

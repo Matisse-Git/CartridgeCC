@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const validator = require('../.tools/gltf-validation/node_modules/gltf-validator');
 (async () => {
-    for (const name of ['gba_cartridge.glb', 'gba_receiver.glb', 'gb_cartridge.glb', 'ps1_disc.glb']) {
+    for (const name of ['gba_cartridge.glb', 'gb_cartridge.glb', 'ps1_disc.glb']) {
         const file = path.join(__dirname, '../app/src/main/assets/models', name);
         const report = await validator.validateBytes(new Uint8Array(fs.readFileSync(file)), {uri: name});
         fs.writeFileSync(path.join(__dirname, '../.tools', name + '.validation.json'), JSON.stringify(report, null, 2));

@@ -8,6 +8,7 @@ import dev.cartridge.domain.GameSystem
 import dev.cartridge.storage.RomImporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -63,7 +64,11 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
         if (existing.isEmpty()) dao.query(backup.state.sort, backup.state.favoritesOnly, backup.state.search)
         backup.games.count { it.id !in existing }
     }
-    override val snapshots = dao.observe().map(::snapshot).distinctUntilChanged()
+    // Mapping parses every game's stored JSON, so it never runs on the main thread. A write that only moves
+    // the selection is not announced: its writer already holds it, and re-reading a large library for every
+    // browse step costs frames. initialize() always returns the stored selection.
+    override val snapshots = dao.observe().map(::snapshot)
+        .distinctUntilChanged { old, new -> old.slots == new.slots && old.query == new.query }.flowOn(Dispatchers.Default)
     override suspend fun initialize(): LibrarySnapshot {
         database.withTransaction {
             dao.insertState(CollectionRecord())
@@ -79,7 +84,8 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
             if (previous != normalized) replaceSlots(ids, focus)
             else if (focus != selected) dao.select(focus)
         }
-        return snapshot(dao.read())
+        val rows = dao.read()
+        return withContext(Dispatchers.Default) { snapshot(rows) }
     }
     override suspend fun assign(slot: Int, game: LibraryGame) {
         require(slot >= 0)

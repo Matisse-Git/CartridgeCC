@@ -32,6 +32,8 @@ class ControllerRouter(
     private val menu: () -> Unit = {},
     private val cancelOperation: () -> Unit = {},
     private val navigateLibrary: ((Int, Int) -> Unit)? = null,
+    /** Right stick outside a game, -1..1 per axis with the dead zone removed. Zero when it rests or input is reset. */
+    private val inspect: (Float, Float) -> Unit = { _, _ -> },
 ) {
     var mode = InputMode.Library
         set(value) { if (field != value) reset(); field = value }
@@ -119,6 +121,14 @@ class ControllerRouter(
             fun digital(value: Float) = if (abs(value) < deadZone) 0f else if (value > 0) 1f else -1f
             gameMotion(digital(if (hatX != 0f) hatX else x), digital(if (hatY != 0f) hatY else y))
         } else {
+            // The right stick is AXIS_Z / AXIS_RZ on the Retroid Pocket 5 and on standard Android gamepads.
+            // AXIS_RX / AXIS_RY are not read: some pads report their triggers there.
+            val rightX = event.getAxisValue(MotionEvent.AXIS_Z); val rightY = event.getAxisValue(MotionEvent.AXIS_RZ)
+            val reach = kotlin.math.hypot(rightX, rightY)
+            if (mode == InputMode.Library || mode == InputMode.Menu) {
+                if (reach < deadZone) inspect(0f, 0f)
+                else ((reach - deadZone) / (1f - deadZone)).coerceAtMost(1f).let { travel -> inspect(rightX / reach * travel, rightY / reach * travel) }
+            }
             axisX = if (hatX != 0f) hatX else x; axisY = if (hatY != 0f) hatY else y
             // A neutral event can arrive between frame polls. Release immediately so the next
             // stick/key press starts a fresh repeat, even when it follows in the same frame.
@@ -144,5 +154,5 @@ class ControllerRouter(
             if (navigateLibrary != null) navigateLibrary.invoke(dx, dy) else if (dx != 0) navigate(dx)
         }
     }
-    fun reset() { held.clear(); axisX = 0f; axisY = 0f; horizontalRepeat.reset(); verticalRepeat.reset(); shortcutLatched = false }
+    fun reset() { held.clear(); axisX = 0f; axisY = 0f; horizontalRepeat.reset(); verticalRepeat.reset(); shortcutLatched = false; inspect(0f, 0f) }
 }

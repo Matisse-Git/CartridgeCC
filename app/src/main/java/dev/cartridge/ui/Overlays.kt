@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
@@ -173,7 +174,9 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
 }
 
 @Composable private fun BoxScope.PauseMenu(page: Page, focused: MenuRow?, shell: ConsoleShell, device: DeviceStatus, confirm: String, back: String) {
-    Scrim()
+    // The menu's side is close to solid, so the focused row reads the same over a dark game and a bright one;
+    // the rest of the frozen frame stays visible through the ordinary scrim.
+    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Ink.Stage.copy(alpha = .95f), .40f to Ink.Stage.copy(alpha = .95f), .64f to Ink.Scrim, 1f to Ink.Scrim)))
     if (shell.showStatus) StatusCluster(device, showBattery = true, showPercent = shell.showPercent,
         modifier = Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Space.Edge, vertical = Space.L))
     Column(Modifier.align(Alignment.CenterStart).fillMaxHeight().width(330.dp).windowInsetsPadding(WindowInsets.safeDrawing)

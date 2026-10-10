@@ -350,7 +350,7 @@ def gba_cartridge(work):
     folder = SOURCES / 'gb'
     archive = folder / 'source/GBA_SP_Cartridge.zip'
     obj = import_mesh(extract(archive, '.fbx', work / 'gba.fbx'))
-    centre_and_size(obj, 0, .060)  # The template width the receiving slot was measured for.
+    centre_and_size(obj, 0, .060)  # The template width the on-screen scales were tuned for.
     mesh = obj.data
     # Front faces layered by depth (0.02 mm apart or more); the label floor is the one 43 x 22.5 mm sheet among them.
     layers = []

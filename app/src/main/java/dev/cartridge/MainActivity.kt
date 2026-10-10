@@ -2,12 +2,16 @@ package dev.cartridge
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.graphics.Rect
 import android.hardware.input.InputManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.PixelCopy
 import android.view.Choreographer
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
@@ -80,6 +84,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
     private lateinit var labelStore: LabelStore
     private lateinit var mediaSound: MediaSound
     private var cartridgeSurface: CartridgeSurface? = null
+    /** Labels decode a few at a time: enough to fill a grid row promptly, bounded so large images cannot pile up in memory. */
+    private val labelDecoding = Dispatchers.IO.limitedParallelism(3)
     private var emulatorHost: EmulatorHost? = null
     /** A shelf change and the direction it came from, applied by the stage once that shelf is what it draws. */
     private var arrival by mutableStateOf(Triple(0, "", 0))
@@ -130,6 +136,13 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         coordinator = CollectionCoordinator(engine, repository, object : RendererHandoff {
             override fun releaseLibrary() { cartridgeSurface?.close(); cartridgeSurface = null }
             override fun releaseEmulator() { emulatorHost?.release(); emulatorHost = null }
+            // A core's first frames are often a blank display: the GBA shows white until a game turns its screen
+            // on. The curtain waits for a picture, but not for long, because some games do open on an empty screen.
+            override suspend fun awaitPicture() {
+                val began = SystemClock.uptimeMillis()
+                val seen = withTimeoutOrNull(PICTURE_WAIT_MS) { while (!pictureShown()) delay(50) } != null
+                android.util.Log.i("CartridgeLaunch", "Game picture ${if (seen) "seen" else "not seen"} after ${SystemClock.uptimeMillis() - began} ms")
+            }
         }, lifecycleScope, preferences.getBoolean("reducedMotion", false), preferences.getBoolean("alternateShortcut", false),
             layout = runCatching { CollectionLayout.valueOf(preferences.getString("layout", "Horizontal")!!) }.getOrDefault(CollectionLayout.Horizontal),
             onLayoutChanged = { layout -> preferences.edit { putString("layout", layout.name) }; if (::input.isInitialized) input.reset() }, sessionStore = sessionStore,
@@ -144,7 +157,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         shell.pendingLocate = savedInstanceState?.getString("recoveryId")
         input = ControllerRouter(navigate = shell::navigate, select = shell::select, back = shell::back, pause = coordinator::pause,
             gameKey = engine::key, gameMotion = engine::motion, adjust = shell::adjust, alternate = shell::alternate, secondary = shell::secondary,
-            shoulder = shell::shoulder, menu = shell::menu, cancelOperation = coordinator::cancelScan, navigateLibrary = coordinator::navigateSpatial)
+            shoulder = shell::shoulder, menu = shell::menu, cancelOperation = coordinator::cancelScan, navigateLibrary = coordinator::navigateSpatial,
+            inspect = ::inspect)
         inputChanged()
         getSystemService(InputManager::class.java).registerInputDeviceListener(this, null)
         lifecycleScope.launch {
@@ -189,6 +203,25 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
     override fun persistFolder(uri: Uri) = persistDirectoryPermission(uri)
     override fun releaseFolder(uri: Uri) = contentResolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
     override fun stageArrive(direction: Int) { arrival = Triple(arrival.first + 1, coordinator.state.value.shelf.key, direction) }
+
+    /** The right stick turns the focused object wherever that object is the subject: on its shelf and beside its details. */
+    private fun inspect(x: Float, y: Float) {
+        val subject = ::shell.isInitialized && (shell.top == null || shell.top == Destination.Details) && !scraper.state.value.visible
+        cartridgeSurface?.spin(if (subject) x else 0f, if (subject) y else 0f)
+    }
+    /** True once the middle of the emulator's presented frame is something other than a blank white or black display. */
+    private suspend fun pictureShown(): Boolean {
+        val view = engine.surface.value ?: return false
+        if (view.width < 8 || view.height < 8 || !view.isAttachedToWindow) return false
+        val sample = androidx.core.graphics.createBitmap(32, 18)
+        try {
+            val copied = CompletableDeferred<Int>()
+            // The middle only: bars beside a 3:2 or 4:3 picture would make a blank display look like content.
+            PixelCopy.request(view, Rect(view.width / 4, view.height / 5, view.width * 3 / 4, view.height * 4 / 5), sample, { copied.complete(it) }, Handler(Looper.getMainLooper()))
+            if (copied.await() != PixelCopy.SUCCESS) return false
+            return !dev.cartridge.domain.blankDisplay(IntArray(32 * 18).also { sample.getPixels(it, 0, 32, 0, 0, 32, 18) })
+        } finally { sample.recycle() }
+    }
 
     @SuppressLint("RestrictedApi") // Public Activity hook avoids Compose/emulator duplicate input delivery.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean =
@@ -241,10 +274,11 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                     // No chrome rests on a running game. The top corner and Android's Back both open the pause menu for touch.
                     if (status.state == SessionState.Running) Box(Modifier.align(Alignment.TopEnd).size(72.dp).tap("pause") { coordinator.pause() })
                     if (status.state == SessionState.Paused) frozenFrame?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
-                    if (status.state == SessionState.Preparing || state.screen == CollectionScreen.Handoff) Starting(state.selectedGame?.title)
                 }
                 ShellOverlays(shell, state, status, device, confirm, back)
                 if (scrape.visible) ScrapePanel(scrape, scraper, confirm, back)
+                // Over everything the stage and its menus draw; only notices sit above it.
+                Curtain(state.curtain, shell.transition)
                 Notices(state.message.takeIf { state.launchFailure == null && shell.import == null },
                     listOfNotNull(status.saveWarning, state.historyWarning).joinToString("\n").ifEmpty { null },
                     beside = when (shell.top) {
@@ -277,38 +311,44 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         val keys = specs.map { it.key }
         LaunchedEffect(keys) {
             val focus = state.selection.index - windowStart
-            // Only labels new to the window wait for IO, nearest the focus first. A finished decode is kept
-            // even if the window has moved on meanwhile, so fast browsing never repeats the work.
-            for (spec in specs.withIndex().sortedBy { kotlin.math.abs(it.index - focus) }.map { it.value }) {
-                if (spec.key in cache) continue
-                ensureActive()
-                val pixels = withContext(Dispatchers.IO + NonCancellable) {
-                    runCatching { spec.label?.let { labelStore.decode(it, spec.system) } ?: TypesetLabel.render(spec.title, spec.system) }
-                }.getOrElse { failure ->
-                    coordinator.notify(failure.message ?: "Cannot display the label")
-                    // The object still needs a face: its title in type, under the key it was asked for.
-                    withContext(Dispatchers.IO + NonCancellable) { runCatching { TypesetLabel.render(spec.title, spec.system).copy(key = spec.key) }.getOrNull() }
-                }
-                if (pixels == null) continue
-                cache[spec.key] = pixels
+            val needed = keys.toSet()
+            fun publish() {
+                while (cache.size > state.layout.windowCount * 2) cache.keys.firstOrNull { it !in needed }?.let { cache.remove(it) } ?: break
                 decoded = cache.toMap()
             }
-            val needed = keys.toSet()
-            while (cache.size > state.layout.windowCount * 2) cache.keys.firstOrNull { it !in needed }?.let { cache.remove(it) } ?: break
-            decoded = cache.toMap()
+            // Only labels new to the window wait for IO: nearest the focus first, a few at a time. A decode that
+            // has started is kept even if the window has moved on, so fast browsing never repeats the work; one
+            // still queued when the window moves on is dropped.
+            specs.withIndex().sortedBy { kotlin.math.abs(it.index - focus) }.map { it.value }.filter { it.key !in cache }.distinctBy { it.key }.forEach { spec ->
+                launch {
+                    val asked = coroutineContext.job
+                    val pixels = withContext(labelDecoding + NonCancellable) {
+                        if (!asked.isActive) null else runCatching { spec.label?.let { labelStore.decode(it, spec.system) } ?: TypesetLabel.render(spec.title, spec.system) }
+                    }?.getOrElse { failure ->
+                        coordinator.notify(failure.message ?: "Cannot display the label")
+                        // The object still needs a face: its title in type, under the key it was asked for.
+                        withContext(labelDecoding + NonCancellable) { runCatching { TypesetLabel.render(spec.title, spec.system).copy(key = spec.key) }.getOrNull() }
+                    } ?: return@launch
+                    cache[spec.key] = pixels
+                    publish()
+                }
+            }
+            publish()
         }
         val motion = remember { Animatable(if (state.screen == CollectionScreen.Ejecting) 1f else 0f) }
-        LaunchedEffect(state.screen, state.reducedMotion) {
+        LaunchedEffect(state.screen, state.reducedMotion, state.curtain) {
+            // After a game the stage is rebuilt behind the closed screen; the object comes back up once it opens.
+            if (state.curtain && state.screen != CollectionScreen.Inserting) return@LaunchedEffect
             val target = if (state.screen == CollectionScreen.Inserting && !state.reducedMotion) 1f else 0f
             if (state.reducedMotion) motion.snapTo(target)
-            else motion.animateTo(target, tween(if (state.screen == CollectionScreen.Ejecting) MediaMotion.EJECT_MS else MediaMotion.INSERT_MS, easing = LinearEasing))
+            else motion.animateTo(target, tween(if (target == 0f) MediaMotion.EJECT_MS else MediaMotion.INSERT_MS, easing = LinearEasing))
         }
         var applied by remember { mutableIntStateOf(arrival.first) }
         AndroidView(modifier = Modifier.fillMaxSize(), factory = {
             CartridgeSurface(it, bytes, state.selection.index,
                 onReady = { coordinator.rendererReady(state.viewportGeneration) }, onReleased = {},
                 onLabelsReady = { first, ready -> coordinator.labelsReady(state.viewportGeneration, ready, first) }, onLabelError = coordinator::notify
-            ).also { renderer -> surface = renderer; cartridgeSurface = renderer }
+            ).also { renderer -> surface = renderer; cartridgeSurface = renderer; renderer.onFrameRate = { shell.frameRate = it } }
         }, update = {
             it.layout = state.layout; it.selection = state.selection.index
             // A search with no result shows no object; an empty library still shows the one that welcomes you.
@@ -366,6 +406,9 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
     override fun onInputDeviceChanged(deviceId: Int) = Unit
     override fun onInputDeviceRemoved(deviceId: Int) { input.reset(); coordinator.pause() }
 }
+
+/** The longest the screen stays closed over a running game that has not drawn anything yet. */
+private const val PICTURE_WAIT_MS = 2_000L
 
 @SuppressLint("ViewConstructor")
 private class EmulatorHost(view: GLRetroView) : FrameLayout(view.context) {

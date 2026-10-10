@@ -35,7 +35,7 @@
   enrichment; persisted exclusions must survive Rescan. Test legacy migrations and restore/Undo.
 - Restore battery data before the first emulated frame. SaveBridge may access only the already-loaded
   core on its GL thread under the session mutex. Keep failed writes visible and previous saves intact.
-- M6 console environment follows the verified M5 GB/GBC increment. Keep media/platform identities explicit; audit and test each embedded core/media increment. Keep M2/M3 physical validation open. Generate original lighting/audio and the receiving slot from versioned source (media templates: see the ADR 0019 note below); keep
+- M6 console environment follows the verified M5 GB/GBC increment. Keep media/platform identities explicit; audit and test each embedded core/media increment. Keep M2/M3 physical validation open. Generate original lighting/audio from versioned source (media templates: see the ADR 0019 note below); keep
   cmgen/runtime versions matched and KTX light/texture ownership explicit. Preserve the named label
   primitive/UV contract. Measure SurfaceView presentation separately from CPU/Compose frame callbacks.
 - Persist query preferences separately from canonical slots; sorting/filtering must retain focused game
@@ -64,8 +64,8 @@
   every button's meaning; `CollectionCoordinator` owns sessions and the shelf projection and must not
   learn about menus again. Rows are data addressed by id — never add behaviour by list position. A new
   action goes in exactly one place; a new setting needs a real effect, a stated scope and a device check
-  that reads it back. Build screens only from `ui/` tokens and components. Shelves and layouts must
-  keep the focused game's identity. Opaque pages pause Filament; sheets about the focused object do
+  that reads it back. Build screens only from `ui/` tokens and components. Layouts must
+  keep the focused game's identity; a shelf the player turns to opens on its first game (ADR 0020). Opaque pages pause Filament; sheets about the focused object do
   not dim it. Do not show a capability the adapter lacks (multi-disc, rewind, analog pads).
   Re-run the UX tour (`tools/Test-Device.ps1 -Suite Tour`) and look at its screenshots after any
   visual change; compiled is not seen.
@@ -82,3 +82,11 @@
   (`CollectionLayout.slot`): stage labels by key and owner, never by window position, and never draw
   an object with another game's label or the template's. Re-run `BrowseStabilityTest`
   (`-Suite Browse`) after any renderer, window or label change.
+
+- The stage changes hands only behind the closed screen (ADR 0020): close it before a surface is
+  released, open it only on a library that has drawn or a game that shows a picture, and show no
+  loading text. Keep input locked while it is closed. Never write the selection per browse step, map
+  the library on Main, or let a selection-only write re-announce the library; measure with
+  `LibraryPacingTest` (`-Suite Pacing`, and `-e games 3000`) before blaming the GPU. The right stick
+  is `AXIS_Z`/`AXIS_RZ` on the RP5 and belongs to the interface outside gameplay only. A focused row
+  must look focused whatever is behind it and whether or not it can be used.

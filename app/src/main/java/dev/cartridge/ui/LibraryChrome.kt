@@ -32,7 +32,6 @@ import dev.cartridge.library.Shelf
 import dev.cartridge.session.CollectionState
 import dev.cartridge.shell.ConsoleShell
 import dev.cartridge.shell.plural
-import kotlinx.coroutines.delay
 
 /** A touch target with no ripple: on this surface the object or the label is the feedback. */
 internal fun Modifier.tap(tag: String, enabled: Boolean = true, action: () -> Unit) =
@@ -88,6 +87,7 @@ internal fun Modifier.tap(tag: String, enabled: Boolean = true, action: () -> Un
         }
         Spacer(Modifier.weight(1f))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.L)) {
+            if (shell.showFrameRate && shell.frameRate > 0) Txt("${shell.frameRate} fps", Type.Label, Ink.Faint, Modifier.testTag("frame-rate"), lines = 1)
             if (shell.showStatus) StatusCluster(device, showBattery = true, showPercent = shell.showPercent)
             Canvas(Modifier.size(28.dp).tap("system-menu", state.loaded) { shell.openMenu() }.semantics { contentDescription = "Menu" }) {
                 val x0 = size.width * .22f; val x1 = size.width * .78f
@@ -132,6 +132,7 @@ internal fun Modifier.tap(tag: String, enabled: Boolean = true, action: () -> Un
                 add(Hint(when (state.layout) { CollectionLayout.Horizontal -> "◀ ▶"; CollectionLayout.Vertical -> "▲ ▼"; CollectionLayout.Grid -> "✥" }, "Browse"))
                 add(Hint(confirm, "Play"))
                 add(Hint("X", "Details"))
+                add(Hint("RS", "Turn"))
                 if (state.searching) add(Hint(back, "Clear search", "back", shell::back)) else if (state.shelves.size > 1) add(Hint("L1 R1", "Console"))
                 add(Hint("START", "Menu"))
             }
@@ -160,17 +161,6 @@ internal fun Modifier.tap(tag: String, enabled: Boolean = true, action: () -> Un
             Txt("Add your games", Type.Heading, Ink.Stage)
         }
         Txt("Game Boy  ·  Game Boy Color  ·  Game Boy Advance  ·  PlayStation", Type.Label, Ink.Faint, Modifier.padding(top = Space.L))
-    }
-}
-
-/** Shown only if a game takes noticeably long to produce its first frame; a fast start shows nothing. */
-@Composable fun BoxScope.Starting(title: String?) {
-    var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { delay(350); visible = true }
-    val alpha by animateFloatAsState(if (visible) 1f else 0f, LocalMotion.current.fade(), label = "starting")
-    Column(Modifier.align(Alignment.Center).alpha(alpha), horizontalAlignment = Alignment.CenterHorizontally) {
-        Txt(title ?: "Starting", Type.Heading, Ink.Soft, lines = 1)
-        ProgressLine(null, Modifier.padding(top = Space.M).width(120.dp))
     }
 }
 

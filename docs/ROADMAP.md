@@ -1,5 +1,12 @@
 # Roadmap and acceptance gates
 
+Console feel (2026-10-10, ADR 0020): browsing no longer re-reads the library per step (60 fps held
+with 3,000 games on the RP5, where 800 dropped frames before); games start and end behind a closed
+screen with Fade, Iris or Shutter and no loading text; the receiving slot is gone; a shelf opens on
+its first game; the right stick turns the focused object; focus is always visible. Host checks and
+the 43-test RP5 regression pass (TESTING). Left for the owner's hands: the real library with Show
+frame rate on, a commercial game's opening frames, and the feel of the stick.
+
 Media models and browsing (2026-10-10, ADR 0019): the cartridge, tall cartridge and disc are now
 converted from three models the owner downloaded, and a game keeps one pooled 3D object while it
 is near the screen, which removed the label flicker on shelves of more than three games. No

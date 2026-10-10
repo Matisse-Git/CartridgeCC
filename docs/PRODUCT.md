@@ -23,6 +23,13 @@ Browsing a shelf longer than the screen no longer re-labels the objects in view;
 object and an object never appears with another game's label. See ADR 0019 and ASSET_PIPELINE.
 Statements below that the bundled media are original or unbranded describe the earlier templates.
 
+**2026-10-10 — console feel (ADR 0020).** A game starts and ends behind a closed screen: the object
+leaves through the bottom of the screen for cartridges and discs alike, the screen closes with the
+owner's choice of Fade, Iris or Shutter, and opens only on a real picture. No loading title is
+shown for any console. A shelf reached with L1/R1 opens on its first game. The right stick turns
+the focused object. Browsing a large library no longer stutters. Statements below about a receiving
+slot, a loading title, or a shelf remembering its own game describe earlier behaviour.
+
 Project Cartridge is one native, offline-first console experience: physical media collection →
 insertion → internal gameplay → app-owned pause/save/load → ejection → collection. The cartridge
 is the centerpiece. Warm charcoal, quiet lighting, restrained text and controller-first navigation

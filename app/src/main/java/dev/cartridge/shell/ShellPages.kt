@@ -3,6 +3,7 @@ package dev.cartridge.shell
 import android.text.format.DateUtils
 import dev.cartridge.domain.CollectionLayout
 import dev.cartridge.domain.GameSystem
+import dev.cartridge.domain.LaunchTransition
 import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.EngineStatus
 import dev.cartridge.environment.CoreFamily
@@ -266,6 +267,10 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
                 adjust = { delta -> setLayout(CollectionLayout.entries.step(state.layout, delta)) }),
             MenuRow("motion", "Motion", RowKind.Choice, value = if (state.reducedMotion) "Reduced" else "Full", enabled = !state.busy, tag = "motion-setting",
                 note = "Reduced removes movement between games and during insertion.", adjust = { setReducedMotion(!state.reducedMotion) }),
+            MenuRow("transition", "Game start", RowKind.Choice, value = if (state.reducedMotion) "Cut" else transition.title, enabled = !state.reducedMotion, tag = "settings-transition",
+                note = if (state.reducedMotion) "With reduced motion the screen closes and opens without animation."
+                    else "How the screen closes when a game starts, and opens once the game has a picture.",
+                adjust = { delta -> changeTransition(LaunchTransition.entries.step(transition, delta)) }),
             MenuRow("accent", "Accent colour", RowKind.Choice, value = accent.title, tag = "settings-accent", adjust = { delta -> changeAccent(Accent.entries.step(accent, delta)) }),
             MenuRow("hints", "Button hints", RowKind.Choice, value = hints.title, tag = "settings-hints", adjust = { delta -> changeHints(HintMode.entries.step(hints, delta)) }),
             header("Status"),
@@ -300,6 +305,7 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
         SettingsCategory.Advanced -> listOf(
             MenuRow("verify", "Check every game file", note = "Re-reads each game to confirm nothing changed. Slow for large libraries.",
                 enabled = ready && roots.isNotEmpty(), tag = "settings-verify") { refreshLibrary(verify = true) },
+            toggle("framerate", "Show frame rate", showFrameRate, note = "Frames the library drew in the last second, beside the clock.") { changeShowFrameRate(it) },
             MenuRow("reset", "Reset settings", RowKind.Danger, note = "Appearance, controls and gameplay return to defaults. Games, saves and folders are not affected.",
                 enabled = !state.busy, tag = "settings-reset") { resetSettings() })
     }

@@ -52,10 +52,9 @@ object TypesetLabel {
                 canvas.drawRect(38f, height - 52f, width - 38f, height - 50.5f, Paint().apply { color = RULE })
                 canvas.drawText(system.title.uppercase(), 38f, height - 24f, small)
             }
-            val pixels = IntArray(width * height)
-            bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-            val bytes = ByteBuffer.allocateDirect(pixels.size * 4)
-            pixels.forEach { pixel -> bytes.put(Color.red(pixel).toByte()).put(Color.green(pixel).toByte()).put(Color.blue(pixel).toByte()).put(255.toByte()) }
+            // Opaque paper under everything: ARGB_8888 memory is already R, G, B, A.
+            val bytes = ByteBuffer.allocateDirect(bitmap.byteCount)
+            bitmap.copyPixelsToBuffer(bytes)
             bytes.flip()
             return LabelPixels(key(title, system), width, height, bytes)
         } finally { bitmap.recycle() }

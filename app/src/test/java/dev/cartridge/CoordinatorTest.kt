@@ -86,8 +86,52 @@ class CoordinatorTest {
     }
     private class Surfaces : RendererHandoff {
         var libraryReleases = 0; var emulatorReleases = 0
+        /** When set, the game stays blank until it completes. */
+        var picture: CompletableDeferred<Unit>? = null
         override fun releaseLibrary() { libraryReleases++ }
         override fun releaseEmulator() { emulatorReleases++ }
+        override suspend fun awaitPicture() { picture?.await() }
+    }
+    @Test fun theScreenClosesAfterInsertionAndOpensOnlyOnceTheGameHasAPicture() = runTest {
+        val engine = Engine(); val surfaces = Surfaces().apply { picture = CompletableDeferred() }
+        val coordinator = CollectionCoordinator(engine, Library(), surfaces, backgroundScope)
+        runCurrent(); coordinator.rendererReady(0)
+        coordinator.insert(); runCurrent()
+        assertEquals(CollectionScreen.Inserting, coordinator.state.value.screen); assertFalse(coordinator.state.value.curtain)
+        advanceTimeBy(dev.cartridge.domain.MediaMotion.INSERT_MS.toLong()); runCurrent()
+        // The object has gone; the screen closes over a stage that is still whole.
+        assertTrue(coordinator.state.value.curtain); assertEquals(CollectionScreen.Inserting, coordinator.state.value.screen)
+        assertEquals(0, surfaces.libraryReleases); assertEquals(0, engine.prepares)
+        advanceTimeBy(dev.cartridge.domain.MediaMotion.CURTAIN_MS.toLong()); runCurrent()
+        assertEquals(1, surfaces.libraryReleases); assertEquals(CollectionScreen.Emulator, coordinator.state.value.screen)
+        // Running, but nothing drawn yet: still closed, and still not the player's to control.
+        assertEquals(SessionState.Running, engine.status.value.state)
+        assertTrue(coordinator.state.value.curtain); assertTrue(coordinator.state.value.busy)
+        surfaces.picture!!.complete(Unit); runCurrent()
+        assertFalse(coordinator.state.value.curtain); assertFalse(coordinator.state.value.busy)
+        // Leaving closes it again before the game is taken down, and the rebuilt library opens it.
+        coordinator.pause(); runCurrent(); coordinator.menuAction(3); runCurrent()
+        assertTrue(coordinator.state.value.curtain); assertEquals(0, surfaces.emulatorReleases); assertEquals(CollectionScreen.Emulator, coordinator.state.value.screen)
+        advanceTimeBy(dev.cartridge.domain.MediaMotion.CURTAIN_MS.toLong()); runCurrent()
+        assertEquals(1, surfaces.emulatorReleases); assertEquals(CollectionScreen.Ejecting, coordinator.state.value.screen)
+        assertTrue(coordinator.state.value.curtain); assertFalse(coordinator.state.value.rendererReady)
+        coordinator.rendererReady(0); assertTrue("A stale stage must not open the screen", coordinator.state.value.curtain)
+        coordinator.rendererReady(coordinator.state.value.viewportGeneration)
+        assertFalse(coordinator.state.value.curtain); assertTrue(coordinator.state.value.rendererReady)
+        advanceTimeBy(dev.cartridge.domain.MediaMotion.EJECT_MS.toLong()); runCurrent()
+        assertEquals(CollectionScreen.Library, coordinator.state.value.screen); assertFalse(coordinator.state.value.busy)
+        coordinator.destroy()
+    }
+    @Test fun aFailedStartKeepsTheScreenClosedUntilTheLibraryIsDrawnAgain() = runTest {
+        val library = Library().apply { requestFailure = true }
+        val coordinator = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope, reducedMotion = true)
+        runCurrent(); coordinator.rendererReady(0)
+        coordinator.insert(); runCurrent()
+        assertEquals(CollectionScreen.Library, coordinator.state.value.screen); assertNotNull(coordinator.state.value.launchFailure)
+        assertTrue(coordinator.state.value.curtain)
+        coordinator.rendererReady(coordinator.state.value.viewportGeneration)
+        assertFalse(coordinator.state.value.curtain)
+        coordinator.destroy()
     }
     @Test fun restoresFocusAndPreventsQueuedDuplicateLaunches() = runTest {
         val library = Library(); val engine = Engine(); val surfaces = Surfaces()
@@ -243,6 +287,9 @@ class CoordinatorTest {
         assertEquals(library.two.id, coordinator.state.value.selectedGame!!.id)
         coordinator.navigate(-1); runCurrent()
         assertEquals(library.one.id, coordinator.state.value.selectedGame!!.id)
+        // The stored selection follows once browsing has settled, not on the step itself.
+        assertEquals(1, library.snapshots.value.selectedSlot)
+        advanceTimeBy(500); runCurrent()
         assertEquals(0, library.snapshots.value.selectedSlot)
         coordinator.query(LibraryQuery(search = "unmatched")); runCurrent()
         assertNull(coordinator.state.value.selectedGame)
@@ -305,34 +352,40 @@ class CoordinatorTest {
         reopened.destroy()
     }
     private fun disc(index: Int, title: String = "Disc $index") = LibraryGame((index + 0xd0).toString(16).padStart(64, '0'), title, "content://disc$index", system = GameSystem.PS1)
-    @Test fun consoleShelvesKeepTheirOwnFocusAndNeverRewriteStoredOrder() = runTest {
+    @Test fun turningToAShelfStartsAtItsFirstGameAndNeverRewritesStoredOrder() = runTest {
         val library = Library(); repeat(3) { library.add(disc(it)) }
         val remembered = mutableListOf<Pair<Shelf, Map<String, String>>>()
         val coordinator = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope, onBrowseChanged = { shelf, focus -> remembered += shelf to focus })
         runCurrent()
-        // Opens on the console of the stored selection; a single unified view appears once there are two consoles.
-        assertEquals(Shelf.Console(GameSystem.GBA), coordinator.state.value.shelf)
+        // Opens on the console and the game of the stored selection; a single unified view appears once there are two consoles.
+        assertEquals(Shelf.Console(GameSystem.GBA), coordinator.state.value.shelf); assertEquals(library.two.id, coordinator.state.value.selectedGame!!.id)
         assertEquals(listOf(Shelf.Console(GameSystem.GBA), Shelf.Console(GameSystem.PS1), Shelf.All), coordinator.state.value.shelves)
         assertEquals(2, coordinator.state.value.slots.size)
         coordinator.switchShelf(1); runCurrent()
         assertEquals(Shelf.Console(GameSystem.PS1), coordinator.state.value.shelf); assertEquals(3, coordinator.state.value.slots.size)
+        assertEquals(disc(0).id, coordinator.state.value.selectedGame!!.id)
         coordinator.navigate(2); runCurrent()
-        assertEquals(disc(2).id, coordinator.state.value.selectedGame!!.id); assertEquals(4, library.snapshots.value.selectedSlot)
-        coordinator.switchShelf(-1); runCurrent()
-        assertEquals(library.two.id, coordinator.state.value.selectedGame!!.id) // GBA still remembers its own game.
-        coordinator.switchShelf(1); runCurrent()
         assertEquals(disc(2).id, coordinator.state.value.selectedGame!!.id)
+        advanceTimeBy(500); runCurrent(); assertEquals(4, library.snapshots.value.selectedSlot)
+        coordinator.switchShelf(-1); runCurrent()
+        // Not the game this shelf showed last: a shelf the player turns to opens on its first game.
+        assertEquals(library.one.id, coordinator.state.value.selectedGame!!.id)
         coordinator.switchShelf(1); runCurrent()
-        // A unified shelf keeps the game you were on when it contains it.
-        assertEquals(Shelf.All, coordinator.state.value.shelf); assertEquals(disc(2).id, coordinator.state.value.selectedGame!!.id)
-        assertEquals(5, coordinator.state.value.slots.size)
+        assertEquals(disc(0).id, coordinator.state.value.selectedGame!!.id)
+        coordinator.navigate(1); runCurrent()
+        coordinator.switchShelf(1); runCurrent()
+        // The unified shelf too, even though it holds the disc that was just focused.
+        assertEquals(Shelf.All, coordinator.state.value.shelf); assertEquals(library.one.id, coordinator.state.value.selectedGame!!.id)
+        assertEquals(0, coordinator.state.value.selection.index); assertEquals(5, coordinator.state.value.slots.size)
         coordinator.switchShelf(1); runCurrent(); assertEquals(Shelf.Console(GameSystem.GBA), coordinator.state.value.shelf) // Wraps.
+        assertEquals(0, coordinator.state.value.selection.index)
         assertEquals(listOf(library.one.id, library.two.id, disc(0).id, disc(1).id, disc(2).id), library.snapshots.value.slots.map { it!!.id })
-        assertEquals(Shelf.Console(GameSystem.GBA), remembered.last().first); assertEquals(disc(2).id, remembered.last().second["PS1"])
+        assertEquals(Shelf.Console(GameSystem.GBA), remembered.last().first); assertEquals(disc(1).id, remembered.last().second["PS1"])
         coordinator.destroy()
+        // Opening the console again still returns to the shelf and the game it was closed on.
         val reopened = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope, initialShelf = Shelf.Console(GameSystem.PS1), initialShelfFocus = remembered.last().second)
         runCurrent()
-        assertEquals(disc(2).id, reopened.state.value.selectedGame!!.id)
+        assertEquals(disc(1).id, reopened.state.value.selectedGame!!.id)
         reopened.destroy()
     }
     @Test fun storedFavouritesFilterBecomesTheFavoritesShelfOnce() = runTest {
@@ -395,6 +448,7 @@ class CoordinatorTest {
         coordinator.settings(layout = dev.cartridge.domain.CollectionLayout.Vertical); runCurrent()
         coordinator.navigateSpatial(-1, -1); runCurrent(); assertEquals(18, coordinator.state.value.selection.index)
         assertEquals(listOf(dev.cartridge.domain.CollectionLayout.Grid, dev.cartridge.domain.CollectionLayout.Vertical), saved)
+        advanceTimeBy(500); runCurrent()
         assertEquals(18, library.snapshots.value.selectedSlot)
         coordinator.destroy()
     }

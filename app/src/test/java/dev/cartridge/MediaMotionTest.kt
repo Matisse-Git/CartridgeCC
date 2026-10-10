@@ -6,17 +6,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MediaMotionTest {
-    @Test fun insertionLiftsAndAlignsBeforeDescendingIntoTheSlot() {
+    @Test fun insertionLiftsAndAlignsBeforeLeavingThroughTheBottomOfTheScreen() {
         val rest = MediaMotion.pose(0f)
         assertEquals(0f, rest.height, 0f)
-        assertEquals(0f, rest.slot, 0f)
+        assertEquals(0f, rest.alignment, 0f)
         val lifted = MediaMotion.pose(.3f)
         assertEquals(.18f, lifted.height, .001f)
         assertTrue(lifted.alignment > 0f)
         val aligned = MediaMotion.pose(.46f)
         assertEquals(1f, aligned.alignment, .001f)
         val inserted = MediaMotion.pose(1f)
-        assertEquals(-1.32f, inserted.height, .001f)
+        // Below the view's lower edge (about -1.16) by more than the disc's radius at its inserted size (0.65).
+        assertEquals(-1.95f, inserted.height, .001f)
         var last = MediaMotion.pose(.46f).height
         for (i in 47..100) {
             val pose = MediaMotion.pose(i/100f)

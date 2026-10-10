@@ -141,8 +141,10 @@ On the stage (`CartridgeSurface`, `FocusSpring`, `MediaMotion`):
 | Focus between objects | critically damped spring, ω = 14; retargets in place, never queues |
 | Presentation (object steps aside) | same spring |
 | Shelf arrival | starts 1.4 object-widths to the side, same spring |
-| Insertion | 540 ms: lift, align, descend into the slot |
-| Ejection | 420 ms: the reverse |
+| Insertion | 540 ms: lift, align, leave through the bottom of the screen |
+| Ejection | 420 ms: the reverse, once the screen has opened on the library |
+| The closed screen | closes in 260 ms after the object has gone, opens in 420 ms on a picture; Fade, Iris or Shutter, always black |
+| Turning the object | right stick: 210°/s about its upright axis, tips to 55°; eases home 1.2 s after the stick rests |
 | Key repeat | first step immediately, then 300 ms, then every 110 ms |
 
 Rules: motion follows input and never delays it; nothing loops or idles; leaving is quicker than

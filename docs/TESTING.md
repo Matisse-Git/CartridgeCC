@@ -1,5 +1,47 @@
 # Tests and actual results
 
+Console feel, 2026-10-10 (ADR 0020; uncommitted on `redesign/console-experience` after `a4e52ce`,
+versionCode 17, debug APK SHA-256 begins `7cc3c7ca787c9f4d`): both APKs build; 62 host tests pass;
+lint has zero errors and 24 warnings; 10 asset checks pass and the Khronos validator reports zero
+errors and zero warnings for the three GLBs. On the connected RP5 (Android 13,
+`RP5_V1.0.0.189_20251128_174732_user`) the full regression is **43 of 43 in 354.9 s**: the 38
+earlier tests, four in `LaunchExperienceTest` and `LibraryPacingTest`. That run was on the build
+before a one-line lint fix (`createBitmap`); the eleven launch, collection, GB/GBC and PS1 tests
+were run again on the final build and pass.
+
+- **The lag, measured before and after.** `LibraryPacingTest` runs the production activity with a
+  mixed shelf, 40 decoded image labels and the D-pad held at the console's 110 ms repeat, and reads
+  presentation times from SurfaceFlinger. Before the change, at `a4e52ce`: 40 games, 60.0 fps in
+  every phase; 800 games (`-e games 800`), 54.7 fps with the D-pad held, p95 33.28 ms, 29 doubled
+  frames in six seconds. After: 800 games, 60.0 fps held in all three layouts with no doubled
+  frame; 3,000 games, 60.0 fps held in all three layouts with no doubled frame. While the library
+  rendered, the GPU read 54 % busy at 305 MHz, its lowest clock, against a 670 MHz maximum, with the
+  imported models on screen. The models were not changed.
+- **Starting and leaving a game.** `LaunchExperienceTest` records every coordinator state through a
+  launch and a return: the screen closes while the library stage is still whole, is never open on
+  the hand-off or on a core that is not yet running, and on the way back is never open on a library
+  that has not drawn. It also reads the Game start setting back from preferences after recreation.
+  Real-time captures of all three transitions at about 60 ms intervals were looked at once: Fade
+  and Shutter were right the first time, Iris went straight to black because emptying a path reset
+  its fill rule, and was corrected and captured again. The stage reported ready 93–222 ms after it
+  was created; the probe game's picture was seen 4–77 ms after the core ran.
+- **Focus.** The same test focuses the disabled Load State row in the pause menu and finds it
+  selected; the captured frame shows its fill and mark at full strength with the words dimmed.
+- **Shelves and the stick.** L1/R1 from a console whose third game was focused, to PlayStation, on
+  to its third disc, back, forward and on to All Games: first game every time. A right stick
+  injected as `AXIS_Z`/`AXIS_RZ` turns the object past 60°, tips it, and it is back at zero within
+  six seconds of release; moving the focus returns it at once; it does nothing behind the system
+  menu and works beside Details.
+- **Frame rate readout.** Off by default; turned on from Settings › Advanced it shows 55–61 on this
+  60 Hz panel and disappears when turned off.
+- **Not covered.** The owner's own library was not opened, so its real size and artwork are still
+  untested by me; the readout above is there for that. No commercial game was started: the wait for
+  a non-blank frame is unit-tested and the probe games show a picture at once, so the white opening
+  frames of a real Game Boy Advance game have not been seen being hidden. The right stick was
+  injected, not pushed. The device's navigation pill is visible in the refreshed screenshots; it
+  also shows over the unchanged profiling activity, so it is the device's state, not this change.
+
+
 Media models and browse stability, 2026-10-10 (uncommitted on `redesign/console-experience`,
 versionCode 17, debug APK SHA-256 begins `1f7fcb556a98c31c`): both APKs build; 59 host tests pass,
 two of them new layout-window tests; lint has zero errors and 24 warnings; 11 asset checks pass and

@@ -13,6 +13,7 @@ import androidx.core.content.edit
 import androidx.core.net.toUri
 import dev.cartridge.domain.CollectionLayout
 import dev.cartridge.domain.GameSystem
+import dev.cartridge.domain.LaunchTransition
 import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.EmulationEngine
 import dev.cartridge.emulation.EngineStatus
@@ -95,6 +96,10 @@ class ConsoleShell(
     var showPercent by mutableStateOf(preferences.getBoolean("showPercent", true)); private set
     var clock by mutableStateOf(runCatching { ClockStyle.valueOf(preferences.getString("clock", "System")!!) }.getOrDefault(ClockStyle.System)); private set
     var accent by mutableStateOf(Accent.of(preferences.getString("accent", null))); private set
+    var transition by mutableStateOf(LaunchTransition.of(preferences.getString("launchTransition", null))); private set
+    var showFrameRate by mutableStateOf(preferences.getBoolean("showFrameRate", false)); private set
+    /** What the library stage drew in its last full second; written by the renderer, shown only when asked for. */
+    var frameRate by mutableIntStateOf(0)
     var controls by mutableStateOf(ConsolePreferences(preferences).read()); private set
     val options = OptionStore(preferences)
     /** Bumped whenever a stored option changes, so pages built from [options] recompose. */
@@ -367,6 +372,8 @@ class ConsoleShell(
     fun changeShowPercent(value: Boolean) { showPercent = value; preferences.edit { putBoolean("showPercent", value) } }
     fun changeClock(value: ClockStyle) { clock = value; preferences.edit { putString("clock", value.name) } }
     fun changeAccent(value: Accent) { accent = value; preferences.edit { putString("accent", value.name) } }
+    fun changeTransition(value: LaunchTransition) { transition = value; preferences.edit { putString("launchTransition", value.name) } }
+    fun changeShowFrameRate(value: Boolean) { showFrameRate = value; preferences.edit { putBoolean("showFrameRate", value) } }
     fun changeControls(next: ConsoleSettings) { controls = next; ConsolePreferences(preferences).write(next); host.inputChanged() }
     fun setHome(value: Boolean) { host.setHome(value); homeEnabled = host.homeEnabled }
     val hintsVisible get() = hints == HintMode.Always || hints == HintMode.Auto && launches < LEARNED_AFTER
@@ -388,6 +395,7 @@ class ConsoleShell(
         changeControls(ConsoleSettings()); options.resetConsoles(); optionsRevision++
         setReducedMotion(false); setPauseShortcut(false); changeSound(false); changeAutoScan(true); changeHints(HintMode.Auto)
         changeShowStatus(true); changeShowPercent(true); changeClock(ClockStyle.System); changeAccent(Accent.Sand)
+        changeTransition(LaunchTransition.Fade); changeShowFrameRate(false)
         coordinator.settings(layout = CollectionLayout.Horizontal)
         coordinator.notify("Settings are back to their defaults")
     }

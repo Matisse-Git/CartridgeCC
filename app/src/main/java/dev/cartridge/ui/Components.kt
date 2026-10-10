@@ -93,27 +93,29 @@ class Hint(val glyph: String, val label: String, val tag: String? = null, val ac
         row.kind == RowKind.Info -> Ink.Soft
         else -> Ink.Text.copy(alpha = .86f)
     }
+    // A row that cannot be used dims its words, never its focus: where you are must always be visible.
+    val dim = if (row.enabled) 1f else .42f
     Row(Modifier.fillMaxWidth().heightIn(min = Space.Row).clip(RoundedCornerShape(Radius.Row)).background(fill)
         .then(if (row.focusable) Modifier.clickable(interactionSource = null, indication = null, enabled = row.enabled, role = Role.Button, onClick = onClick) else Modifier)
-        .alpha(if (row.enabled) 1f else .42f).testTag(row.tag).semantics { selected = focused }.padding(end = 14.dp),
+        .testTag(row.tag).semantics { selected = focused }.padding(end = 14.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.padding(start = 5.dp).size(3.dp, 18.dp).alpha(mark).clip(CircleShape).background(accent))
-        Column(Modifier.weight(1f).padding(start = 6.dp, top = 9.dp, bottom = 9.dp)) {
+        Column(Modifier.weight(1f).alpha(dim).padding(start = 6.dp, top = 9.dp, bottom = 9.dp)) {
             Txt(row.title, Type.Body.copy(fontWeight = if (focused) androidx.compose.ui.text.font.FontWeight.Medium else androidx.compose.ui.text.font.FontWeight.Normal), titleColor, lines = 2)
             if (showNote && row.note != null) Txt(row.note, Type.Label, if (row.warn) Ink.Warning.copy(alpha = .8f) else Ink.Faint, Modifier.padding(top = 2.dp), lines = 3)
         }
         when (row.kind) {
             RowKind.Toggle -> Switch(row.checked == true, row.enabled)
-            RowKind.Choice -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
+            RowKind.Choice -> Row(Modifier.alpha(dim), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
                 if (focused) Txt("‹", Type.Body, Ink.Faint)
                 Txt(row.value.orEmpty(), Type.Body, if (focused) accent else Ink.Soft, lines = 1)
                 if (focused) Txt("›", Type.Body, Ink.Faint)
             }
-            RowKind.Link -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
+            RowKind.Link -> Row(Modifier.alpha(dim), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
                 row.value?.let { Txt(it, Type.Body, Ink.Soft, Modifier.widthIn(max = 260.dp), lines = 1) }
                 Txt("›", Type.Heading, Ink.Faint)
             }
-            else -> row.value?.let { Txt(it, Type.Body, Ink.Soft, Modifier.padding(start = Space.M).widthIn(max = 300.dp), lines = 1) }
+            else -> row.value?.let { Txt(it, Type.Body, Ink.Soft, Modifier.alpha(dim).padding(start = Space.M).widthIn(max = 300.dp), lines = 1) }
         }
     }
 }

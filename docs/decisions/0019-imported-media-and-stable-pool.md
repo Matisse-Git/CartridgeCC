@@ -23,7 +23,8 @@ into the three runtime GLBs. It normalises units, origin and orientation, sizes 
 template the receiving slot and on-screen scales were measured for, packs textures to 1024 px in
 glTF's conventions, and gives each object exactly one `Replaceable fictional label` primitive whose
 UVs span the artwork from the top left. The baked game label is erased from the base colour before
-anything is written. The receiving slot stays the project's own generated asset.
+anything is written. The receiving slot stayed the project's own generated asset until ADR 0020
+removed it.
 
 **A game keeps its object.** `CollectionLayout.slot(index)` maps a shelf index to one of
 `CollectionLayout.POOL` (15) objects per template by the index alone. The staged window is the

@@ -70,6 +70,8 @@ internal fun ComposeTestRule.tool(tag: String): SemanticsNodeInteraction {
         "motion-setting" -> through("system-menu", "system-settings", "category-appearance", "motion-setting")
         "layout-setting" -> through("system-menu", "system-settings", "category-appearance", "layout-setting")
         "shortcut-setting" -> through("system-menu", "system-settings", "category-controls", "shortcut-setting")
+        "transition-setting" -> through("system-menu", "system-settings", "category-appearance", "settings-transition")
+        "framerate-setting" -> through("system-menu", "system-settings", "category-advanced", "settings-framerate")
         else -> through(tag)
     }
 }

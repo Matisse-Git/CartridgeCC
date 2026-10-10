@@ -2,7 +2,7 @@ param(
     [string]$Sdk = (Join-Path $PSScriptRoot '../.tools/sdk'),
     [string]$Serial,
     [ValidateRange(1, 50)][int]$Cycles = 3,
-    [ValidateSet('Surface', 'Collection', 'Scrape', 'Library', 'Battery', 'Render', 'Manage', 'Review', 'Pack', 'Layout', 'Systems', 'PS1', 'Environment', 'Recovery', 'Backup', 'Live', 'Options', 'Tour', 'Browse', 'All')][string]$Suite = 'Surface'
+    [ValidateSet('Surface', 'Collection', 'Scrape', 'Library', 'Battery', 'Render', 'Manage', 'Review', 'Pack', 'Layout', 'Systems', 'PS1', 'Environment', 'Recovery', 'Backup', 'Live', 'Options', 'Tour', 'Browse', 'Launch', 'Pacing', 'All')][string]$Suite = 'Surface'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -74,9 +74,13 @@ try {
         'Tour' { 'dev.cartridge.UxTourTest' }
         # Steps along a mixed shelf and checks every presented frame for an object without its own label.
         'Browse' { 'dev.cartridge.BrowseStabilityTest' }
-        'All' { 'dev.cartridge.SurfaceHandoffTest,dev.cartridge.CollectionUiTest,dev.cartridge.ProviderContractTest,dev.cartridge.ScrapeUiTest,dev.cartridge.LibraryGrowthTest,dev.cartridge.ScrapeResumeTest,dev.cartridge.BatterySaveTest,dev.cartridge.RenderRefinementTest,dev.cartridge.RenderPacingTest,dev.cartridge.LibraryManagementTest,dev.cartridge.ScrapeReviewTest,dev.cartridge.ScrapePackTest,dev.cartridge.CollectionLayoutDeviceTest,dev.cartridge.AdditionalSystemsTest,dev.cartridge.ConsoleEnvironmentTest,dev.cartridge.SessionRecoveryTest,dev.cartridge.BackupDeviceTest,dev.cartridge.Ps1DeviceTest,dev.cartridge.GameOptionsDeviceTest,dev.cartridge.UxTourTest,dev.cartridge.BrowseStabilityTest' }
+        # The closed screen around a game, its setting, the right-stick turn and where a shelf opens.
+        'Launch' { 'dev.cartridge.LaunchExperienceTest' }
+        # The production library with decoded labels and a held D-pad. For a large library add: -e games 3000
+        'Pacing' { 'dev.cartridge.LibraryPacingTest' }
+        'All' { 'dev.cartridge.SurfaceHandoffTest,dev.cartridge.CollectionUiTest,dev.cartridge.ProviderContractTest,dev.cartridge.ScrapeUiTest,dev.cartridge.LibraryGrowthTest,dev.cartridge.ScrapeResumeTest,dev.cartridge.BatterySaveTest,dev.cartridge.RenderRefinementTest,dev.cartridge.RenderPacingTest,dev.cartridge.LibraryManagementTest,dev.cartridge.ScrapeReviewTest,dev.cartridge.ScrapePackTest,dev.cartridge.CollectionLayoutDeviceTest,dev.cartridge.AdditionalSystemsTest,dev.cartridge.ConsoleEnvironmentTest,dev.cartridge.SessionRecoveryTest,dev.cartridge.BackupDeviceTest,dev.cartridge.Ps1DeviceTest,dev.cartridge.GameOptionsDeviceTest,dev.cartridge.UxTourTest,dev.cartridge.BrowseStabilityTest,dev.cartridge.LaunchExperienceTest,dev.cartridge.LibraryPacingTest' }
     }
-    $expectedTests = switch ($Suite) { 'Surface' { 1 }; 'Collection' { 2 }; 'Scrape' { 5 }; 'Library' { 4 }; 'Battery' { 2 }; 'Render' { 2 }; 'Manage' { 2 }; 'Review' { 4 }; 'Pack' { 2 }; 'Layout' { 2 }; 'Systems' { 2 }; 'PS1' { 3 }; 'Environment' { 3 }; 'Recovery' { 1 }; 'Backup' { 3 }; 'Live' { 1 }; 'Options' { 1 }; 'Tour' { 1 }; 'Browse' { 1 }; 'All' { 38 } }
+    $expectedTests = switch ($Suite) { 'Surface' { 1 }; 'Collection' { 2 }; 'Scrape' { 5 }; 'Library' { 4 }; 'Battery' { 2 }; 'Render' { 2 }; 'Manage' { 2 }; 'Review' { 4 }; 'Pack' { 2 }; 'Layout' { 2 }; 'Systems' { 2 }; 'PS1' { 3 }; 'Environment' { 3 }; 'Recovery' { 1 }; 'Backup' { 3 }; 'Live' { 1 }; 'Options' { 1 }; 'Tour' { 1 }; 'Browse' { 1 }; 'Launch' { 4 }; 'Pacing' { 1 }; 'All' { 43 } }
     $result = Invoke-DeviceAdb -Arguments @('shell', 'am', 'instrument', '-w', '-r', '-e', 'cycles', "$Cycles", '-e', 'liveProvider', "$($Suite -eq 'Live')".ToLowerInvariant(), '-e', 'class',
         $testClass, 'dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner')
     $result | Set-Content -LiteralPath '.tools/device-test.log'

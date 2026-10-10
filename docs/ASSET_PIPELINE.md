@@ -3,8 +3,8 @@
 ## Current media: imported models (2026-10-10, ADR 0019)
 
 The three objects a game is shown as are converted from models the owner downloaded from Sketchfab.
-They replace the generated cartridge, tall cartridge and disc; the receiving slot is still the
-project's own generated asset (`python tools/generate_receiver.py`, byte-identical to before).
+They replace the generated cartridge, tall cartridge and disc. The receiving slot and its generator
+were removed with ADR 0020: every object now leaves through the bottom of the screen.
 
 | Runtime file | Source under `assets/models` | Result |
 | --- | --- | --- |
@@ -28,8 +28,8 @@ What `tools/import_models.py` does to each source:
 
 - **Frame.** Bakes the object transform (the disc's stored tilt is discarded), centres the bounding
   box on the origin, and scales to the template size above: metres, +Y up, printed face toward +Z.
-  The cartridge width stays 60 mm and the tall cartridge 65 mm high, so the receiving slot's 62 mm
-  opening and `CartridgeSurface`'s per-template scales did not change.
+  The cartridge width stays 60 mm and the tall cartridge 65 mm high, so `CartridgeSurface`'s
+  per-template scales did not change.
 - **Label.** Exactly one primitive per object has the material `Replaceable fictional label`.
   On the GBA cartridge it is the modelled recess floor itself (122 faces); on the disc it is the
   printed side's annulus from the stacking ring to the rim (192 faces). The Game Boy cartridge's
@@ -50,10 +50,10 @@ What `tools/import_models.py` does to each source:
   the hub is composited over the library's near-black stage colour and reads as clear plastic there.
   The source's anisotropy map is not used; the pinned ubershaders have no slot for it.
 
-Checks: 11 structural tests (frame, size, unit normals and winding, one named label facing the
+Checks: 10 structural tests (frame, size, unit normals and winding, one named label facing the
 viewer, UV contract, placeholder aspect, opaque PBR with tangents, texture and triangle budgets,
-disc annulus, receiver clearance against both cartridges) and the Khronos validator with zero
-errors and zero warnings on all four GLBs.
+disc annulus, studio lighting) and the Khronos validator with zero errors and zero warnings on all
+three GLBs.
 
 The sections below describe the generated assets these replaced. Their generators
 (`generate_cartridge.py`, `generate_gb_cartridge.py`, `generate_disc.py`) were removed because they

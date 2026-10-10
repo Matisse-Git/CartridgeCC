@@ -39,6 +39,7 @@ The favourites filter is now the Favorites shelf. Search is in the System Menu.
 |---|---|---|---|
 | Layout | choice | Horizontal · Vertical · Grid; the focused game is kept | `layout` |
 | Motion | choice | Full · Reduced | `reducedMotion` |
+| Game start | choice | Fade · Iris · Shutter: how the screen closes when a game starts and opens once it has a picture, and the same on the way back. Shows "Cut" and cannot be changed under reduced motion | `launchTransition` |
 | Accent colour | choice | Sand · Sage · Sky · Rose · Paper | `accent` |
 | Button hints | choice | Until I know them · Always · Never | `hints` |
 | *Status* | | | |
@@ -131,6 +132,7 @@ section offered.
 | Row | Effect |
 |---|---|
 | Check every game file | Re-reads and re-hashes every game in every folder (the former "Verify all ROM files") |
+| Show frame rate | switch, off. Prints the frames the library stage handed to the display in the last full second, beside the clock. Stored as `showFrameRate`; nothing is drawn over a running game |
 | Reset settings | Appearance, controls and gameplay return to defaults. Games, saves, folders, overrides for individual games and the HOME role are not touched |
 
 ## Where the old settings went

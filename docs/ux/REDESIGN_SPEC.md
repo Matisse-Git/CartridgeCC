@@ -69,9 +69,10 @@ Shelves are views over one collection; they never change membership or stored or
 3. **Favorites** — only when something is a favourite.
 4. **Recently Played** — only when something has been played; most recent first, 24 at most.
 
-Consoles without games do not exist. L1/R1 cycle and wrap. Each shelf remembers its own focused
-game. Moving to a unified shelf keeps the game you were on when that shelf contains it. The last
-shelf and each shelf's focus are restored on launch. A new shelf's objects slide in from the side
+Consoles without games do not exist. L1/R1 cycle and wrap. A shelf the player turns to always opens
+on its first game, a unified shelf included (ADR 0020; the first design remembered a game per shelf,
+which made a shelf open somewhere different each time). The last shelf and its focus are still
+restored on launch. A new shelf's objects slide in from the side
 it was reached from.
 
 ### Layouts
@@ -155,10 +156,10 @@ Options the core can change while paused apply at once; the rest say "from its n
 
 ## Insertion and ejection
 
-Unchanged in mechanism and timing: 540 ms in, 420 ms out, the receiving slot for cartridges,
-readiness only after real core frames. Nothing is interposed: A on a game is the insertion. If
-the first frame takes longer than about a third of a second, the game's title and a thin
-indeterminate line appear; a fast start shows nothing. Returning restores shelf, game and layout.
+540 ms in, 420 ms out, readiness only after real core frames. A on a game is the insertion. Since
+ADR 0020 every object leaves through the bottom of the screen (no receiving slot), the screen then
+closes with the chosen transition and opens once the game shows a picture; no title or progress line
+is shown, however long a game takes. Returning restores shelf, game and layout.
 
 ## Feedback
 

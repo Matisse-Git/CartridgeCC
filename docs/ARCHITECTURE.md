@@ -27,7 +27,10 @@ Shelves: `library/Shelf` projects the canonical snapshot inside the coordinator 
 `LibraryQuery` sorting. The shelf and a per-shelf focused content id are presentation preferences
 (`shelf`, `shelfFocus`); Room still stores only canonical order, the selected slot and the query.
 Focus resolution order is: explicit target, the game already focused, what this shelf last showed,
-the stored selection. A scrape preview of a game outside the view still uses a transient projection
+the stored selection. Turning to another shelf is the exception: it always opens on its first game
+(ADR 0020). The selection is written to the database once browsing has rested for 400 ms, and before
+anything that reloads the library; the repository maps rows off the main thread and does not
+announce a selection-only write, so a held D-pad never re-reads the library. A scrape preview of a game outside the view still uses a transient projection
 that is never persisted.
 
 Rendering: Filament keeps rendering beneath translucent sheets and is paused beneath opaque
@@ -35,6 +38,16 @@ pages (`ConsoleShell.base != null`) and the artwork workflow. `CartridgeSurface.
 moves the focused object aside for Details, its sheets, the label preview and the welcome.
 Label material instances carry a polygon offset because a label lies in, or 0.05 mm above, its
 recess floor.
+
+Starting and leaving a game (ADR 0020): `CollectionState.curtain` closes the screen while the stage
+changes hands. `insert()` waits for the object to leave, closes the screen, releases Filament,
+prepares the core, and opens only when `RendererHandoff.awaitPicture()` has seen something other
+than a flat white or black frame in the middle of the emulator's surface (two seconds at most).
+`eject()` closes it over the game; `rendererReady` for the rebuilt library opens it and the
+ejection plays then. `ui/Curtain` draws the owner's choice of Fade, Iris or Shutter, or a cut under
+reduced motion. Cartridges and discs both leave through the bottom of the screen; there is no
+receiving slot. The right stick (`AXIS_Z`/`AXIS_RZ`, routed by `ControllerRouter` outside gameplay)
+turns the focused object through `CartridgeSurface.spin` on the shelf and beside its details.
 
 Browsing (ADR 0019): a game keeps one pooled object for as long as it is in the window.
 `CollectionLayout.slot(index)` picks the object from the shelf index alone, out of

@@ -7,6 +7,17 @@ import org.junit.Test
 import java.nio.file.Files
 
 class DomainTest {
+    @Test fun onlyAFlatWhiteOrBlackSampleCountsAsADisplayThatIsNotOnYet() {
+        fun flat(value: Int, noise: Int = 0) = IntArray(576) { 0xFF000000.toInt() or ((value + it % (noise + 1)) * 0x010101) }
+        assertTrue(blankDisplay(flat(255))); assertTrue(blankDisplay(flat(0)))
+        // Filtering and dithering leave a little variation in a blank frame.
+        assertTrue(blankDisplay(flat(236, noise = 12))); assertTrue(blankDisplay(flat(2, noise = 14)))
+        assertTrue(blankDisplay(IntArray(0)))
+        // One flat colour that is neither is the game's own picture, as is anything with detail.
+        assertFalse(blankDisplay(flat(128))); assertFalse(blankDisplay(IntArray(576) { 0xFF00C800.toInt() }))
+        assertFalse(blankDisplay(flat(255).also { it[300] = 0xFF202020.toInt() }))
+        assertFalse(blankDisplay(IntArray(576) { if (it % 2 == 0) -1 else 0xFF000000.toInt() }))
+    }
     @Test fun lifecycleRejectsDuplicateAndOutOfOrderOperations() {
         val machine = SessionMachine()
         assertThrows(IllegalStateException::class.java) { machine.transition(SessionState.Running) }
