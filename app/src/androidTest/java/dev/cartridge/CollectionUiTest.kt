@@ -73,7 +73,7 @@ class CollectionUiTest {
             scenario.onActivity { activity ->
                 val view = checkNotNull(activity.collectionSurface)
                 val bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
-                val x = view.width / 2; val y = view.height / 2
+                val x = (view.width * activity.labelCentre()).toInt(); val y = view.height / 2
                 PixelCopy.request(view, Rect(x - 4, y - 4, x + 4, y + 4), bitmap, { status ->
                     result.complete(if (status == PixelCopy.SUCCESS) bitmap.getPixel(4, 4) else 0)
                     bitmap.recycle()

@@ -31,6 +31,10 @@ import java.util.concurrent.TimeUnit
 class LibraryGrowthTest {
     @get:Rule val ui = createEmptyComposeRule()
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+    private fun describe(scenario: ActivityScenario<DebugCollectionActivity>) = scenario.onActivity {
+        android.util.Log.e("CartridgeGrowth", "top=${it.shell.top} import=${it.shell.import} lastScan=${it.shell.lastScan} roots=${it.shell.roots.size} " +
+            "busy=${it.coordinator.state.value.busy} scanning=${it.coordinator.state.value.scanning} screen=${it.coordinator.state.value.screen} message=${it.coordinator.state.value.message}")
+    }
     private fun await(scenario: ActivityScenario<DebugCollectionActivity>, predicate: (DebugCollectionActivity) -> Boolean) {
         ui.waitUntil(30_000) { var ready = false; scenario.onActivity { ready = predicate(it) }; ready }
     }
@@ -48,7 +52,7 @@ class LibraryGrowthTest {
             scenario.onActivity {
                 val view = checkNotNull(it.collectionSurface)
                 val bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
-                val x = view.width / 2; val y = view.height / 2
+                val x = (view.width * it.labelCentre()).toInt(); val y = view.height / 2
                 PixelCopy.request(view, Rect(x - 4, y - 4, x + 4, y + 4), bitmap, { result ->
                     color.complete(if (result == PixelCopy.SUCCESS) bitmap.getPixel(4, 4) else 0); bitmap.recycle()
                 }, Handler(Looper.getMainLooper()))
@@ -82,10 +86,10 @@ class LibraryGrowthTest {
                 scenario.onActivity {
                     assertEquals(originalId, it.coordinator.state.value.selectedGame!!.id)
                     assertEquals(6, it.coordinator.state.value.selection.count)
-                    assertTrue(it.coordinator.state.value.message.orEmpty().contains("5 added · 2 duplicates · 1 failed"))
+                    it.shell.lastScan!!.let { scan -> assertEquals(5, scan.added); assertEquals(2, scan.duplicates); assertEquals(1, scan.failed) }
                 }
                 ui.tool("rescan").performClick()
-                await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message.orEmpty().contains("0 added · 7 duplicates · 1 failed") }
+                await(scenario) { !it.coordinator.state.value.busy && it.shell.lastScan?.let { scan -> scan.added == 0 && scan.duplicates == 7 && scan.failed == 1 } == true }
                 scenario.onActivity { assertEquals(6, it.coordinator.state.value.slots.size); it.coordinator.navigate(5) }
                 ui.waitForIdle()
                 choose("choose-label", Intent.ACTION_OPEN_DOCUMENT, Uri.parse("content://dev.cartridge.fixture/blue-label.png"))
@@ -114,30 +118,31 @@ class LibraryGrowthTest {
                 scenario.onActivity { assertEquals(5, it.coordinator.state.value.selection.index) }
                 bluePixels(scenario)
                 ui.tool("rescan").performClick()
-                await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message.orEmpty().contains("0 added · 7 duplicates · 1 failed") }
+                await(scenario) { !it.coordinator.state.value.busy && it.shell.lastScan?.let { scan -> scan.added == 0 && scan.duplicates == 7 && scan.failed == 1 } == true }
                 var gameId = ""
                 scenario.onActivity { gameId = it.coordinator.state.value.selectedGame!!.id }
                 val save = File(context.filesDir, "saves/$gameId.state")
                 val savedBytes = save.readBytes()
                 assertTrue(savedBytes.isNotEmpty())
-                ui.tool("collection-menu").performClick(); ui.onNodeWithTag("collection-action-1").performClick()
+                ui.tool("hide").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.slots.size == 5 }
+                var earlier = 0; scenario.onActivity { earlier = it.shell.scansFinished }
                 ui.tool("rescan").performClick()
-                await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message.orEmpty().startsWith("Scan complete") }
+                try { await(scenario) { !it.coordinator.state.value.busy && it.shell.scansFinished > earlier } } catch (failure: Throwable) { describe(scenario); throw failure }
                 scenario.onActivity { assertEquals(5, it.coordinator.state.value.slots.size) }
                 assertArrayEquals(savedBytes, save.readBytes())
                 assertTrue(File(context.filesDir, "roms/$gameId.gba").isFile)
                 assertTrue(File(tree, "g5.gba").isFile)
-                ui.tool("collection-menu").performClick(); ui.onNodeWithTag("collection-action-2").performClick()
+                ui.tool("undo-hide").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.id == gameId }
                 scenario.onActivity { assertEquals(6, it.coordinator.state.value.slots.size); assertEquals(5, it.coordinator.state.value.selection.index) }
                 bluePixels(scenario)
-                ui.tool("collection-menu").performClick(); ui.onNodeWithTag("collection-action-1").performClick()
+                ui.tool("hide").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.slots.size == 5 }
                 scenario.recreate()
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 ui.tool("rescan").performClick()
-                await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message.orEmpty().startsWith("Scan complete") }
+                await(scenario) { !it.coordinator.state.value.busy && it.shell.lastScan != null }
                 scenario.onActivity { assertEquals(5, it.coordinator.state.value.slots.size) }
                 File(fixtures, "probe-two.gba").writeBytes(File(tree, "g5.gba").readBytes())
                 choose("choose-game", Intent.ACTION_OPEN_DOCUMENT, Uri.parse("content://dev.cartridge.fixture/probe-two.gba"))

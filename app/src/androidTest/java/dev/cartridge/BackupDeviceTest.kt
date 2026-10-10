@@ -114,7 +114,7 @@ class BackupDeviceTest {
             }
         } finally { database.close(); preferences.edit().clear().commit(); directory.deleteRecursively() }
     }
-    private fun action(index: Int) { ui.onNodeWithTag("console-action-$index").performScrollTo().performClick() }
+    private fun action(tag: String) { ui.onNodeWithTag(tag).performScrollTo().performClick() }
     @Test fun safExportReviewOptInAndCancelledReviewWorkInTheRealConsolePanel() {
         val name = "m1-test-${UUID.randomUUID()}"
         val database = Room.databaseBuilder(context, LibraryDatabase::class.java, "$name.db").build()
@@ -130,17 +130,17 @@ class BackupDeviceTest {
                 Intents.init()
                 try {
                     intending(hasAction(Intent.ACTION_CREATE_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(Uri.parse("content://dev.cartridge.fixture/backup.zip"))))
-                    action(11); await { !it.coordinator.state.value.busy && fixture.length() > 0 }
+                    action("settings-export"); await { !it.coordinator.state.value.busy && fixture.length() > 0 }
                 } finally { Intents.release() }
                 assertEquals(1, JSONObject(String(unzip(fixture.readBytes()).getValue("backup.json"))).getJSONArray("games").length())
                 Intents.init()
                 try {
                     intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(Uri.parse("content://dev.cartridge.fixture/backup.zip"))))
-                    action(12); await { !it.coordinator.state.value.busy }; ui.onNodeWithText("Restore collection").assertExists()
-                    action(2); ui.tool("console-settings").performClick(); action(12); await { !it.coordinator.state.value.busy }
+                    action("settings-restore"); await { !it.coordinator.state.value.busy }; ui.onNodeWithTag("page-backup").assertExists()
+                    action("backup-cancel"); ui.tool("console-settings").performClick(); action("settings-restore"); await { !it.coordinator.state.value.busy }
                 } finally { Intents.release() }
                 preferences.edit().putString("layout", "Grid").commit()
-                action(1); action(0); await { !it.coordinator.state.value.busy && it.coordinator.state.value.layout.name == "Horizontal" }
+                action("backup-settings"); action("backup-merge"); await { !it.coordinator.state.value.busy && it.coordinator.state.value.layout.name == "Horizontal" }
                 assertEquals("Horizontal", preferences.getString("layout", ""))
                 scenario.recreate(); await { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 scenario.onActivity { assertEquals(id, it.coordinator.state.value.selectedGame!!.id) }

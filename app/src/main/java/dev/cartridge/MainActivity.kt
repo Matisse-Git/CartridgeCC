@@ -8,32 +8,27 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.view.WindowManager
 import android.view.Choreographer
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.edit
 import androidx.core.view.WindowCompat
@@ -45,65 +40,49 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.swordfish.libretrodroid.GLRetroView
+import dev.cartridge.domain.CollectionLayout
+import dev.cartridge.domain.GameSystem
+import dev.cartridge.domain.MediaMotion
 import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.LibretroEngine
-import dev.cartridge.environment.*
+import dev.cartridge.environment.HomeRegistration
 import dev.cartridge.input.ControllerRouter
-import dev.cartridge.input.InputMode
 import dev.cartridge.input.MediaSound
 import dev.cartridge.library.*
 import dev.cartridge.rendering.CartridgeSurface
 import dev.cartridge.rendering.CollectionAssets
-import dev.cartridge.domain.MediaMotion
-import dev.cartridge.domain.CollectionLayout
-import dev.cartridge.session.*
 import dev.cartridge.scraping.*
+import dev.cartridge.session.*
+import dev.cartridge.shell.ConsoleShell
+import dev.cartridge.shell.Destination
+import dev.cartridge.shell.ShellHost
 import dev.cartridge.storage.*
+import dev.cartridge.ui.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
+import org.json.JSONObject
 import java.io.File
 
-/** Android views/lifecycle only; collection and session decisions live in CollectionCoordinator. */
-open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener {
+/**
+ * Android views, lifecycle, pickers and input delivery only. Session and library decisions live in
+ * [CollectionCoordinator]; what is on screen and what each button means live in [ConsoleShell].
+ */
+open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener, ShellHost {
     internal lateinit var coordinator: CollectionCoordinator
         private set
     internal lateinit var engine: LibretroEngine
         private set
-    private lateinit var input: ControllerRouter
-    private lateinit var labelStore: LabelStore
     internal lateinit var scraper: ScrapeCoordinator
         private set
+    internal lateinit var shell: ConsoleShell
+        private set
+    private lateinit var input: ControllerRouter
+    private lateinit var labelStore: LabelStore
+    private lateinit var mediaSound: MediaSound
     private var cartridgeSurface: CartridgeSurface? = null
     private var emulatorHost: EmulatorHost? = null
-    private var chooseGame: (() -> Unit)? = null
-    private var chooseLabel: (() -> Unit)? = null
-    private var chooseDirectory: (() -> Unit)? = null
-    private var choosePack: (() -> Unit)? = null
-    private lateinit var packStore: ScrapePackStore
-    private var addingGame = false
-    private lateinit var mediaSound: MediaSound
-    private var soundEnabled by mutableStateOf(false)
-    private enum class LibraryOverlay { None, Manager, Search, Edit }
-    private var libraryOverlay by mutableStateOf(LibraryOverlay.None)
-    private var managerFocus by mutableIntStateOf(0)
-    private var roots by mutableStateOf<List<DirectoryRecord>>(emptyList())
-    private var autoScan by mutableStateOf(true)
-    private var recoveryId: String? = null
-    private var consolePage by mutableStateOf<ConsolePage?>(null)
-    private var consoleFocus by mutableIntStateOf(0)
-    private var consoleSettings by mutableStateOf(ConsoleSettings())
-    private var homeEnabled by mutableStateOf(false)
-    private var noticeText by mutableStateOf("")
-    private var noticeIndex = 0
-    private lateinit var repository: CollectionRepository
-    private lateinit var sessionStore: SessionStore
-    private var chooseBackup: (() -> Unit)? = null
-    private var chooseBios: (() -> Unit)? = null
-    private var biosStatus by mutableStateOf("PS1 BIOS: HLE (limited compatibility)")
-    private var exportBackup: (() -> Unit)? = null
-    private var backupReview by mutableStateOf<BackupReview?>(null)
-    private var restorePreferences by mutableStateOf(false)
+    /** A shelf change and the direction it came from, applied by the stage once that shelf is what it draws. */
+    private var arrival by mutableStateOf(Triple(0, "", 0))
     internal val collectionSurface get() = cartridgeSurface
     protected open fun createRepository(): CollectionRepository = RoomCollectionRepository(this)
     protected open fun createLabelStore(): LabelStore = LabelStore(File(filesDir, "labels"))
@@ -115,9 +94,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     protected open fun presentationPreferences() = getPreferences(MODE_PRIVATE)
-    protected open fun showFirstRunSetup() = true
     protected open fun createSessionStore() = SessionStore(File(filesDir, "session-checkpoint"))
-    private val menuItems = listOf("Resume", "Save state", "Load state", "Eject to collection", "Game settings", "Controller")
+    protected open fun systemDirectory() = File(filesDir, "system")
     private val inputFrames = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
@@ -126,266 +104,91 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             }
         }
     }
+    private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { it?.let(shell::folderPicked) }
+    private val gamePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { if (it != null) shell.gamePicked(it) else shell.gamePickCancelled() }
+    private val labelPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(shell::labelPicked) }
+    private val packPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(shell::packPicked) }
+    private val backupPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(shell::backupPicked) }
+    private val biosPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(shell::biosPicked) }
+    private val backupWriter = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { it?.let(shell::backupCreated) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        addingGame = savedInstanceState?.getBoolean("addingGame") ?: false
-        recoveryId = savedInstanceState?.getString("recoveryId")
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
-        sessionStore = createSessionStore()
-        engine = LibretroEngine(this, lifecycleScope, coreOptions = { consoleSettings.coreOptions() }, sessionStore = sessionStore)
-        labelStore = createLabelStore()
+        val sessionStore = createSessionStore()
         val preferences = presentationPreferences()
-        consoleSettings = ConsolePreferences(preferences).read()
-        homeEnabled = HomeRegistration(this).enabled()
-        soundEnabled = preferences.getBoolean("mediaSound", false)
-        autoScan = preferences.getBoolean("autoScan", true)
+        engine = LibretroEngine(this, lifecycleScope, sessionOptions = { game -> shell.sessionOptions(game.system, game.id) }, sessionStore = sessionStore,
+            systemDirectory = systemDirectory())
+        labelStore = createLabelStore()
         mediaSound = MediaSound(this)
-        repository = createRepository()
-        packStore = createPackStore()
+        val repository = createRepository()
+        val packStore = createPackStore()
         coordinator = CollectionCoordinator(engine, repository, object : RendererHandoff {
             override fun releaseLibrary() { cartridgeSurface?.close(); cartridgeSurface = null }
             override fun releaseEmulator() { emulatorHost?.release(); emulatorHost = null }
         }, lifecycleScope, preferences.getBoolean("reducedMotion", false), preferences.getBoolean("alternateShortcut", false),
             layout = runCatching { CollectionLayout.valueOf(preferences.getString("layout", "Horizontal")!!) }.getOrDefault(CollectionLayout.Horizontal),
-            onLayoutChanged = { layout -> preferences.edit { putString("layout", layout.name) }; if (::input.isInitialized) input.reset() }, sessionStore = sessionStore)
-        scraper = ScrapeCoordinator(PackAwareProvider(createArtworkProvider(), packStore), repository, labelStore, File(filesDir, "roms"), lifecycleScope, createScrapeJournal(), createScrapePreferences(), choosePack = { choosePack?.invoke() }) { game, label ->
+            onLayoutChanged = { layout -> preferences.edit { putString("layout", layout.name) }; if (::input.isInitialized) input.reset() }, sessionStore = sessionStore,
+            initialShelf = Shelf.parse(preferences.getString("shelf", null)),
+            initialShelfFocus = runCatching { JSONObject(preferences.getString("shelfFocus", "{}")!!).let { json -> json.keys().asSequence().associateWith(json::getString) } }.getOrDefault(emptyMap()),
+            onBrowseChanged = { shelf, focus -> preferences.edit { putString("shelf", shelf.key); putString("shelfFocus", JSONObject(focus).toString()) } })
+        scraper = ScrapeCoordinator(PackAwareProvider(createArtworkProvider(), packStore), repository, labelStore, File(filesDir, "roms"), lifecycleScope, createScrapeJournal(), createScrapePreferences(), choosePack = ::pickPack) { game, label ->
             if (coordinator.state.value.allGames.any { it.id == game.id }) coordinator.previewScrapedLabel(game, label)
             else { coordinator.notify("This game is no longer in the collection"); scraper.previewFinished() }
         }
-        input = ControllerRouter(
-            navigate = { if (consolePage != null) consoleFocus = (consoleFocus + it).coerceIn(0, consoleChoices().lastIndex)
-                else if (libraryOverlay == LibraryOverlay.Manager) managerFocus = (managerFocus + it).coerceIn(0, 6 + roots.size)
-                else if (scraper.state.value.visible) scraper.navigate(it) else coordinator.navigate(it) },
-            select = { if (consolePage != null) consoleAction(consoleFocus)
-                else if (libraryOverlay == LibraryOverlay.Manager) managerAction(managerFocus)
-                else if (scraper.state.value.visible) scraper.select()
-                else if (coordinator.state.value.screen == CollectionScreen.Details) detailsAction(coordinator.state.value.menuIndex)
-                else if (coordinator.state.value.screen == CollectionScreen.LibraryMenu && coordinator.state.value.menuIndex == 6) openLibraryManager()
-                else if (coordinator.state.value.screen == CollectionScreen.LibraryMenu && coordinator.state.value.menuIndex == 8) openConsole(ConsolePage.Settings)
-                else if (engine.status.value.state == SessionState.Paused && coordinator.state.value.menuIndex in 4..5) openConsole(if (coordinator.state.value.menuIndex == 4) ConsolePage.Game else ConsolePage.Controllers)
-                else coordinator.select() },
-            back = { if (consolePage != null) consoleBack()
-                else if (libraryOverlay != LibraryOverlay.None) showOverlay(if (libraryOverlay == LibraryOverlay.Search) LibraryOverlay.Manager else LibraryOverlay.None)
-                else if (scraper.state.value.visible) scraper.back() else coordinator.back() }, pause = coordinator::pause,
-            gameKey = engine::key, gameMotion = engine::motion, chooseGame = { chooseGame?.invoke() },
-            chooseLabel = { chooseLabel?.invoke() }, chooseScrape = ::openScraper, chooseDirectory = { chooseDirectory?.invoke() }, alternate = {
-                val scrape = scraper.state.value
-                if (scrape.visible && scrape.page == ScrapePage.Metadata) scrape.candidate?.metadata?.keys?.elementAtOrNull(scrape.focus)?.let(scraper::variant)
-                else if (scrape.visible && scrape.page == ScrapePage.Targets) scraper.pickAll(scrape.pickedIds.size != scrape.availableGames.size)
-                else if (scrape.visible && scrape.page == ScrapePage.Consoles) scraper.pickAllConsoles(scrape.pickedSystems.size != scrape.consoles.size)
-            }, cancelOperation = coordinator::cancelScan, details = coordinator::details, favorite = coordinator::favorite, navigateLibrary = coordinator::navigateSpatial)
-        applyControllerSettings()
+        shell = ConsoleShell(this, lifecycleScope, this, coordinator, engine, repository, scraper, labelStore, sessionStore, packStore, preferences, systemDirectory())
+        shell.pendingLocate = savedInstanceState?.getString("recoveryId")
+        input = ControllerRouter(navigate = shell::navigate, select = shell::select, back = shell::back, pause = coordinator::pause,
+            gameKey = engine::key, gameMotion = engine::motion, adjust = shell::adjust, alternate = shell::alternate, secondary = shell::secondary,
+            shoulder = shell::shoulder, menu = shell::menu, cancelOperation = coordinator::cancelScan, navigateLibrary = coordinator::navigateSpatial)
+        inputChanged()
         getSystemService(InputManager::class.java).registerInputDeviceListener(this, null)
         lifecycleScope.launch {
-            var previousScreen = CollectionScreen.Library
-            combine(coordinator.state, engine.status, scraper.state) { state, status, scrape -> Triple(state, status, scrape) }.collect { (state, status, scrape) ->
-                if (previousScreen == CollectionScreen.LabelPreview && state.screen == CollectionScreen.Library)
-                    scraper.previewFinished(applied = state.lastLabelAppliedTo == scrape.current?.game?.id)
-                previousScreen = state.screen
-                refreshInputMode()
+            combine(coordinator.state, engine.status, scraper.state) { state, status, _ -> state to status }.collect { (state, status) ->
+                shell.sync(state, status)
                 input.pauseShortcut = if (state.alternateShortcut)
                     setOf(KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_BUTTON_SELECT)
                 else setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_THUMBR)
             }
         }
-        setContent { CartridgeApp() }
+        setContent { Console() }
     }
-    private fun refreshInputMode() {
+
+    // ---- ShellHost --------------------------------------------------------------------------------------
+
+    override fun inputChanged() {
         if (!::input.isInitialized) return
-        val state = coordinator.state.value
-        input.mode = when {
-            consolePage != null -> if (state.busy) InputMode.Locked else InputMode.Menu
-            libraryOverlay in setOf(LibraryOverlay.Edit, LibraryOverlay.Search) -> InputMode.Text
-            libraryOverlay == LibraryOverlay.Manager -> InputMode.Menu
-            scraper.state.value.visible -> InputMode.Menu
-            state.busy || !state.loaded -> InputMode.Locked
-            state.screen in setOf(CollectionScreen.LabelPreview, CollectionScreen.LibraryMenu, CollectionScreen.Details) -> InputMode.Menu
-            engine.status.value.state == SessionState.Running -> InputMode.Gameplay
-            engine.status.value.state == SessionState.Paused -> InputMode.Menu
-            state.screen == CollectionScreen.Library -> InputMode.Library
-            else -> InputMode.Locked
-        }
+        input.mode = shell.inputMode()
+        val controls = shell.controls
+        input.swapMenuButtons = controls.swapMenuButtons; input.swapGameButtons = controls.swapGameButtons
+        input.swapShoulders = controls.swapShoulders
+        if (input.deadZone != controls.deadZone) input.deadZone = controls.deadZone
     }
-    private fun applyControllerSettings() {
-        input.swapMenuButtons = consoleSettings.swapMenuButtons; input.swapGameButtons = consoleSettings.swapGameButtons
-        input.swapShoulders = consoleSettings.swapShoulders; input.deadZone = consoleSettings.deadZone
+    private val libraryIdle get() = coordinator.state.value.let { !it.busy && it.screen == CollectionScreen.Library }
+    override fun pickFolder() { if (libraryIdle) folderPicker.launch(null) }
+    override fun pickGame() { if (libraryIdle) gamePicker.launch(arrayOf("*/*")) }
+    override fun pickLabel() { if (libraryIdle) labelPicker.launch(arrayOf("image/png", "image/jpeg", "image/webp")) }
+    override fun pickBios() { biosPicker.launch(arrayOf("*/*")) }
+    override fun pickBackup() { backupPicker.launch(arrayOf("application/zip", "application/octet-stream")) }
+    override fun pickPack() { if (!scraper.state.value.busy) packPicker.launch(arrayOf("application/zip", "application/octet-stream")) }
+    override fun createBackup() { backupWriter.launch("Cartridge-backup.zip") }
+    override fun openAndroidSettings() {
+        try { startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) }
+        catch (failure: Exception) { coordinator.notify("Android settings could not be opened on this device") }
     }
-    private fun openConsole(page: ConsolePage) {
-        if (coordinator.state.value.busy) return
-        if (coordinator.state.value.screen == CollectionScreen.LibraryMenu) coordinator.back()
-        consolePage = page; consoleFocus = 0; refreshInputMode()
-        if (page == ConsolePage.Notices) loadNotice()
-        lifecycleScope.launch { biosStatus = withContext(Dispatchers.IO) { dev.cartridge.storage.Ps1BiosStore(File(filesDir, "system")).description() } }
+    override val homeEnabled get() = HomeRegistration(this).enabled()
+    override fun setHome(enabled: Boolean) = HomeRegistration(this).enable(enabled)
+    override fun chooseDefaultHome() {
+        try { HomeRegistration(this).apply { enable(true) }.requestIntent().let(::startActivity) }
+        catch (failure: Exception) { coordinator.notify("Android's home app settings could not be opened on this device") }
     }
-    private fun consoleBack() {
-        if (coordinator.state.value.busy) return
-        if (consolePage == ConsolePage.Setup) presentationPreferences().edit { putBoolean("setupComplete", true) }
-        if (consolePage == ConsolePage.Backup) { backupReview?.close(); backupReview = null }
-        consolePage = null; input.reset(); refreshInputMode()
-    }
-    private fun consoleChoices(): List<String> = when(consolePage) {
-        ConsolePage.Setup -> listOf("Choose game folder", "Controller", "Continue to collection")
-        ConsolePage.Settings -> listOf("Back", "Controller", "Game settings", if (coordinator.state.value.reducedMotion) "Motion: Off" else "Motion: On",
-            if (soundEnabled) "Media sound: On" else "Media sound: Off", if (homeEnabled) "HOME candidate: On" else "HOME candidate: Off",
-            "Choose Android default home", "First-run setup", "About & licences", "Resume saved session", "Discard saved session", "Export backup", "Restore backup", "Android device settings", "Import PS1 BIOS")
-        ConsolePage.Controllers -> listOf("Back", if (consoleSettings.swapMenuButtons) "Menu select: B / back: A" else "Menu select: A / back: B",
-            if (consoleSettings.swapGameButtons) "Gameplay A/B: Swapped" else "Gameplay A/B: Direct",
-            if (consoleSettings.swapShoulders) "Gameplay L/R: Swapped" else "Gameplay L/R: Direct",
-            "Stick dead zone: ${(consoleSettings.deadZone * 100).toInt()}%",
-            if (coordinator.state.value.alternateShortcut) "Pause: Start + Select" else "Pause: L3 + R3", "Reset controller")
-        ConsolePage.Game -> if (coordinator.state.value.selectedGame?.system == dev.cartridge.domain.GameSystem.PS1) listOf("Back", "Import PS1 BIOS")
-            else listOf("Back", if (consoleSettings.audioFilter) "Audio smoothing: On" else "Audio smoothing: Off", "Frames skipped: ${consoleSettings.frameSkip}")
-        ConsolePage.Notices -> listOf("Back", "Next licence")
-        ConsolePage.Backup -> listOf("Merge missing data", if (restorePreferences) "Restore settings: Yes" else "Restore settings: No", "Cancel")
-        null -> emptyList()
-    }
-    private fun changeConsole(next: ConsoleSettings) {
-        val commit = { consoleSettings = next; ConsolePreferences(presentationPreferences()).write(next); applyControllerSettings() }
-        if (engine.status.value.state == SessionState.Paused && coordinator.state.value.selectedGame?.system != dev.cartridge.domain.GameSystem.PS1 && next.coreOptions() != consoleSettings.coreOptions()) coordinator.configureGame(next.coreOptions(), commit)
-        else commit()
-    }
-    private fun consoleAction(index: Int) {
-        if (coordinator.state.value.busy) return
-        when(consolePage) {
-            ConsolePage.Setup -> when(index) {
-                0 -> { consoleBack(); chooseDirectory?.invoke() }
-                1 -> { presentationPreferences().edit { putBoolean("setupComplete", true) }; openConsole(ConsolePage.Controllers) }
-                2 -> consoleBack()
-            }
-            ConsolePage.Settings -> when(index) {
-                0 -> consoleBack(); 1 -> openConsole(ConsolePage.Controllers); 2 -> openConsole(ConsolePage.Game)
-                3 -> { val next = !coordinator.state.value.reducedMotion; coordinator.settings(reducedMotion = next); presentationPreferences().edit { putBoolean("reducedMotion", next) } }
-                4 -> { soundEnabled = !soundEnabled; presentationPreferences().edit { putBoolean("mediaSound", soundEnabled) } }
-                5 -> { HomeRegistration(this).enable(!homeEnabled); homeEnabled = !homeEnabled }
-                6 -> try { HomeRegistration(this).apply { enable(true); homeEnabled = true }.requestIntent().let(::startActivity) }
-                    catch (failure: Exception) { coordinator.notify("Android home settings unavailable: ${failure.message}") }
-                7 -> openConsole(ConsolePage.Setup); 8 -> openConsole(ConsolePage.Notices)
-                9 -> { consoleBack(); coordinator.resumeSavedSession() }
-                10 -> { consoleBack(); coordinator.discardResume() }
-                11, 12 -> if (engine.status.value.state != SessionState.Idle) coordinator.notify("Eject to the collection before backing up or restoring")
-                    else if (index == 11) exportBackup?.invoke() else chooseBackup?.invoke()
-                13 -> try { startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) }
-                    catch (failure: Exception) { coordinator.notify("Android settings unavailable: ${failure.message}") }
-                14 -> { consoleBack(); chooseBios?.invoke() }
-            }
-            ConsolePage.Controllers -> when(index) {
-                0 -> consoleBack(); 1 -> changeConsole(consoleSettings.copy(swapMenuButtons = !consoleSettings.swapMenuButtons))
-                2 -> changeConsole(consoleSettings.copy(swapGameButtons = !consoleSettings.swapGameButtons))
-                3 -> changeConsole(consoleSettings.copy(swapShoulders = !consoleSettings.swapShoulders))
-                4 -> changeConsole(consoleSettings.copy(deadZone = when { consoleSettings.deadZone < .3f -> .35f; consoleSettings.deadZone < .45f -> .5f; else -> .2f }))
-                5 -> { val next = !coordinator.state.value.alternateShortcut; coordinator.settings(alternateShortcut = next); presentationPreferences().edit { putBoolean("alternateShortcut", next) } }
-                6 -> { changeConsole(consoleSettings.copy(swapMenuButtons = false, swapGameButtons = false, swapShoulders = false, deadZone = .35f)); coordinator.settings(alternateShortcut = false); presentationPreferences().edit { putBoolean("alternateShortcut", false) } }
-            }
-            ConsolePage.Game -> if (coordinator.state.value.selectedGame?.system == dev.cartridge.domain.GameSystem.PS1) {
-                when(index) { 0 -> consoleBack(); 1 -> { consoleBack(); chooseBios?.invoke() } }
-            } else when(index) { 0 -> consoleBack(); 1 -> changeConsole(consoleSettings.copy(audioFilter = !consoleSettings.audioFilter)); 2 -> changeConsole(consoleSettings.copy(frameSkip = (consoleSettings.frameSkip + 1) % 3)) }
-            ConsolePage.Notices -> when(index) { 0 -> consoleBack(); 1 -> { noticeIndex++; loadNotice() } }
-            ConsolePage.Backup -> when(index) { 0 -> mergeBackup(); 1 -> restorePreferences = !restorePreferences; 2 -> consoleBack() }
-            null -> Unit
-        }
-    }
-    private fun backupStore() = BackupStore(checkNotNull(repository as? BackupRepository), labelStore, SaveStore(File(filesDir, "saves")), sessionStore, File(cacheDir, "backup-staging"))
-    private fun writeBackup(uri: Uri) {
-        coordinator.libraryOperation {
-            withContext(Dispatchers.IO) {
-                val file = File.createTempFile("cartridge-backup-", ".zip", cacheDir)
-                try {
-                    file.outputStream().use { backupStore().export(it, BackupPreferences.capture(presentationPreferences())) }
-                    check(file.length() <= 1024L * 1024 * 1024) { "Backup exceeds 1 GiB" }
-                    checkNotNull(contentResolver.openOutputStream(uri, "wt")) { "Cannot write the selected backup" }.use { output -> file.inputStream().use { it.copyTo(output) } }
-                } finally { file.delete() }
-            }
-            coordinator.notify("Backup exported. Keep it private: it contains your collection choices and saves.")
-        }
-    }
-    private fun readBackup(uri: Uri) {
-        coordinator.libraryOperation {
-            val review = withContext(Dispatchers.IO) { checkNotNull(contentResolver.openInputStream(uri)).use { backupStore().inspect(it) } }
-            backupReview?.close(); backupReview = review; restorePreferences = false
-            noticeText = "${review.library.games.size} games · ${review.imageCount} images · ${review.saveCount} saves\n\nMerge keeps your existing artwork, metadata, collection membership and saves. Missing fields and saves are filled. History uses the greater value. Settings change only if you choose Yes.\n\nROMs and Android folder permissions are excluded. Choose folders again or use Locate same ROM after moving devices."
-            consolePage = ConsolePage.Backup; consoleFocus = 0
-        }
-    }
-    private fun mergeBackup() {
-        val review = backupReview ?: return
-        val settings = restorePreferences
-        // Transfer ownership to the serialized operation so Activity cancellation cannot delete
-        // reviewed files during acceptance. Its finally block releases staging.
-        backupReview = null
-        coordinator.libraryOperation {
-            try {
-                val result = withContext(NonCancellable + Dispatchers.IO) {
-                    val message = backupStore().merge(review)
-                    if (settings) BackupPreferences.restore(presentationPreferences(), review.preferences)
-                    message
-                }
-                if (settings) {
-                    val preferences = presentationPreferences()
-                    consoleSettings = ConsolePreferences(preferences).read(); applyControllerSettings()
-                    soundEnabled = preferences.getBoolean("mediaSound", false); autoScan = preferences.getBoolean("autoScan", true)
-                    lifecycleScope.launch {
-                        coordinator.state.first { !it.busy }
-                        coordinator.settings(preferences.getBoolean("reducedMotion", false), preferences.getBoolean("alternateShortcut", false), CollectionLayout.valueOf(preferences.getString("layout", "Horizontal")!!))
-                    }
-                }
-                consolePage = ConsolePage.Settings; consoleFocus = 0; coordinator.notify(result)
-            } finally { withContext(NonCancellable + Dispatchers.IO) { review.close() } }
-        }
-    }
-    private fun loadNotice() {
-        lifecycleScope.launch {
-            noticeText = withContext(Dispatchers.IO) {
-                val names = assets.list("licenses").orEmpty().sorted()
-                if (names.isEmpty()) "License files unavailable" else names[noticeIndex % names.size].let { name ->
-                    "Cartridge · mGBA 0.10.5 · PCSX ReARMed c8816799 · LibretroDroid 0.14.0 · Filament 1.72.1\nOriginal project assets; private user ROMs/artwork remain user controlled.\n\n$name\n\n" + assets.open("licenses/$name").bufferedReader().use { it.readText() }
-                }
-            }
-        }
-    }
-    private fun showOverlay(next: LibraryOverlay) { libraryOverlay = next; refreshInputMode() }
-    private fun openLibraryManager() {
-        coordinator.back()
-        managerFocus = 0
-        showOverlay(LibraryOverlay.Manager)
-        lifecycleScope.launch { roots = (repository as? DirectoryRepository)?.directoryRecords().orEmpty() }
-    }
-    private fun managerAction(index: Int) {
-        when (index) {
-            0 -> showOverlay(LibraryOverlay.None)
-            1 -> { showOverlay(LibraryOverlay.None); chooseDirectory?.invoke() }
-            2, 3 -> { showOverlay(LibraryOverlay.None); scanDirectory(null, verifyAll = index == 3) }
-            4 -> { autoScan = !autoScan; presentationPreferences().edit { putBoolean("autoScan", autoScan) } }
-            5 -> showOverlay(LibraryOverlay.Search)
-            6 -> { showOverlay(LibraryOverlay.None); coordinator.query(coordinator.state.value.query.copy(search = "")) }
-            else -> roots.getOrNull(index - 7)?.let { root ->
-                lifecycleScope.launch {
-                    try {
-                        (repository as DirectoryRepository).forgetDirectory(root.uri)
-                        runCatching { contentResolver.releasePersistableUriPermission(Uri.parse(root.uri), Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                        roots = (repository as DirectoryRepository).directoryRecords()
-                        managerFocus = managerFocus.coerceAtMost(6 + roots.size)
-                    } catch (failure: Exception) { if (failure is CancellationException) throw failure; coordinator.notify("Cannot forget folder: ${failure.message}") }
-                }
-            }
-        }
-    }
-    private fun detailsAction(index: Int) {
-        if (coordinator.state.value.busy) return
-        when (index) {
-            0 -> coordinator.favorite()
-            1 -> showOverlay(LibraryOverlay.Edit)
-            2 -> { coordinator.closeDetails(); openScraper(); scraper.chooseScope(true) }
-            3 -> { recoveryId = coordinator.state.value.selectedGame?.id; coordinator.closeDetails(); chooseGame?.invoke() }
-            4 -> coordinator.undoEnrichment()
-            5 -> coordinator.closeDetails()
-        }
-    }
+    override fun persistFolder(uri: Uri) = persistDirectoryPermission(uri)
+    override fun releaseFolder(uri: Uri) = contentResolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    override fun stageArrive(direction: Int) { arrival = Triple(arrival.first + 1, coordinator.state.value.shelf.key, direction) }
 
     @SuppressLint("RestrictedApi") // Public Activity hook avoids Compose/emulator duplicate input delivery.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean =
@@ -393,264 +196,106 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean =
         if (::input.isInitialized && input.motion(event)) true else super.dispatchGenericMotionEvent(event)
 
-    private fun importGame(uri: Uri) {
-        val expected = recoveryId
-        val shouldAdd = addingGame
-        recoveryId = null
-        addingGame = false
-        val import: suspend () -> LibraryGame = {
-            runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            withContext(Dispatchers.IO) {
-                val taskContext = coroutineContext
-                val game = RomImporter(contentResolver, File(filesDir, "roms")).import(uri) { taskContext.ensureActive() }
-                require(expected == null || expected == game.request.id) { "Choose the same ROM content to recover this entry. Its labels and saves were kept." }
-                LibraryGame(game.request.id, game.title, uri.toString(), system = game.request.system)
-            }
-        }
-        lifecycleScope.launch {
-            coordinator.state.first { it.loaded && !it.busy && it.screen == CollectionScreen.Library }
-            if (shouldAdd) coordinator.addGame(import) else coordinator.assignGame(import)
-        }
-    }
-    private fun scanDirectory(uri: Uri?, verifyAll: Boolean = false) {
-        coordinator.scanDirectory { progress ->
-            val directories = checkNotNull(repository as? DirectoryRepository) { "Directory import is unavailable" }
-            if (uri != null) persistDirectoryPermission(uri)
-            val targets = uri?.let { listOf(it.toString()) } ?: directories.directories()
-            require(targets.isNotEmpty()) { "Choose a ROM folder before rescanning" }
-            val scanner = DirectoryScanner(contentResolver, File(filesDir, "roms"), repository, directories)
-            val results = targets.map { scanner.scan(Uri.parse(it), progress, verifyAll) }
-            if (results.size == 1) results.single().message else
-                "Scan complete: ${results.sumOf { it.added }} added · ${results.sumOf { it.duplicates }} duplicates · ${results.sumOf { it.failed }} failed" +
-                    results.firstNotNullOfOrNull { it.errors.firstOrNull() }?.let { ". $it" }.orEmpty()
-        }
-    }
-    private fun importLabel(uri: Uri) = coordinator.previewLabel {
-        runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-        withContext(Dispatchers.IO) { labelStore.import(contentResolver, uri) }
-    }
-    private fun openScraper() {
-        val current = coordinator.state.value
-        if (current.loaded && !current.busy && current.screen == CollectionScreen.Library) scraper.open(current.allGames, current.selectedGame)
-    }
-    private fun importPack(uri: Uri) {
-        lifecycleScope.launch {
-            coordinator.state.first { it.loaded && !it.busy && it.screen == CollectionScreen.Library }
-            openScraper()
-            scraper.importPack { packStore.import(contentResolver, uri) }
-        }
-    }
-
-    @Composable private fun CartridgeApp() {
+    @Composable private fun Console() {
         val state by coordinator.state.collectAsStateWithLifecycle()
         val status by engine.status.collectAsStateWithLifecycle()
         val scrape by scraper.state.collectAsStateWithLifecycle()
         val emulator by engine.surface.collectAsStateWithLifecycle()
         val frozenFrame by engine.frozenFrame.collectAsStateWithLifecycle()
         var glb by remember { mutableStateOf<CollectionAssets?>(null) }
-        var toolsVisible by rememberSaveable { mutableStateOf(false) }
-        LaunchedEffect(state.loaded) {
-            if (state.loaded && showFirstRunSetup() && !presentationPreferences().getBoolean("setupComplete", false)) {
-                if (state.allGames.isEmpty()) openConsole(ConsolePage.Setup)
-                else presentationPreferences().edit { putBoolean("setupComplete", true) }
-            }
-            if (state.loaded && autoScan && (repository as? DirectoryRepository)?.directories()?.isNotEmpty() == true) scanDirectory(null)
-        }
-        LaunchedEffect(state.screen, soundEnabled) {
-            if (soundEnabled && !state.reducedMotion) when (state.screen) {
+        val device = rememberDeviceStatus(shell.clock)
+        val confirm = if (shell.controls.swapMenuButtons) "B" else "A"
+        val back = if (shell.controls.swapMenuButtons) "A" else "B"
+        val view = LocalView.current
+        // The console sleeps like any other screen. Only work the player is waiting on holds it awake;
+        // gameplay is kept on by the emulator's own view.
+        SideEffect { view.keepScreenOn = state.scanning || scrape.busy }
+        LaunchedEffect(state.loaded) { if (state.loaded) shell.scanOnOpen() }
+        LaunchedEffect(state.screen, shell.sound) {
+            if (shell.sound && !state.reducedMotion) when (state.screen) {
                 CollectionScreen.Inserting -> { delay(450); if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mediaSound.contact() }
                 CollectionScreen.Ejecting -> { delay(60); if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mediaSound.contact(eject = true) }
                 else -> Unit
             }
         }
-        LaunchedEffect(Unit) {
-            glb = withContext(Dispatchers.IO) { CollectionAssets.read(assets) }
-        }
-        val gamePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
-            if (it != null) importGame(it) else { addingGame = false; recoveryId = null }
-        }
-        val labelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importLabel) }
-        val directoryPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { it?.let(::scanDirectory) }
-        val packPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importPack) }
-        val backupPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::readBackup) }
-        val biosPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            uri?.let { coordinator.libraryOperation {
-                val message = withContext(Dispatchers.IO) { dev.cartridge.storage.Ps1BiosStore(File(filesDir, "system")).import(contentResolver, it) }
-                biosStatus = "PS1 BIOS: Imported"; coordinator.notify(message)
-            } }
-        }
-        val backupWriter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { it?.let(::writeBackup) }
-        DisposableEffect(gamePicker, labelPicker) {
-            chooseGame = { if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) { addingGame = true; gamePicker.launch(arrayOf("*/*")) } }
-            chooseDirectory = { if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) directoryPicker.launch(null) }
-            choosePack = { if (!scraper.state.value.busy) packPicker.launch(arrayOf("application/zip", "application/octet-stream")) }
-            chooseBackup = { if (!coordinator.state.value.busy) backupPicker.launch(arrayOf("application/zip", "application/octet-stream")) }
-            chooseBios = {
-                if (engine.status.value.state != SessionState.Idle) coordinator.notify("Eject before importing the PS1 BIOS")
-                else if (!coordinator.state.value.busy) biosPicker.launch(arrayOf("*/*"))
-            }
-            exportBackup = { if (!coordinator.state.value.busy) backupWriter.launch("Cartridge-backup.zip") }
-            chooseLabel = {
-                if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) {
-                    if (coordinator.state.value.selectedGame == null) coordinator.notify("Choose a game before assigning its label.")
-                    else labelPicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
+        LaunchedEffect(Unit) { glb = withContext(Dispatchers.IO) { CollectionAssets.read(assets) } }
+        CartridgeTheme(shell.accent, state.reducedMotion) {
+            Box(Modifier.fillMaxSize().background(Ink.Stage)) {
+                if (state.screen in listOf(CollectionScreen.Library, CollectionScreen.Inserting, CollectionScreen.Ejecting, CollectionScreen.LabelPreview)) {
+                    val empty = state.loaded && state.allGames.isEmpty()
+                    // The focused object steps aside for anything said about it: its details, its sheets, its label preview.
+                    val presented = state.screen == CollectionScreen.LabelPreview ||
+                        state.screen == CollectionScreen.Library && (empty || shell.top in setOf(Destination.Details, Destination.Manage, Destination.Options))
+                    glb?.let { bytes -> key(state.viewportGeneration) { LibraryViewport(bytes, state, shell.base != null || scrape.visible, presented) } }
+                    StageShade()
+                    val browsing = state.screen == CollectionScreen.Library && shell.top == null && !scrape.visible && status.state == SessionState.Idle
+                    AnimatedVisibility(browsing, enter = fadeIn(LocalMotion.current.fade()), exit = fadeOut(LocalMotion.current.exit())) {
+                        Box(Modifier.fillMaxSize()) { LibraryChrome(state, shell, device, confirm, back) }
+                    }
+                } else {
+                    if (state.screen == CollectionScreen.Emulator) emulator?.let { surface ->
+                        key(surface) {
+                            AndroidView(modifier = Modifier.fillMaxSize(), factory = { EmulatorHost(surface).also { emulatorHost = it } }, onRelease = { it.release() })
+                        }
+                    }
+                    // No chrome rests on a running game. The top corner and Android's Back both open the pause menu for touch.
+                    if (status.state == SessionState.Running) Box(Modifier.align(Alignment.TopEnd).size(72.dp).tap("pause") { coordinator.pause() })
+                    if (status.state == SessionState.Paused) frozenFrame?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
+                    if (status.state == SessionState.Preparing || state.screen == CollectionScreen.Handoff) Starting(state.selectedGame?.title)
                 }
-            }
-            onDispose { chooseGame = null; chooseLabel = null; chooseDirectory = null; choosePack = null; chooseBackup = null; exportBackup = null; chooseBios = null }
-        }
-        MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFD8C7A8), background = Color(0xFF191817))) {
-            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                if (state.screen in listOf(CollectionScreen.Library, CollectionScreen.LibraryMenu, CollectionScreen.Details, CollectionScreen.Inserting, CollectionScreen.Ejecting, CollectionScreen.LabelPreview)) {
-                    glb?.let { bytes -> key(state.viewportGeneration) { LibraryViewport(bytes, state, scrape.visible) } }
-                    Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(state.title, fontSize = 23.sp, color = Color(0xFFE9E2D6), modifier = Modifier.testTag("selected-title"))
-                        if (state.selectedGame?.favorite == true || state.query != LibraryQuery()) Text(
-                            listOfNotNull(if (state.selectedGame?.favorite == true) "★" else null, if (state.query.favoritesOnly) "Favorites" else null,
-                                state.query.search.takeIf(String::isNotEmpty)?.let { "Search: $it" }, if (state.query.sort != LibrarySort.Added) state.query.sort.title else null).joinToString(" · "), fontSize = 12.sp)
-                        Text(if (state.screen == CollectionScreen.LabelPreview) "↑ ↓ Choose   ·   A Apply action   ·   B Cancel"
-                            else "${when (state.layout) { CollectionLayout.Horizontal -> "← →"; CollectionLayout.Vertical -> "↑ ↓"; CollectionLayout.Grid -> "← ↑ ↓ →" }} Browse   ·   A Insert   ·   R1 Details   ·   L1 Favorite   ·   Y Scrape   ·   B Collection   ·   ${if (state.selectedGame == null) 0 else state.selection.index + 1} / ${state.slots.count { it != null }}",
-                            fontSize = 12.sp, color = Color(0xFF9C968B), modifier = Modifier.padding(top = 8.dp))
-                    }
-                    if (state.screen == CollectionScreen.Library) {
-                        TextButton(onClick = { toolsVisible = !toolsVisible }, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).testTag("toggle-tools")) {
-                            Text(if (toolsVisible) "Close tools" else "Tools")
-                        }
-                        if (toolsVisible) Column(Modifier.align(Alignment.TopCenter).padding(top = 56.dp)
-                            .background(Color(0xEE191817)).padding(8.dp)) {
-                            Row {
-                                TextButton(enabled = !state.busy && state.loaded, onClick = { chooseGame?.invoke() }, modifier = Modifier.testTag("choose-game")) { Text("Add game") }
-                                TextButton(enabled = !state.busy && state.loaded, onClick = { chooseDirectory?.invoke() }, modifier = Modifier.testTag("choose-folder")) { Text("Folder") }
-                                TextButton(enabled = !state.busy && state.loaded, onClick = ::openScraper, modifier = Modifier.testTag("scrape")) { Text("Scrape") }
-                                TextButton(enabled = !state.busy && state.selectedGame != null, onClick = { chooseLabel?.invoke() }, modifier = Modifier.testTag("choose-label")) { Text("Image") }
-                                if (state.selectedGame?.label != null) TextButton(enabled = !state.busy, onClick = coordinator::removeLabel) { Text("Reset label") }
-                                TextButton(enabled = !state.busy && state.rendererReady && state.loaded, onClick = coordinator::insert, modifier = Modifier.testTag("insert")) { Text("Insert") }
-                            }
-                            Row {
-                                TextButton(enabled = !state.busy, onClick = {
-                                    val next = !state.reducedMotion
-                                    coordinator.settings(reducedMotion = next)
-                                    presentationPreferences().edit { putBoolean("reducedMotion", next) }
-                                }, modifier = Modifier.testTag("motion-setting")) { Text(if (state.reducedMotion) "Motion off" else "Motion on") }
-                                TextButton(enabled = !state.busy, onClick = {
-                                    soundEnabled = !soundEnabled
-                                    presentationPreferences().edit { putBoolean("mediaSound", soundEnabled) }
-                                }) { Text(if (soundEnabled) "Sound on" else "Sound off") }
-                                TextButton(enabled = !state.busy, onClick = {
-                                    val next = !state.alternateShortcut
-                                    coordinator.settings(alternateShortcut = next)
-                                    presentationPreferences().edit { putBoolean("alternateShortcut", next) }
-                                }, modifier = Modifier.testTag("shortcut-setting")) { Text(if (state.alternateShortcut) "Menu: Start + Select" else "Menu: L3 + R3") }
-                                TextButton(enabled = !state.busy, onClick = { scanDirectory(null) }, modifier = Modifier.testTag("rescan")) { Text("Rescan") }
-                                TextButton(enabled = !state.busy && state.loaded, onClick = coordinator::openLibraryMenu, modifier = Modifier.testTag("collection-menu")) { Text("Collection") }
-                                TextButton(enabled = !state.busy && state.selectedGame != null, onClick = coordinator::details, modifier = Modifier.testTag("details")) { Text("Details") }
-                                TextButton(enabled = !state.busy, onClick = { openConsole(ConsolePage.Settings) }, modifier = Modifier.testTag("console-settings")) { Text("Settings") }
-                                if (state.resumeSession != null) TextButton(enabled = !state.busy, onClick = coordinator::resumeSavedSession,
-                                    modifier = Modifier.testTag("resume-session")) { Text("Resume session") }
-                            }
-                        }
-                        if (state.scanning) TextButton(onClick = coordinator::cancelScan, modifier = Modifier.align(Alignment.Center).testTag("cancel-scan")) { Text("Cancel scan") }
-                        TextButton(enabled = !state.busy, onClick = { coordinator.navigate(-1) }, modifier = Modifier.align(Alignment.CenterStart).testTag("previous")) { Text("‹") }
-                        TextButton(enabled = !state.busy, onClick = { coordinator.navigate(1) }, modifier = Modifier.align(Alignment.CenterEnd).testTag("next")) { Text("›") }
-                    }
-                    if (state.screen == CollectionScreen.LibraryMenu) {
-                        val menuScroll = rememberScrollState()
-                        LaunchedEffect(state.menuIndex) { menuScroll.animateScrollTo(if (state.menuIndex >= 4) menuScroll.maxValue else 0) }
-                        Column(Modifier.align(Alignment.CenterEnd).width(280.dp).background(Color(0xF0191817)).verticalScroll(menuScroll).padding(12.dp)) {
-                            Text("Collection", fontSize = 19.sp, modifier = Modifier.padding(8.dp))
-                            Text("Removal keeps ROMs, saves and artwork. Rescan skips removed entries; Add game restores them.", fontSize = 12.sp, modifier = Modifier.padding(8.dp))
-                            listOf("Back to collection", "Remove selected entry", "Undo last removal", "Sort: ${state.query.sort.title}",
-                                if (state.query.favoritesOnly) "Show all games" else "Show favorites", "Reset filters & sort").forEachIndexed { index, title ->
-                                TextButton(enabled = !state.busy && (index != 1 || state.selectedGame != null) && (index != 2 || state.removedEntry != null),
-                                    onClick = { coordinator.libraryAction(index) }, modifier = Modifier.fillMaxWidth().testTag("collection-action-$index")
-                                        .background(if (state.menuIndex == index) Color(0xFF34312D) else Color.Transparent)) { Text(title) }
-                            }
-                            LibraryAction("Folders & search", state.menuIndex == 6, "library-manager-open", !state.busy, ::openLibraryManager)
-                            LibraryAction("View: ${state.layout.title}", state.menuIndex == 7, "layout-setting", !state.busy) { coordinator.settings(layout = state.layout.next()) }
-                            LibraryAction("Console settings", state.menuIndex == 8, "console-settings-menu", !state.busy) { openConsole(ConsolePage.Settings) }
-                        }
-                    }
-                    if (state.screen == CollectionScreen.LabelPreview) {
-                        val actions = listOf("Sizing: ${state.labelDraft?.label?.fit}", "Rotate 90°", "Apply label", "Cancel")
-                        Column(Modifier.align(Alignment.CenterEnd).width(210.dp).background(Color(0xF0191817)).padding(12.dp)) {
-                            Text("Label preview", fontSize = 19.sp, color = Color(0xFFE9E2D6), modifier = Modifier.padding(8.dp))
-                            actions.forEachIndexed { index, title ->
-                                TextButton(enabled = !state.busy && (index != 2 || state.labelPreviewReady), onClick = { coordinator.labelAction(index) },
-                                    modifier = Modifier.fillMaxWidth().testTag("label-action-$index").background(
-                                        if (state.menuIndex == index) Color(0xFF34312D) else Color.Transparent)) { Text(title) }
-                            }
-                        }
-                    }
-                } else if (state.screen == CollectionScreen.Emulator) {
-                    emulator?.let { view ->
-                        key(view) {
-                            AndroidView(modifier = Modifier.fillMaxSize(), factory = { EmulatorHost(view).also { emulatorHost = it } }, onRelease = { it.release() })
-                        }
-                    }
-                    if (status.state == SessionState.Running) TextButton(onClick = coordinator::pause,
-                        modifier = Modifier.align(Alignment.TopEnd).testTag("pause")) { Text("Menu") }
-                    if (status.state == SessionState.Paused) {
-                        frozenFrame?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
-                        Box(Modifier.fillMaxSize().background(Color(0xCE191817)), contentAlignment = Alignment.Center) {
-                            Column(Modifier.width(280.dp)) {
-                                Text("Paused", fontSize = 25.sp, color = Color(0xFFE9E2D6), modifier = Modifier.padding(12.dp))
-                                menuItems.forEachIndexed { index, title ->
-                                    TextButton(enabled = !state.busy, onClick = {
-                                        if (index in 4..5) openConsole(if (index == 4) ConsolePage.Game else ConsolePage.Controllers)
-                                        else coordinator.menuAction(index)
-                                    }, modifier = Modifier.fillMaxWidth()
-                                        .testTag("menu-$index").background(if (index == state.menuIndex) Color(0xFF34312D) else Color.Transparent)) {
-                                        Text(title, color = Color(0xFFE9E2D6))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if (state.screen == CollectionScreen.Details) state.selectedGame?.let { game ->
-                    var facts by remember(game.id) { mutableStateOf<LibraryFacts?>(null) }
-                    LaunchedEffect(game.id) { facts = repository.facts(game.id) }
-                    GameDetails(game, facts, state.menuIndex, state.busy, ::detailsAction)
-                }
-                when (libraryOverlay) {
-                    LibraryOverlay.Manager -> LibraryManager(roots, managerFocus, autoScan, ::managerAction)
-                    LibraryOverlay.Search -> LibrarySearch(state.query, { showOverlay(LibraryOverlay.Manager) }) {
-                        showOverlay(LibraryOverlay.None); coordinator.query(state.query.copy(search = it))
-                    }
-                    LibraryOverlay.Edit -> state.selectedGame?.let { MetadataEditor(it, state.busy, { showOverlay(LibraryOverlay.None) }) { values ->
-                        showOverlay(LibraryOverlay.None); coordinator.editMetadata(values)
-                    } }
-                    LibraryOverlay.None -> Unit
-                }
-                if (!state.loaded || state.busy && state.screen !in listOf(CollectionScreen.Inserting, CollectionScreen.Ejecting)) {
-                    Text(if (status.state == SessionState.Preparing) "Preparing embedded core…" else "Working…",
-                        color = Color(0xFFE9E2D6), modifier = Modifier.align(Alignment.BottomCenter).padding(18.dp))
-                }
-                listOfNotNull(status.saveWarning ?: state.message, state.historyWarning).joinToString("\n").takeIf(String::isNotEmpty)?.let { Text(it, color = Color(0xFFE2CFAE), modifier = Modifier.align(Alignment.BottomStart)
-                    .background(Color(0xEE191817)).padding(16.dp).testTag("message"), fontSize = 13.sp) }
-                if (scrape.visible) ScrapePanel(scrape, scraper)
-                consolePage?.let { ConsolePanel(it, consoleChoices(), consoleFocus, state.busy, ::consoleAction, if (consolePage == ConsolePage.Game && coordinator.state.value.selectedGame?.system == dev.cartridge.domain.GameSystem.PS1) biosStatus else noticeText) }
+                ShellOverlays(shell, state, status, device, confirm, back)
+                if (scrape.visible) ScrapePanel(scrape, scraper, confirm, back)
+                Notices(state.message.takeIf { state.launchFailure == null && shell.import == null },
+                    listOfNotNull(status.saveWarning, state.historyWarning).joinToString("\n").ifEmpty { null },
+                    beside = when (shell.top) {
+                        Destination.SystemMenu -> 300.dp
+                        Destination.Details, Destination.Manage -> 400.dp
+                        Destination.Options -> if (status.state == SessionState.Paused) 340.dp else 400.dp
+                        else -> 0.dp
+                    })
             }
         }
     }
 
-    @Composable private fun LibraryViewport(bytes: CollectionAssets, state: CollectionState, scrapeVisible: Boolean) {
+    /** One decoded or typeset label per object of the bounded window; never more. */
+    private class LabelSpec(val key: String, val label: LabelRef?, val title: String, val system: GameSystem, val owner: String)
+
+    @Composable private fun LibraryViewport(bytes: CollectionAssets, state: CollectionState, suspended: Boolean, presented: Boolean) {
         var surface by remember { mutableStateOf<CartridgeSurface?>(null) }
-        var pixels by remember { mutableStateOf<List<LabelPixels?>>(List(3) { null }) }
+        // Decoded labels by image key, never by position: a moved window finds every label it already had.
+        var decoded by remember { mutableStateOf<Map<String, LabelPixels>>(emptyMap()) }
         val cache = remember { linkedMapOf<String, LabelPixels>() }
-        val labels = state.labels
         val systems = state.systems
-        val keys = labels.mapIndexed { index, label -> label?.textureKey(systems[index]) }
+        val labels = state.labels
+        val windowStart = state.windowStart
+        val specs = state.window.mapIndexed { index, game ->
+            val label = labels[index]; val system = systems[index]
+            // A game without artwork carries its own title in type. The empty library shows the product's name.
+            val title = game?.title ?: "Cartridge"
+            LabelSpec(label?.textureKey(system) ?: TypesetLabel.key(title, system), label, title, system, game?.id.orEmpty())
+        }
+        val keys = specs.map { it.key }
         LaunchedEffect(keys) {
-            pixels = labels.mapIndexed { index, label -> label?.let {
-                cache[keys[index]] ?: try { withContext(Dispatchers.IO) { labelStore.decode(it, systems[index]) } }
-                catch (failure: Exception) {
-                    if (failure is CancellationException) throw failure
+            val focus = state.selection.index - windowStart
+            // Only labels new to the window wait for IO, nearest the focus first. A finished decode is kept
+            // even if the window has moved on meanwhile, so fast browsing never repeats the work.
+            for (spec in specs.withIndex().sortedBy { kotlin.math.abs(it.index - focus) }.map { it.value }) {
+                if (spec.key in cache) continue
+                ensureActive()
+                val pixels = withContext(Dispatchers.IO + NonCancellable) {
+                    runCatching { spec.label?.let { labelStore.decode(it, spec.system) } ?: TypesetLabel.render(spec.title, spec.system) }
+                }.getOrElse { failure ->
                     coordinator.notify(failure.message ?: "Cannot display the label")
-                    null
-                }?.also { decoded -> cache[decoded.key] = decoded }
-            } }
-            val needed = keys.filterNotNull().toSet()
-            while (cache.size > state.layout.visibleCount * 2) cache.keys.firstOrNull { it !in needed }?.let { cache.remove(it) } ?: break
+                    // The object still needs a face: its title in type, under the key it was asked for.
+                    withContext(Dispatchers.IO + NonCancellable) { runCatching { TypesetLabel.render(spec.title, spec.system).copy(key = spec.key) }.getOrNull() }
+                }
+                if (pixels == null) continue
+                cache[spec.key] = pixels
+                decoded = cache.toMap()
+            }
+            val needed = keys.toSet()
+            while (cache.size > state.layout.windowCount * 2) cache.keys.firstOrNull { it !in needed }?.let { cache.remove(it) } ?: break
+            decoded = cache.toMap()
         }
         val motion = remember { Animatable(if (state.screen == CollectionScreen.Ejecting) 1f else 0f) }
         LaunchedEffect(state.screen, state.reducedMotion) {
@@ -658,17 +303,22 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             if (state.reducedMotion) motion.snapTo(target)
             else motion.animateTo(target, tween(if (state.screen == CollectionScreen.Ejecting) MediaMotion.EJECT_MS else MediaMotion.INSERT_MS, easing = LinearEasing))
         }
+        var applied by remember { mutableIntStateOf(arrival.first) }
         AndroidView(modifier = Modifier.fillMaxSize(), factory = {
             CartridgeSurface(it, bytes, state.selection.index,
                 onReady = { coordinator.rendererReady(state.viewportGeneration) }, onReleased = {},
-                onLabelsReady = { first, keys -> coordinator.labelsReady(state.viewportGeneration, keys, first) }, onLabelError = coordinator::notify
+                onLabelsReady = { first, ready -> coordinator.labelsReady(state.viewportGeneration, ready, first) }, onLabelError = coordinator::notify
             ).also { renderer -> surface = renderer; cartridgeSurface = renderer }
         }, update = {
-            it.systems = systems; it.layout = state.layout; it.selection = state.selection.index; it.windowStart = state.windowStart; it.collectionCount = state.selection.count; it.insertion = motion.value
+            it.layout = state.layout; it.selection = state.selection.index
+            // A search with no result shows no object; an empty library still shows the one that welcomes you.
+            it.collectionCount = if (state.selectedGame == null && state.allGames.isNotEmpty()) 0 else state.selection.count
+            it.insertion = motion.value
             it.reducedMotion = state.reducedMotion
-            it.setLabels(if (pixels.map { pixel -> pixel?.key } == keys) pixels else List(labels.size) { null })
+            it.presentation = if (presented) 1f else 0f
+            if (arrival.first != applied && arrival.second == state.shelf.key) { applied = arrival.first; it.arriveFrom(arrival.third) }
+            it.setWindow(windowStart, specs.map { spec -> CartridgeSurface.Staged(spec.system, spec.owner, spec.key, decoded[spec.key]) })
         }, onRelease = { it.close() })
-        val suspended = state.screen == CollectionScreen.Details || libraryOverlay != LibraryOverlay.None || scrapeVisible || consolePage != null
         DisposableEffect(surface, suspended) {
             val renderer = surface
             if (suspended) renderer?.pauseRendering() else if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) renderer?.resumeRendering()
@@ -688,8 +338,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         Choreographer.getInstance().postFrameCallback(inputFrames)
     }
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putBoolean("addingGame", addingGame)
-        outState.putString("recoveryId", recoveryId)
+        if (::shell.isInitialized) outState.putString("recoveryId", shell.pendingLocate)
         super.onSaveInstanceState(outState)
     }
     override fun onPause() {
@@ -703,7 +352,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         if (!hasFocus && ::input.isInitialized) { input.reset(); coordinator.pause() }
     }
     override fun onDestroy() {
-        backupReview?.close(); backupReview = null
+        shell.close()
         getSystemService(InputManager::class.java).unregisterInputDeviceListener(this)
         coordinator.destroy()
         scraper.destroy()

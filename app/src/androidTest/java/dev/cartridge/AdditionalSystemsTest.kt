@@ -92,7 +92,7 @@ class AdditionalSystemsTest {
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 for (system in listOf(GameSystem.GB, GameSystem.GBC)) {
                     choose("probe.${system.extension}"); await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.system == system }
-                    var id = ""; scenario.onActivity { id = it.coordinator.state.value.selectedGame!!.id; assertEquals(27, it.collectionSurface!!.meshInstanceCount) }
+                    var id = ""; scenario.onActivity { id = it.coordinator.state.value.selectedGame!!.id; assertEquals(45, it.collectionSurface!!.meshInstanceCount) }
                     ui.tool("insert").performClick(); await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Running }
                     var before = 0; ui.waitUntil(8000) { before = pixels(scenario); before != 0 }
                     button(scenario); var changed = 0; ui.waitUntil(8000) { changed = pixels(scenario); changed != 0 && changed != before }

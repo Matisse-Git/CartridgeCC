@@ -48,9 +48,9 @@ class CartridgeSurface(
     private val labels: CartridgeLabels
     private val tallLabels: CartridgeLabels
     private val discLabels: CartridgeLabels
-    private val instances = arrayOfNulls<FilamentInstance>(9)
-    private val tallInstances = arrayOfNulls<FilamentInstance>(9)
-    private val discInstances = arrayOfNulls<FilamentInstance>(9)
+    private val instances = arrayOfNulls<FilamentInstance>(CollectionLayout.POOL)
+    private val tallInstances = arrayOfNulls<FilamentInstance>(CollectionLayout.POOL)
+    private val discInstances = arrayOfNulls<FilamentInstance>(CollectionLayout.POOL)
     private val uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
     private val light: Int
     private val indirectLight: IndirectLight
@@ -58,11 +58,18 @@ class CartridgeSurface(
     private val choreographer = Choreographer.getInstance()
     private val spring = FocusSpring(initialSelection.toFloat())
     private val gridSpring = FocusSpring(0f)
+    private val stageSpring = FocusSpring(0f)
     private var previousLayout = CollectionLayout.Horizontal
     var layout: CollectionLayout = CollectionLayout.Horizontal
     internal val poolCapacity get() = instances.size
     internal val meshInstanceCount get() = instances.size + tallInstances.size + discInstances.size
-    var systems: List<GameSystem> = List(9) { GameSystem.GBA }
+    /** One shelf entry of the staged window: the template that shows it and the label it must carry. */
+    class Staged(val system: GameSystem, val owner: String, val key: String, val pixels: LabelPixels?)
+    private class Placed(val global: Int, val entry: Staged?)
+    // By pooled object. Until a window is staged the first objects stand as the bare template, for diagnostics.
+    private var placed = Array<Placed?>(CollectionLayout.POOL) { Placed(it, null) }
+    private var windowStart = 0
+    private var windowSize = 0
     private val matrix = FloatArray(16)
     private val renderables = IntArray(128)
     private var swapChain: SwapChain? = null
@@ -71,28 +78,48 @@ class CartridgeSurface(
     private var reportedReady = false
     private var lastFrame = 0L
     var selection: Int = initialSelection
-    var windowStart: Int = 0
     var collectionCount: Int = 1
     var lift: Float = 0f
     var insertion: Float = 0f
     var reducedMotion: Boolean = false
+    /**
+     * 0 browses the shelf. 1 presents the focused object alone at the left of the stage, beside a sheet;
+     * its neighbours slide out of frame. The same geometry, materials and lighting are used throughout.
+     */
+    var presentation: Float = 0f
+    /** Let a newly chosen shelf arrive from the side it was reached from, instead of swapping in place. */
+    fun arriveFrom(direction: Int) { if (!reducedMotion && direction != 0) spring.snapTo(selection + direction * 1.4f) }
     internal val focusPosition get() = spring.position
+    /** Diagnostic: label textures uploaded since this renderer was created. */
+    internal val labelUploads get() = labels.uploads + tallLabels.uploads + discLabels.uploads
+    /** Diagnostic: staged objects that were on stage in the last frame without their own label. Browsing keeps this at zero. */
+    internal var unlabelledOnStage = 0
+        private set
+    /** Diagnostic: staged objects, on stage or waiting beside it, whose own label is not on the GPU yet. */
+    internal val stagedUnbound get() = placed.withIndex().count { (index, place) ->
+        place?.entry?.let { !listOf(labels, tallLabels, discLabels)[format(it.system)].shows(index, it.owner) } == true }
     internal val isClosed get() = closed
     internal val diagnosticState get() = "closed=$closed active=$active swap=${swapChain != null} ready=$reportedReady uiReady=${uiHelper.isReadyToRender} loads=${if (closed) "released" else "${resourceLoader.asyncGetLoadProgress()}/${tallLoader.asyncGetLoadProgress()}/${receiverLoader.asyncGetLoadProgress()}"}"
     /** Diagnostic only: CPU submission/scheduling, not a GPU presentation-time measurement. */
     internal var frameObserver: ((Long, Long, Boolean) -> Unit)? = null
     private var labelFailure = false
-    fun setLabels(pixels: List<LabelPixels?>) {
-        require(pixels.size <= instances.size)
-        if (!closed) {
-            val pooled = List(instances.size) { pixels.getOrNull(it) }
-            val short = pooled.mapIndexed { index, label -> label.takeIf { systems.getOrNull(index) == GameSystem.GBA } }
-            val tall = pooled.mapIndexed { index, label -> label.takeIf { systems.getOrNull(index)?.tallCartridge == true } }
-            val disc = pooled.mapIndexed { index, label -> label.takeIf { systems.getOrNull(index) == GameSystem.PS1 } }
-            if (labels.desired.map { it?.key } != short.map { it?.key } || tallLabels.desired.map { it?.key } != tall.map { it?.key } || discLabels.desired.map { it?.key } != disc.map { it?.key }) labelFailure = false
-            labels.desired = short; tallLabels.desired = tall
-            discLabels.desired = disc
+    private fun format(system: GameSystem) = when { system == GameSystem.PS1 -> 2; system.tallCartridge -> 1; else -> 0 }
+    /**
+     * Stage the bounded slice of the shelf that starts at [start]. Every shelf index keeps the pooled object
+     * [CollectionLayout.slot] gives it, so moving the window re-labels only the objects that entered it;
+     * the ones already on screen keep their object, their place and their texture.
+     */
+    fun setWindow(start: Int, entries: List<Staged>) {
+        require(entries.size <= poolCapacity)
+        if (closed) return
+        val next = arrayOfNulls<Placed>(poolCapacity)
+        entries.forEachIndexed { offset, entry -> next[CollectionLayout.slot(start + offset)] = Placed(start + offset, entry) }
+        listOf(labels, tallLabels, discLabels).forEachIndexed { pool, target ->
+            val wanted = List(poolCapacity) { slot -> next[slot]?.entry?.takeIf { format(it.system) == pool }?.let { CartridgeLabels.Wanted(it.owner, it.key, it.pixels) } }
+            if (target.wanted.map { it?.key } != wanted.map { it?.key }) labelFailure = false
+            target.wanted = wanted
         }
+        placed = next; windowStart = start; windowSize = entries.size
     }
 
     init {
@@ -189,7 +216,12 @@ class CartridgeSurface(
         lastFrame = frameTimeNanos
         if (layout != previousLayout) { spring.snapTo(selection.toFloat()); gridSpring.snapTo(layout.gridCenter(selection, collectionCount)); previousLayout = layout }
         val focus = if (reducedMotion) spring.snapTo(selection.toFloat()) else spring.step(selection.toFloat(), dt)
-        val gridCenter = if (reducedMotion) gridSpring.snapTo(layout.gridCenter(selection, collectionCount)) else gridSpring.step(layout.gridCenter(selection, collectionCount), dt)
+        val gridCenter = if (reducedMotion) gridSpring.snapTo(layout.gridCenter(selection, collectionCount.coerceAtLeast(1))) else gridSpring.step(layout.gridCenter(selection, collectionCount.coerceAtLeast(1)), dt)
+        val stage = if (reducedMotion) stageSpring.snapTo(presentation) else stageSpring.step(presentation, dt)
+        // Vertical stands to the right of its title; Grid keeps three full rows between the top bar and the title.
+        fun restX(global: Int, offset: Float) = when (layout) { CollectionLayout.Horizontal -> offset * 1.66f; CollectionLayout.Vertical -> VERTICAL_X; CollectionLayout.Grid -> (global % 3 - 1) * 1.04f }
+        fun restY(global: Int, offset: Float) = when (layout) { CollectionLayout.Horizontal -> 0f; CollectionLayout.Vertical -> -offset * 1.12f; CollectionLayout.Grid -> (gridCenter - global / 3) * .54f + .05f }
+        val focusX = restX(selection, selection - focus); val focusY = restY(selection, selection - focus)
         resourceLoader.asyncUpdateLoad()
         receiverLoader.asyncUpdateLoad()
         tallLoader.asyncUpdateLoad()
@@ -222,28 +254,47 @@ class CartridgeSurface(
                 onLabelError("Cannot prepare this label preview. Try another image.")
             }
         }
-        for ((format, pool) in listOf(0 to instances, 1 to tallInstances, 2 to discInstances)) pool.forEachIndexed { index, instance ->
-            val global = index + windowStart
+        var unlabelled = 0
+        for ((format, pool, bound) in listOf(Triple(0, instances, labels), Triple(1, tallInstances, tallLabels), Triple(2, discInstances, discLabels))) pool.forEachIndexed { index, instance ->
+            val place = placed[index]
+            val entry = place?.entry
+            val global = place?.global ?: -1
             val offset = global - focus
-            val selected = global == selection
+            val selected = place != null && global == selection
             val emphasis = if (layout == CollectionLayout.Grid) if (selected) 1f else 0f else (1f - abs(offset)).coerceIn(0f, 1f)
             Matrix.setIdentityM(matrix, 0)
             val pose = MediaMotion.pose(if (selected && !reducedMotion) insertion else 0f)
-            val x = when (layout) { CollectionLayout.Horizontal -> offset * 1.85f; CollectionLayout.Vertical -> 0f; CollectionLayout.Grid -> (global % 3 - 1) * 1.35f }
-            val y = when (layout) { CollectionLayout.Horizontal -> 0f; CollectionLayout.Vertical -> -offset * 1.30f; CollectionLayout.Grid -> (gridCenter - global / 3) * .85f }
-            val system = systems.getOrNull(index) ?: GameSystem.GBA
-            val visible = index < layout.visibleCount && global < collectionCount && format == when { system == GameSystem.PS1 -> 2; system.tallCartridge -> 1; else -> 0 }
+            var x = restX(global, offset); var y = restY(global, offset)
+            if (stage > .001f) {
+                if (selected) { x += (STAGE_X - x) * stage; y += (STAGE_Y - y) * stage }
+                else {
+                    // Neighbours leave along the line from the focused object, so nothing crosses in front of it.
+                    val dx = x - focusX; val dy = y - focusY; val length = kotlin.math.sqrt(dx * dx + dy * dy)
+                    x += (if (length < .01f) 1f else dx / length) * stage * 6f; y += (if (length < .01f) 0f else dy / length) * stage * 6f
+                }
+            }
+            // The window holds one row above and below the grid's three so a new row arrives labelled; they grow in and out.
+            val arrival = if (layout != CollectionLayout.Grid) 1f else (2f - abs(global / 3 - gridCenter)).coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
+            // An object appears only once it carries its own game's label, never a neighbour's or the template's.
+            val visible = place != null && global < collectionCount && (selected || stage < .97f) && arrival > 0f &&
+                format == format(entry?.system ?: GameSystem.GBA) && (entry == null || bound.shows(index, entry.owner))
+            if (entry != null && format == format(entry.system) && global < collectionCount && !bound.shows(index, entry.owner) &&
+                (if (layout == CollectionLayout.Grid) arrival > 0f else abs(offset) < 1.5f)) unlabelled++
             Matrix.translateM(matrix, 0, x * (1f - pose.alignment), y * (1f - pose.alignment) + emphasis * lift * .5f + pose.height,
                 if (visible) emphasis * .12f else -100f)
             Matrix.rotateM(matrix, 0, (-10f - emphasis * lift * 25f) * (1f - pose.alignment), 1f, 0f, 0f)
-            val angle = if (layout == CollectionLayout.Grid) (global % 3 - 1) * -8f else offset.coerceIn(-1f, 1f) * -22f + 8f
+            val browseAngle = if (layout == CollectionLayout.Grid) (global % 3 - 1) * -8f else offset.coerceIn(-1f, 1f) * -22f + 8f
+            val angle = if (selected) browseAngle + (STAGE_YAW - browseAngle) * stage else browseAngle
             Matrix.rotateM(matrix, 0, angle * (1f - pose.alignment), 0f, 1f, 0f)
-            val restScale = if (layout == CollectionLayout.Grid) 16f + emphasis * 2f else 22f + emphasis * 5f
-            val scale = (restScale + (27f - restScale) * pose.alignment) * when(format) { 1 -> .62f; 2 -> .46f; else -> 1f }
+            val browseScale = if (layout == CollectionLayout.Grid) 11.5f + emphasis * 3.5f else 22f + emphasis * 5f
+            val restScale = if (selected) browseScale + (STAGE_SCALE - browseScale) * stage else browseScale
+            val scale = (restScale + (27f - restScale) * pose.alignment) * when(format) { 1 -> .62f; 2 -> .40f; else -> 1f } * (if (visible) arrival else 1f)
             Matrix.scaleM(matrix, 0, scale, scale, scale)
             engine.transformManager.setTransform(engine.transformManager.getInstance(instance!!.root), matrix)
         }
-        val slot = if (reducedMotion || systems.getOrNull(selection - windowStart) == GameSystem.PS1) 0f else MediaMotion.pose(insertion).slot
+        unlabelledOnStage = unlabelled
+        val focused = placed[CollectionLayout.slot(selection)]?.takeIf { it.global == selection }?.entry?.system
+        val slot = if (reducedMotion || focused == GameSystem.PS1) 0f else MediaMotion.pose(insertion).slot
         Matrix.setIdentityM(matrix, 0)
         Matrix.translateM(matrix, 0, 0f, -.90f + .17f * slot, if (slot > .001f) 0f else -100f)
         Matrix.scaleM(matrix, 0, 27f, 27f, 27f)
@@ -254,7 +305,10 @@ class CartridgeSurface(
             renderer.render(view)
             renderer.endFrame()
             submitted = true
-            onLabelsReady(windowStart, (0 until layout.visibleCount).map { when { systems.getOrNull(it) == GameSystem.PS1 -> discLabels.keys[it]; systems.getOrNull(it)?.tallCartridge == true -> tallLabels.keys[it]; else -> labels.keys[it] } })
+            onLabelsReady(windowStart, List(windowSize) { offset ->
+                val index = CollectionLayout.slot(windowStart + offset)
+                when (placed[index]?.entry?.system?.let(::format)) { 2 -> discLabels.key(index); 1 -> tallLabels.key(index); 0 -> labels.key(index); else -> null }
+            })
             if (!reportedReady && resourceLoader.asyncGetLoadProgress() >= 1f && receiverLoader.asyncGetLoadProgress() >= 1f && tallLoader.asyncGetLoadProgress() >= 1f && discLoader.asyncGetLoadProgress() >= 1f) {
                 reportedReady = true
                 onReady()
@@ -304,4 +358,12 @@ class CartridgeSurface(
         onReleased()
     }
     override fun onDetachedFromWindow() { close(); super.onDetachedFromWindow() }
+    private companion object {
+        // World units at the focus plane: the view is about 4.2 wide, so this centres the object in the left half.
+        const val STAGE_X = -1.0f
+        const val STAGE_Y = .02f
+        const val STAGE_YAW = 14f
+        const val STAGE_SCALE = 25f
+        const val VERTICAL_X = .50f
+    }
 }

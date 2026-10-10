@@ -54,7 +54,7 @@ class RenderRefinementTest {
                 } finally { Intents.release() }
             }
             await { it.coordinator.state.value.rendererReady }
-            ui.onNodeWithTag("choose-game").assertDoesNotExist()
+            ui.onNodeWithTag("system-menu-panel").assertDoesNotExist()
             choose("choose-game","probe-two.gba")
             await { !it.coordinator.state.value.busy }
             choose("choose-game","probe-one.gba")
@@ -85,6 +85,7 @@ class RenderRefinementTest {
             ui.waitForIdle()
             ui.tool("motion-setting").performClick()
             ui.tool("shortcut-setting").performClick()
+            ui.home() // Settings is opaque and pauses the stage; the focus spring is observed in the library.
             scenario.onActivity { assertTrue(it.coordinator.state.value.reducedMotion); assertTrue(it.coordinator.state.value.alternateShortcut) }
             scenario.onActivity { it.coordinator.navigate(-1) }
             await { it.collectionSurface?.focusPosition == it.coordinator.state.value.selection.index.toFloat() }

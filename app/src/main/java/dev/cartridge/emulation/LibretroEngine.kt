@@ -13,9 +13,11 @@ import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.coroutineScope
 import com.swordfish.libretrodroid.GLRetroView
 import com.swordfish.libretrodroid.GLRetroViewData
+import com.swordfish.libretrodroid.ShaderConfig
 import com.swordfish.libretrodroid.Variable
 import dev.cartridge.domain.SessionMachine
 import dev.cartridge.domain.SessionState
+import dev.cartridge.environment.GameOptions
 import dev.cartridge.storage.SaveStore
 import dev.cartridge.storage.SessionStore
 import kotlinx.coroutines.*
@@ -30,8 +32,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** All state/lifecycle mutations run on Main. JNI save calls run on the view's GL thread. */
 class LibretroEngine(private val context: Context, private val scope: CoroutineScope,
     private val checkpointIntervalMs: Long = 15_000,
-    private val coreOptions: () -> Map<String, String> = { emptyMap() },
-    private val sessionStore: SessionStore? = null) : EmulationEngine {
+    private val sessionOptions: (GameRequest) -> Map<String, String> = { emptyMap() },
+    private val sessionStore: SessionStore? = null,
+    /** Where a core looks for firmware. Tests give it an empty one so diagnostics never depend on the owner's BIOS. */
+    private val systemDirectory: File = File(context.filesDir, "system")) : EmulationEngine {
     private class SessionOwner : LifecycleOwner {
         val registry = LifecycleRegistry(this)
         override val lifecycle: Lifecycle get() = registry
@@ -79,16 +83,19 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 val savedRtc = withContext(Dispatchers.IO) { saves.read(game.id, "rtc") }
                 lastWrittenRam = savedRam
                 lastWrittenRtc = savedRtc
+                val options = sessionOptions(game)
                 val data = GLRetroViewData(context).apply {
                     coreFilePath = core.absolutePath
                     gameFilePath = game.rom.absolutePath
-                    systemDirectory = File(context.filesDir, "system").apply { mkdirs() }.path
+                    systemDirectory = this@LibretroEngine.systemDirectory.apply { mkdirs() }.path
                     savesDirectory = File(context.filesDir, "saves").apply { mkdirs() }.path
                     rumbleEventsEnabled = false
                     enableMicrophone = false
-                    variables = (if (game.system == dev.cartridge.domain.GameSystem.PS1) mapOf(
+                    shader = screenEffect(options[GameOptions.SCREEN_EFFECT])
+                    // Firmware and memory-card ownership are fixed by the save design; user options cannot replace them.
+                    variables = ((options - GameOptions.SCREEN_EFFECT) + if (game.system == dev.cartridge.domain.GameSystem.PS1) mapOf(
                         "pcsx_rearmed_bios" to "auto", "pcsx_rearmed_memcard1" to "libretro", "pcsx_rearmed_memcard2" to "disabled")
-                        else coreOptions()).map { Variable(it.key, it.value) }.toTypedArray()
+                        else emptyMap()).map { Variable(it.key, it.value) }.toTypedArray()
                 }
                 val view = GLRetroView(context, data).apply { isFocusable = false }
                 val session = SessionOwner()
@@ -313,11 +320,21 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
         }
     }
     override suspend fun configure(options: Map<String, String>) = pausedOperation {
-        onGl {
+        val variables = options - GameOptions.SCREEN_EFFECT
+        if (variables.isNotEmpty()) onGl {
             val supported = getVariables().mapNotNull { it.key }.toSet()
-            require(options.keys.all { it in supported }) { "Unsupported core option" }
-            updateVariables(*options.map { Variable(it.key, it.value) }.toTypedArray())
+            require(variables.keys.all { it in supported }) { "Unsupported core option" }
+            updateVariables(*variables.map { Variable(it.key, it.value) }.toTypedArray())
         }
+        // The wrapper stores the shader choice and applies it with the next presented frame.
+        val effect = options[GameOptions.SCREEN_EFFECT]
+        if (effect != null) checkNotNull(mutableSurface.value).shader = screenEffect(effect)
+    }
+    private fun screenEffect(value: String?): ShaderConfig = when (value) {
+        "sharp" -> ShaderConfig.Sharp
+        "lcd" -> ShaderConfig.LCD
+        "crt" -> ShaderConfig.CRT
+        else -> ShaderConfig.Default
     }
 
     private fun releaseNative() {

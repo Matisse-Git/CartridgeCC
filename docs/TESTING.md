@@ -1,5 +1,66 @@
 # Tests and actual results
 
+Media models and browse stability, 2026-10-10 (uncommitted on `redesign/console-experience`,
+versionCode 17, debug APK SHA-256 begins `1f7fcb556a98c31c`): both APKs build; 59 host tests pass,
+two of them new layout-window tests; lint has zero errors and 24 warnings; 11 asset checks pass and
+the Khronos validator reports zero errors and zero warnings for all four GLBs. On the connected
+RP5 (Android 13, `RP5_V1.0.0.189_20251128_174732_user`) the full regression is **38 of 38 in
+276.3 s**: the 37 existing tests and the new `BrowseStabilityTest` (`Test-Device.ps1 -Suite Browse`).
+
+- **The flicker.** `BrowseStabilityTest` puts 30 original titles of all four systems on one shelf
+  and steps along it with the D-pad in each layout while an observer reads the renderer on every
+  presented frame. Horizontal and Vertical: 194 frames each, 9 steps out and 9 back, 7 label
+  uploads each way, which is exactly the 7 games that entered the window. Grid: 137 frames,
+  4 rows down and back, 6 uploads each way. In no frame was an object on stage without its own
+  game's label. Before this change every step past three games released and re-uploaded all three
+  visible labels and showed the template label in between; that was read from the code, not
+  measured with this test, which did not exist then.
+- **Labels on the new objects.** `RenderRefinementTest` (asymmetric four-colour label on the GBA
+  cartridge), `CollectionUiTest`, `CollectionLayoutDeviceTest` and `Ps1DeviceTest` sample label
+  colours from the real GPU surface and pass unchanged, so orientation and placement hold.
+- **Rate.** `RenderPacingTest` on the same build: median 16.66 ms in every phase; p95 16.91 ms at
+  rest, 16.76 ms rapid navigation, 16.73 ms insertion, 16.76 ms vertical, 16.74 ms grid; no gaps
+  in 2,940 presented frames; CPU submission p95 2.83 ms (2.47 ms with the generated models),
+  3,241 of 3,241 frames submitted.
+- **Seen.** The 26 tour screenshots were captured again and looked at; docs/ux/screenshots holds
+  them. A separate one-off capture of the insertion phase showed the new cartridge entering the
+  receiving slot with clearance on both sides.
+- **Not covered.** The owner's own library was not opened. With scraped artwork a label takes
+  longer to decode than the typeset ones used here, so on a held D-pad an arriving object can
+  appear a moment late; it cannot appear with another game's label. The look of the models under
+  the studio light is the owner's call.
+
+
+Console-experience redesign, 2026-10-10 (uncommitted on `redesign/console-experience`, versionCode
+17): both APKs build; 57 host tests pass; lint has zero errors and 24 warnings; 12 asset checks
+pass. On the connected RP5 (Android 13, `RP5_V1.0.0.189_20251128_174732_user`) the full regression
+is **37 of 37 in 262.5 s** — the 35 existing tests, reaching controls through the new interface,
+plus `GameOptionsDeviceTest` and `UxTourTest`. Render pacing is unchanged: median 16.66 ms, p95
+16.73–16.78 ms, no gaps over 2,941 presented frames, CPU submission p95 2.47 ms. Details, the
+screenshots the tour captured, and what still needs the owner's hands are in
+[ux/IMPLEMENTATION_STATUS](ux/IMPLEMENTATION_STATUS.md).
+
+Notes for whoever runs these next:
+
+- Tests reach controls through `androidTest/ToolShelf.kt`: `ui.tool("choose-game")`, `"insert"`,
+  `"rescan"`, `"hide"` and so on map each job to where it now lives, and `ui.home()` returns to the
+  library with on-screen controls. Row tags are ids (`system-add`, `settings-export`,
+  `option-playstation.sharp3d`), not positions.
+- Opaque pages pause the 3D stage. Observe the renderer from the library (`ui.home()` first).
+- An import with something to report stays open as a dialog; `home()` dismisses it. Scan outcomes
+  are read from `shell.lastScan` and `shell.scansFinished`, not from the status message.
+- The focused object stands at the left while a sheet describes it, including the label preview.
+  Pixel checks use `MainActivity.labelCentre()`.
+- `DebugCollectionActivity` uses its own firmware folder. Before this, two `Ps1DeviceTest` cases
+  failed on this device with both the old and the new build, because a real BIOS had been imported
+  into the app after the last recorded regression and those diagnostics assume the built-in BIOS.
+  The owner's file was not modified.
+- `tools/Test-Device.ps1 -Suite Tour` and `-Suite Options` were added. Under Windows PowerShell 5.1
+  the script stops at its first `adb push` (stderr progress becomes a terminating error); the runs
+  above used the same `am instrument` command through adb directly. PowerShell 7 is unaffected.
+- `UxTourTest` writes `files/ux-tour/*.png` on the device:
+  `adb exec-out run-as dev.cartridge cat files/ux-tour/01-welcome.png > 01-welcome.png`.
+
 PS1 increment, 2026-10-10: the source-built arm64 PCSX core, scoped disc imports and actual native
 video/audio/card/state/recreation tests run on the connected RP5. Both APKs build, 48 host tests and
 35 device regression tests pass; lint has zero errors/26 warnings, 12 asset checks and four GLB

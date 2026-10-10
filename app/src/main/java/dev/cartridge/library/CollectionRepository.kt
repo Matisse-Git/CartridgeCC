@@ -32,6 +32,8 @@ interface CollectionRepository {
     /** Hide only the collection entry; never delete ROMs, saves or enrichment. */
     suspend fun remove(gameId: String)
     suspend fun restore(gameId: String, position: Int)
+    /** Entries the owner hid. Their ROMs, saves and enrichment are intact. */
+    suspend fun hiddenGames(): List<LibraryGame> = emptyList()
     suspend fun select(slot: Int)
     suspend fun setLabel(gameId: String, label: LabelRef?)
     suspend fun setMetadata(gameId: String, values: Map<String, MetadataValue>)

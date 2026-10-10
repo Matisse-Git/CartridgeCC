@@ -34,6 +34,10 @@ import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
+/** Where the right column and the centred row of the compact grid fall on the surface. */
+private const val GRID_RIGHT_COLUMN = .745
+private const val GRID_CENTRE_ROW = .475
+
 class CollectionLayoutDeviceTest {
     @get:Rule val ui = createEmptyComposeRule()
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
@@ -79,19 +83,26 @@ class CollectionLayoutDeviceTest {
         try {
             ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
-                key(scenario, KeyEvent.KEYCODE_BUTTON_B)
-                repeat(7) { key(scenario, KeyEvent.KEYCODE_DPAD_DOWN) }
-                ui.onNodeWithTag("layout-setting").assertIsDisplayed()
+                // Controller only: Start opens the menu, Settings is its last row, Appearance the second section, Layout its first row.
+                key(scenario, KeyEvent.KEYCODE_BUTTON_START)
+                ui.onNodeWithTag("system-menu-panel").assertIsDisplayed()
+                repeat(6) { key(scenario, KeyEvent.KEYCODE_DPAD_DOWN) }
                 key(scenario, KeyEvent.KEYCODE_BUTTON_A)
+                ui.onNodeWithTag("settings").assertIsDisplayed()
+                key(scenario, KeyEvent.KEYCODE_DPAD_DOWN); key(scenario, KeyEvent.KEYCODE_BUTTON_A)
+                ui.onNodeWithTag("layout-setting").assertIsDisplayed()
+                key(scenario, KeyEvent.KEYCODE_DPAD_RIGHT)
                 scenario.onActivity { assertEquals(CollectionLayout.Vertical, it.coordinator.state.value.layout); assertEquals(ids[4], it.coordinator.state.value.selectedGame!!.id) }
-                key(scenario, KeyEvent.KEYCODE_BUTTON_B); key(scenario, KeyEvent.KEYCODE_DPAD_DOWN)
+                repeat(3) { key(scenario, KeyEvent.KEYCODE_BUTTON_B) }
+                ui.onNodeWithTag("settings").assertDoesNotExist(); ui.onNodeWithTag("system-menu-panel").assertDoesNotExist()
+                key(scenario, KeyEvent.KEYCODE_DPAD_DOWN)
                 scenario.onActivity { assertEquals(ids[5], it.coordinator.state.value.selectedGame!!.id) }
-                key(scenario, KeyEvent.KEYCODE_BUTTON_B); ui.onNodeWithTag("layout-setting").performScrollTo().performClick(); key(scenario, KeyEvent.KEYCODE_BUTTON_B)
+                ui.tool("layout-setting").performClick(); ui.home()
                 scenario.onActivity { assertEquals(CollectionLayout.Grid, it.coordinator.state.value.layout); assertEquals(ids[5], it.coordinator.state.value.selectedGame!!.id) }
                 key(scenario, KeyEvent.KEYCODE_DPAD_RIGHT); scenario.onActivity { assertEquals(5, it.coordinator.state.value.selection.index) }
                 key(scenario, KeyEvent.KEYCODE_DPAD_DOWN); scenario.onActivity { assertEquals(8, it.coordinator.state.value.selection.index) }
                 scenario.recreate(); await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
-                scenario.onActivity { assertEquals(CollectionLayout.Grid, it.coordinator.state.value.layout); assertEquals(ids[8], it.coordinator.state.value.selectedGame!!.id); assertEquals(9, it.collectionSurface!!.poolCapacity) }
+                scenario.onActivity { assertEquals(CollectionLayout.Grid, it.coordinator.state.value.layout); assertEquals(ids[8], it.coordinator.state.value.selectedGame!!.id); assertEquals(CollectionLayout.POOL, it.collectionSurface!!.poolCapacity) }
                 stick(scenario, .2f); Thread.sleep(150)
                 scenario.onActivity { assertEquals(8, it.coordinator.state.value.selection.index) }
                 stick(scenario, -1f)
@@ -115,7 +126,7 @@ class CollectionLayoutDeviceTest {
                     scenario.onActivity { activity ->
                         val view = activity.collectionSurface!!; val image = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
                         // Selected grid cell is right/centre row for index 8 (row2) with viewport centre row2.
-                        val x = (view.width * .82).toInt(); val y = view.height / 2
+                        val x = (view.width * GRID_RIGHT_COLUMN).toInt(); val y = (view.height * GRID_CENTRE_ROW).toInt()
                         PixelCopy.request(view, Rect(x - 4, y - 4, x + 4, y + 4), image, { status -> pixel.complete(if (status == PixelCopy.SUCCESS) image.getPixel(4, 4) else 0); image.recycle() }, Handler(Looper.getMainLooper()))
                     }
                     val color = pixel.get(3, TimeUnit.SECONDS); Color.blue(color) > 70 && Color.blue(color) > Color.red(color) * 2
@@ -137,8 +148,8 @@ class CollectionLayoutDeviceTest {
                     repeat(80) { n -> scenario.onActivity { it.coordinator.navigate(if (n % 2 == 0) 47 else -13) }; Thread.sleep(20) }
                     scenario.onActivity {
                         assertEquals(500, it.coordinator.state.value.allGames.size)
-                        assertTrue(it.coordinator.state.value.labels.size <= layout.visibleCount)
-                        assertEquals(9, it.collectionSurface!!.poolCapacity)
+                        assertTrue(it.coordinator.state.value.labels.size <= layout.windowCount)
+                        assertEquals(CollectionLayout.POOL, it.collectionSurface!!.poolCapacity)
                         assertTrue(it.coordinator.state.value.selection.index in 0..499)
                     }
                 }
@@ -146,7 +157,7 @@ class CollectionLayoutDeviceTest {
                     scenario.recreate(); await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                     scenario.onActivity { assertEquals(CollectionLayout.Grid, it.coordinator.state.value.layout); assertEquals(500, it.coordinator.state.value.allGames.size) }
                 }
-                Log.i("CartridgeScale", "500 original records; fixed nine-instance pool; PSS before=$startPss KiB, after=${Debug.getPss()} KiB")
+                Log.i("CartridgeScale", "500 original records; fixed ${CollectionLayout.POOL}-object pool per template; PSS before=$startPss KiB, after=${Debug.getPss()} KiB")
             }
         } finally { DebugCollectionActivity.closeDatabases(); context.deleteDatabase("$name.db") }
     }

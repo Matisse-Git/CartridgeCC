@@ -1,12 +1,74 @@
 # Cartridge asset pipeline
 
+## Current media: imported models (2026-10-10, ADR 0019)
+
+The three objects a game is shown as are converted from models the owner downloaded from Sketchfab.
+They replace the generated cartridge, tall cartridge and disc; the receiving slot is still the
+project's own generated asset (`python tools/generate_receiver.py`, byte-identical to before).
+
+| Runtime file | Source under `assets/models` | Result |
+| --- | --- | --- |
+| `gba_cartridge.glb` | `gb/source/GBA_SP_Cartridge.zip` (FBX and AO map inside), `gb/textures` | 2,294,124 bytes, 5,802 triangles, 60.00 × 34.33 × 6.87 mm, label 43.26 × 22.54 mm |
+| `gb_cartridge.glb` | `gba/source/Gameboy_Cartridge.fbx`, `gba/textures` | 2,463,136 bytes, 536 triangles, 57.52 × 65.00 × 9.12 mm, label 44.54 × 39.15 mm |
+| `ps1_disc.glb` | `cd/source/compact-disc_001.fbx`, `cd/textures` | 805,128 bytes, 6,144 triangles, 120.00 × 120.00 × 1.83 mm, label ring 19.5–59.6 mm |
+
+The source folder names do not match their contents: `gb` holds the wide Game Boy Advance cartridge
+and `gba` the tall Game Boy one. The tool maps them by shape and leaves the folders as they are.
+The sources are about 68 MB, their textures still carry the commercial game labels, and an ordinary
+build does not need them, so `assets/models` is ignored by Git and stays on the owner's machine.
+
+```powershell
+& 'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe' -b --factory-startup --disable-autoexec --python tools/import_models.py
+python tools/test_assets.py
+node tools/validate_assets.cjs
+```
+
+Blender 4.2 or newer is enough; this was run with 5.2.2 LTS and needs nothing installed beside it.
+What `tools/import_models.py` does to each source:
+
+- **Frame.** Bakes the object transform (the disc's stored tilt is discarded), centres the bounding
+  box on the origin, and scales to the template size above: metres, +Y up, printed face toward +Z.
+  The cartridge width stays 60 mm and the tall cartridge 65 mm high, so the receiving slot's 62 mm
+  opening and `CartridgeSurface`'s per-template scales did not change.
+- **Label.** Exactly one primitive per object has the material `Replaceable fictional label`.
+  On the GBA cartridge it is the modelled recess floor itself (122 faces); on the disc it is the
+  printed side's annulus from the stacking ring to the rim (192 faces). The Game Boy cartridge's
+  recess exists only in its normal map, so a rounded sheet is laid 0.05 mm above the front, placed
+  from the recess walls found in that map. Label normals are flattened.
+- **Label UVs.** Cartridges: the whole image over the whole label, U right, V down, (0, 0) top
+  left. Disc: the artwork square spans the 120 mm disc and the annulus clips it. The label areas
+  are within about 4 % (GBA) and 1 % (Game Boy) of the 2:1 and 8:7 artwork the app decodes.
+- **Baked game labels removed.** Both cartridge downloads carry a commercial game label in their
+  base colour. That region is filled with the median of the plastic around it and the tool asserts
+  that no saturated pixel is left there, so no game artwork reaches the APK or Git. The embedded
+  placeholder label is plain label stock in `TypesetLabel`'s paper colour.
+- **Textures.** 1024 px: base colour as JPEG, occlusion/roughness/metallic packed into one PNG,
+  normals as PNG. All three sources were measured before conversion: the cartridges store −Y
+  ("DirectX") normals, read from the walls of a known recess, and are flipped to glTF's +Y; the
+  disc is already +Y, read from its concentric rings. Tangents are exported.
+- **Disc.** The source stores its clear polycarbonate hub as alpha 0.07. The runtime disc is opaque:
+  the hub is composited over the library's near-black stage colour and reads as clear plastic there.
+  The source's anisotropy map is not used; the pinned ubershaders have no slot for it.
+
+Checks: 11 structural tests (frame, size, unit normals and winding, one named label facing the
+viewer, UV contract, placeholder aspect, opaque PBR with tangents, texture and triangle budgets,
+disc annulus, receiver clearance against both cartridges) and the Khronos validator with zero
+errors and zero warnings on all four GLBs.
+
+The sections below describe the generated assets these replaced. Their generators
+(`generate_cartridge.py`, `generate_gb_cartridge.py`, `generate_disc.py`) were removed because they
+wrote to the same files; they remain in Git history. The studio lighting, contact sound and
+compression notes still apply.
+
+## History: generated assets (M2–PS1)
+
 PS1 adds `python tools/generate_disc.py`: an original 120 mm × 1.2 mm optical disc with 15 mm actual
 center hole, reflective underside, hub and named replaceable label primitive. Metres, +Y up, +Z print;
 512×512 label UVs map the full artwork square, clipped by the annular geometry. It shares the existing
 Filament texture lifecycle and matching runtime/validator. 1,792 triangles, three PBR materials,
 106,416 bytes. Development template: no claim of artist-final tray motion or iridescent response.
 
-## Current M2 source assets
+### M2 source assets
 
 Blender is unavailable on this host. `tools/generate_cartridge.py` and `tools/glb_geometry.py` create an
 original 494,152-byte glTF 2.0 cartridge: 6,866 triangles, four materials, smooth segmented bevel normals,
@@ -137,6 +199,6 @@ by global index; six derived buffers remain the cache cap. The RP5 test reads bl
 persists its recipe and enters/exits real internal gameplay without allocating a model per library item.
 This is a bounded rendering proof, not a hundreds-of-games frame-pacing measurement.
 
-## M5 tall GB/GBC template
+## History: M5 tall GB/GBC template (superseded)
 
 `python tools/generate_gb_cartridge.py` creates original `gb_cartridge.glb`: 473,164 bytes, 6,866 triangles, four PBR materials; 54×65×8.5 mm, +Y up/+Z label, top-left UV. Recessed label printing is 512×448 (8:7) with the same named replaceable primitive. The original orbital-survey print and grain maps are embedded. GB and GBC currently share this development shell; it is not a final artist-polished shape. Ten structural tests and all three GLBs pass official validation. Nine slots each reuse GBA/tall instances, with at most nine active labels and bounded aspect-specific decode cache.

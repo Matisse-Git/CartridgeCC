@@ -12,8 +12,14 @@ import java.io.File
 
 /** Runs the production UI/engine/renderer against a separate test DB, never the owner's collection. */
 class DebugCollectionActivity : MainActivity() {
-    override fun showFirstRunSetup() = intent.getBooleanExtra("showSetup", false)
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Instrumentation injects input without user activity; production lets an idle library sleep.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
     override fun createSessionStore() = dev.cartridge.storage.SessionStore(File(filesDir, "${intent.getStringExtra("testDatabase")}-session"))
+    // Original diagnostics are written against the built-in BIOS; the owner's firmware stays out of them.
+    override fun systemDirectory() = File(filesDir, "m1-test-system")
     override fun createRepository(): CollectionRepository {
         val name = checkNotNull(intent.getStringExtra("testDatabase"))
         require(name.matches(Regex("m1-test-[a-f0-9-]+")))

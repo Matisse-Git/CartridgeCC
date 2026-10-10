@@ -10,9 +10,16 @@ BIOS and proprietary artwork are excluded from Git/APK assets.
 
 **PS1 increment (v17):** source-built embedded PCSX ReARMed, CUE/BIN folder imports, optional SBI,
 CHD/PBP/ISO files, real 3D discs, per-game memory card, pause/save/load/eject and session recovery.
-Import your BIOS in Console settings, then choose your CUE/BIN folder with Start / Folder.
+Add your BIOS under Settings › Gameplay › PlayStation, then add your CUE/BIN folder with START › Add Games.
 Initial PS1 controller is digital; M3U/disc swapping and analog-required games are deferred.
 See [PS1 progress, exact validation and remaining checks](docs/PS1_PROGRESS.md).
+
+**Media models and browsing (2026-10-10):** the cartridge, the tall cartridge and the disc are
+converted from three models the owner downloaded, with the app's own replaceable label in place of
+the game label each download had baked in. A game keeps its 3D object while it is near the screen,
+so browsing a shelf of more than three games no longer re-labels what is in view. See
+[ADR 0019](docs/decisions/0019-imported-media-and-stable-pool.md); results are in
+[TESTING](docs/TESTING.md).
 
 **Verified:** M0 passed on the physical RP5. The owner confirmed physical controller navigation,
 gameplay/audio, pause/eject, save/load, label thumbnails/apply/persistence and imports. Both APKs,
@@ -36,7 +43,9 @@ not a claim about every library/game or long-term battery use.
 - First build requires access to Google Maven, Maven Central, JitPack, and GitHub codeload.
   After dependencies and the source archive are cached, the application runs offline.
 - Physical arm64 Android device with OpenGL ES 3.0; RP5's Android 13 is the target.
-- Python 3.10+ is optional for asset regeneration and structural validation. Blender is optional.
+- Python 3.10+ is optional for the receiving-slot, lighting and sound generators and for structural
+  validation. Blender 4.2+ is needed only to re-convert the media models
+  ([ASSET_PIPELINE](docs/ASSET_PIPELINE.md)); an ordinary build uses the packaged GLBs.
 
 ## Build and tests
 
@@ -75,100 +84,110 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n dev.cartridge/.MainActivity
 ```
 
-The empty collection shows one study cartridge and grows as games are imported. **Tools** opens the
-touch shelf for imports/scraping, motion/sound/shortcut preferences and collection actions. It starts
-closed; controller shortcuts work independently. B → Collection → View cycles Horizontal, Vertical and Grid while keeping your selected game.
-Three objects in the carousels or up to nine in the grid reuse one bounded GLB pool. D-pad/stick
-follow the spatial axes; touch arrows move sequentially. The preference survives reopening.
-Press X / Add game to add an uncompressed `.gba`, `.gb` or `.gbc`
-document or focus its existing entry, then A / Insert to play. The picker uses SAF and requests a persistable
-read grant. A bounded, SHA-256-addressed working copy lives in app-private storage; the original
-document is unchanged. Room preserves slot assignments, labels and the selected slot across relaunch.
-Old M0 assignments were transient and must be selected once in this version. SaveRAM and one
-save-state slot per content hash persist across sessions. Battery bytes restore before the first
-emulated frame and checkpoint when changed every 15 seconds during play, on pause/state operations
-and ejection. A save warning remains visible until a successful retry; sudden termination can still
-lose changes since the latest completed checkpoint. Automatic session checkpoints are separate from manual states; wake restores paused and cold launch offers Resume session.
+## Using the console
 
-Press **Start / Folder** to import a GBA, GB, GBC or PS1 directory and its subfolders through SAF. Read permissions and
-multiple roots persist. New content hashes append; duplicates keep accepted
-labels/metadata. **Rescan** revisits saved roots without adding duplicate games. **B / Cancel scan** keeps
-completed imports. Legacy repeated assignments collapse on startup by hash; identical titles with
-different ROM content stay separate. **B / Collection → Remove selected entry** hides the game while
-keeping ROMs, saves and artwork. Rescan respects removal. **Undo last removal** restores its position
-in the current Activity session; after reopening, **X / Add game** restores a hidden game and its data.
-Cartridges support .gba, .gb and .gbc. PS1 supports CUE/BIN folders and single CHD/PBP/ISO/PS-X EXE;
-BIN tracks belong to their CUE and never become separate entries. Reimport a hidden CUE through Folder.
-Scans stop with an error at 10,000 entries or 16 levels;
-invalid files are reported while valid siblings continue. Originals are never changed or deleted.
+The interface was redesigned on 2026-10-10 (branch `redesign/console-experience`). The
+design, its research and its evidence are in [docs/ux](docs/ux/REDESIGN_SPEC.md); screenshots from
+the Retroid Pocket 5 are in [docs/ux/screenshots](docs/ux/screenshots).
 
-Press **Y / Scrape** for the main artwork workflow. Choose This title, Choose consoles, All games,
-Choose games, or Games missing labels. A toggles selected titles; X selects all/clears. Region & language
-saves your preferred label/title region and description language. Preferences rank all alternatives;
-they do not hide options or accept choices. Console selection covers any imported GBA/GB/GBC/PS1 subset; All games includes games hidden by collection filters.
+**First run.** An empty library is the welcome: press A, choose the folder that holds your games —
+a parent of several console folders, one console's folder, or an SD card. Cartridge reports what it
+found per console, adds it, and opens the first console's shelf. The picker is Android's own (SAF)
+and the read grant is persisted; no broad storage permission is requested.
 
-The current title is searched first. Choose a RetroBase match, preview its preferred flat label on the
-real cartridge, then Fill missing metadata or Next. Existing label/metadata choices stay protected.
-All label / media choices and Choose metadata fields / variants allow explicit replacements; box art,
-screenshots and logos remain additional media. Undo last artwork / metadata change restores one
-previous operation per game and survives reopening, including through Details. ROMs/saves/history
-remain independent. Correct the title search or choose another match when needed; no account is required.
+**Library.**
 
-Cancel preserves accepted choices. Resume saved batch restores its review position and cached
-completed searches; Next searches only the next pending title. Starting a new scope replaces saved
-search progress, preserving accepted data. Unapplied previews/checkbox drafts are discarded on recreation.
-A hidden target's preview temporarily shows it without changing your persisted filter/focus.
+| Button | Does |
+|---|---|
+| D-pad / stick | Browse the shelf |
+| A | Play: the object inserts and the game starts |
+| X | Details, beside the object |
+| Y | Favourite |
+| L1 / R1 | Previous / next shelf: each console with games, then All Games, Favorites, Recently Played |
+| START | Menu: Add Games, Search, Artwork & Info, Refresh Library, Settings |
+| B | Back; from the library it clears a search |
 
-Scraping requires internet and sends title queries or ROM fingerprints/size, never ROM bytes.
-Accepted images/metadata are cached for offline use; ordinary launch has no network dependency.
-Data: [RetroBase Collection](https://retrobase-collection.com). Provider terms and coverage are documented
-in [docs/PROVIDER_RESEARCH.md](docs/PROVIDER_RESEARCH.md); exact Socket artwork coverage is unverified.
+Touch works throughout: screen edges browse, the object plays, the title opens details, the mark at
+the top right opens the menu, and every *B Back* hint is itself the back control.
 
-Press Select / Image for optional local PNG, JPEG or WebP import, including an already scraped flat label.
-Preview it on the actual cartridge, toggle Fit/Crop, rotate in 90° steps, then Apply or Cancel.
-Use D-pad up/down and A in this panel; B cancels. Reset label restores the fictional study artwork.
-Original images are cached unchanged; only accepted recipes are saved. Adjacent games retain their
-own labels. Images are limited to 12 MiB and decoded off Main into 512×256 GBA, 512×448 GB/GBC or
-512×512 PS1 label textures. The disc's real geometry clips the print to its annulus and center hole.
+**Details** (X): play time, last played and saved, description, then Play, Favorite, Game options
+(this game only) and Manage game — find artwork online, use your own image, edit details, undo the
+last artwork change, remove the label, locate the game file, hide from library. Hiding keeps the
+file, saves and artwork; restore from the menu in the same session or from Settings › Library ›
+Hidden games.
 
-L3 + R3 opens the app-owned pause menu; Start + Select is an alternate configurable combination.
-Back also pauses. D-pad up/down selects menu actions; A activates and B resumes. Android gameplay
-A/B go directly to the corresponding Libretro A/B; verify Retroid's selected button-layout mode.
-The first button of a two-button shortcut may reach the game before the second is pressed.
+**In a game.** L3 + R3 pauses (Start + Select is the alternative, Settings › Controls). Android's
+Back and the top-right corner also pause. The pause menu offers Resume, Save State, Load State, Game
+Options and Return to Library. Nothing is drawn over a running game. The first button of a
+two-button shortcut may reach the game before the second is pressed.
 
-Insertion lifts, aligns and slides the cartridge into a small physical receiving slot over 540 ms;
-ejection reverses it over 420 ms. Motion off bypasses both and snaps carousel selection. Optional
-original contact sound defaults off. PS1 uses the same transition with the cartridge slot suppressed;
-final disc-loading motion and manual art direction remain open. All three collection layouts and
-optional HOME registration are implemented.
-Backgrounding saves a completed state and releases the current session. Same-Activity wake restores paused; cold launch offers Resume session in Tools or Console settings.
+**Settings** (START › Settings): Library, Appearance, Gameplay, Controls, System, Advanced. Layout
+(Horizontal, Vertical, Grid) is under Appearance. Gameplay options are grouped by console; a game
+can override them from its details or pause menu. See
+[SETTINGS_STRUCTURE](docs/ux/SETTINGS_STRUCTURE.md).
 
-## M3 library controls
+### What importing does
 
-R1 / Tools → Details opens optional metadata, playtime, last-played and save/source information.
-L1 toggles favorite. B → Collection cycles import order, title, recent and most-played sorting,
-filters favorites, or resets the view. Folders & search manages registered roots, title/developer/genre
-search, fast rescans, full hash verification and automatic scanning on open (on by default).
-An empty search has an explicit "No matching games" state; it does not hide data from all-library scraping.
-Explicit Add clears active search/favorite filters so its existing/new identity is visible.
+Cartridges support `.gba`, `.gb` and `.gbc`. PlayStation supports CUE/BIN folders and single
+CHD, PBP, ISO and PS-X EXE files. BIN tracks belong to their CUE and never become separate
+entries; import a CUE through a folder so its tracks can be read. A disc image in a folder named
+for another console (`ps2`, `saturn`, `dreamcast`, …) is counted and reported, not imported. Files
+for other consoles, `.zip`/`.7z` archives and `.m3u` playlists are counted and explained on the
+result. Multi-disc games are not supported: each disc is its own entry.
 
-Details → Edit metadata uses ordinary text entry; only changed fields replace previous choices, with
-local provenance. Clearing title falls back to the ROM filename. Details → Locate same ROM requires
-identical bytes/hash and preserves labels/saves. Forgetting a folder unregisters scanning and releases
-that root grant, keeping games and private cached files. Missing originals are reported after a
-complete scan and cached games remain playable. Reauthorize a revoked root using Start / Folder.
+Each game gets a bounded, SHA-256-addressed working copy in app-private storage (ADR 0003, 0017);
+the original document is never changed. The interface says so during import, and Settings ›
+System › Storage used shows the cost. New content hashes append; duplicates are recognised by
+content and keep their labels, details and saves. Identical titles with different content stay
+separate. Scans stop with an error at 10,000 entries or 16 levels; invalid files are reported while
+valid siblings continue.
 
-Fast rescans reuse positive matching size/mtime stamps and a present working copy. Unknown stamps or
-missing copies are reimported. Verify all rehashes every ROM, including same-size/time replacements.
-Play history counts Running time, excludes pause/preparation, checkpoints every 15 seconds and flushes
-on pause/eject/background. Failed history writes remain visible and retry for the correct game while
-the Activity lives. Process death can lose history since the latest completed checkpoint.
+Remembered folders are refreshed quietly when Cartridge opens (Settings › Library). Fast refreshes
+reuse positive matching size/mtime stamps and a present working copy; unknown stamps or missing
+copies are reimported; CUE tracks are always rehashed. Settings › Advanced › Check every game file
+rehashes everything. Stopping a scan keeps completed imports. Missing originals are reported after
+a complete scan and cached games remain playable. Removing a folder (Settings › Library › the
+folder › Stop using this folder) releases its grant and keeps its games.
 
-See [M3 library progress](docs/M3_PROGRESS.md), [scraper review](docs/M3_SCRAPE_REVIEW.md) and ADRs 0009/0010.
-M3 scrape-pack import is implemented. Broader library/grant/storage-failure validation remains in the physical checklist. M4–M6 features are implemented; see the dated validation record.
+PlayStation games without a BIOS use HLE, which runs only some of them. Add your own BIOS under
+Settings › Gameplay › PlayStation › BIOS file; it is also offered on the import result and when a
+PlayStation game fails to start. The controller is digital.
+
+### Saves and history
+
+SaveRAM and one save-state slot per content hash persist across sessions. Battery bytes restore
+before the first emulated frame and checkpoint when changed every 15 seconds during play, on
+pause/state operations and ejection. A save warning stays visible until a successful retry; sudden
+termination can still lose changes since the latest completed checkpoint. Automatic session
+checkpoints are separate from manual states: wake restores the game paused, and a cold launch
+offers **Continue <game>** as the first row of the menu. Play history counts Running time only.
+
+### Artwork
+
+START › Artwork & Info is the reviewed workflow: This game, Choose consoles, All games, Choose
+games, Games without a label, a saved batch, Region & language, and Import an artwork pack. For
+one game, use Details › Manage game › Find artwork online. Choose a match, try its flat label on
+the real object, then fill in missing details or move on. Existing label and detail choices stay
+protected; replacements are explicit. Undo restores one previous artwork operation per game and
+survives reopening. Scraping needs internet and sends title queries or ROM fingerprints and size,
+never ROM bytes. Accepted images and details are cached for offline use.
+Data: [RetroBase Collection](https://retrobase-collection.com). Provider terms and coverage are in
+[docs/PROVIDER_RESEARCH.md](docs/PROVIDER_RESEARCH.md).
+
+A game without artwork shows its own title set in type on the real cartridge or disc. Your own
+PNG, JPEG or WebP (12 MiB at most) can be used from Manage game; preview it on the object, choose
+whole image or fill, rotate, then use or cancel.
+
+### Motion and sound
+
+Insertion lifts, aligns and slides the cartridge into its receiving slot over 540 ms; ejection
+reverses it over 420 ms. Discs use the same transition without the slot. Settings › Appearance ›
+Motion › Reduced replaces every transition with a cut. The contact sound is off by default
+(Settings › Appearance › Sound). Backgrounding saves a completed state and releases the session.
 
 ## Engineering record
 
+- [Console experience: research, audit, specification, flows, settings, design system, status](docs/ux/IMPLEMENTATION_STATUS.md)
 - [Technical plan and feasibility blockers](docs/TECHNICAL_PLAN.md)
 - [Product and UX scope](docs/PRODUCT.md)
 - [Label import, candidate choice and bulk scraping](docs/LABEL_SCRAPING.md)
@@ -193,10 +212,10 @@ commercial licensing decision has been made by this feasibility work.
 
 M5 GB/GBC implementation and verification are documented in [M5_PROGRESS](docs/M5_PROGRESS.md) and ADR 0013.
 
-M6 version 13 adds first-run setup, Console settings (B → Collection or Tools), separate menu/gameplay controller choices, supported core options and optional Android HOME eligibility. Paused gameplay offers Settings and Controller. HOME is initially disabled; Android asks you to choose the default. See [M6_PROGRESS](docs/M6_PROGRESS.md).
+M6 version 13 added first-run setup, console settings, separate menu/gameplay controller choices, supported core options and optional Android HOME eligibility; the console-experience redesign moved them into START › Settings and replaced the setup panel with the welcome. HOME is initially disabled; Android asks you to choose the default. See [M6_PROGRESS](docs/M6_PROGRESS.md).
 
 Version 14 adds checksum/core-bound session recovery and a real frozen pause frame; see M6_PROGRESS and ADR 0015.
 
-Version 15 adds portable backup/restore in Console settings. See [BACKUP_FORMAT](docs/BACKUP_FORMAT.md) for contents, review and transfer behavior.
+Version 15 adds portable backup/restore (now Settings › Library › Backup). See [BACKUP_FORMAT](docs/BACKUP_FORMAT.md) for contents, review and transfer behavior.
 
 The development milestone summary and major changed file groups are in [MILESTONE_REPORT](docs/MILESTONE_REPORT.md). Reproducible sleep/process/reboot/soak commands are in [CONSOLE_RELIABILITY](docs/CONSOLE_RELIABILITY.md).

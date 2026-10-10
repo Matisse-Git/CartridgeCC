@@ -1,5 +1,6 @@
 package dev.cartridge
 
+import dev.cartridge.domain.GameSystem
 import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.*
 import dev.cartridge.library.*
@@ -192,12 +193,12 @@ class CoordinatorTest {
         assertEquals(6, coordinator.state.value.selection.index)
         coordinator.navigate(20); runCurrent()
         assertEquals(6, coordinator.state.value.selection.index)
-        assertEquals(4, coordinator.state.value.windowStart)
+        assertEquals(2, coordinator.state.value.windowStart); assertEquals(5, coordinator.state.value.labels.size)
         val label = LabelRef("e".repeat(64))
         coordinator.previewLabel { label }; runCurrent()
-        coordinator.labelsReady(0, listOf(null, null, label.textureKey), firstIndex = 0)
+        coordinator.labelsReady(0, List(5) { if (it == 4) label.textureKey else null }, firstIndex = 0)
         assertFalse(coordinator.state.value.labelPreviewReady)
-        coordinator.labelsReady(0, listOf(null, null, label.textureKey), firstIndex = 4)
+        coordinator.labelsReady(0, List(5) { if (it == 4) label.textureKey else null }, firstIndex = 2)
         assertTrue(coordinator.state.value.labelPreviewReady)
         coordinator.destroy()
     }
@@ -205,11 +206,11 @@ class CoordinatorTest {
         val library = Library(); val engine = Engine()
         val coordinator = CollectionCoordinator(engine, library, Surfaces(), backgroundScope)
         runCurrent()
-        coordinator.back(); coordinator.navigate(1); coordinator.select(); runCurrent()
+        coordinator.hideSelected(); runCurrent()
         assertEquals(CollectionScreen.Library, coordinator.state.value.screen)
         assertEquals(1, coordinator.state.value.slots.size)
         assertEquals(library.two.id, coordinator.state.value.removedEntry!!.gameId)
-        coordinator.back(); coordinator.navigate(2); coordinator.select(); runCurrent()
+        coordinator.undoHide(); runCurrent()
         assertEquals(library.two.id, coordinator.state.value.selectedGame!!.id)
         assertEquals(1, coordinator.state.value.selection.index)
         assertNull(coordinator.state.value.removedEntry)
@@ -276,13 +277,14 @@ class CoordinatorTest {
         assertEquals(400L, library.playedById[library.one.id])
         coordinator.destroy()
     }
-    @Test fun filteredScrapePreviewNeverPersistsTemporaryViewAndRestoresFocus() = runTest {
+    @Test fun scrapePreviewOutsideTheShelfNeverPersistsTemporaryViewAndRestoresFocus() = runTest {
         val library = Library()
         library.setFavorite(library.one.id, true); library.select(0)
-        val query = LibraryQuery(LibrarySort.Title, favoritesOnly = true)
+        val query = LibraryQuery(LibrarySort.Title)
         library.setQuery(query)
-        val coordinator = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope)
+        val coordinator = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope, initialShelf = Shelf.Favorites)
         runCurrent()
+        assertEquals(Shelf.Favorites, coordinator.state.value.shelf); assertEquals(1, coordinator.state.value.slots.size)
         val draft = LabelRef("e".repeat(64))
         coordinator.previewScrapedLabel(library.two, draft); runCurrent()
         assertEquals(library.two.id, coordinator.state.value.selectedGame!!.id)
@@ -290,17 +292,88 @@ class CoordinatorTest {
         assertEquals(0, library.snapshots.value.selectedSlot)
         coordinator.cancelLabel(); runCurrent()
         assertEquals(library.one.id, coordinator.state.value.selectedGame!!.id)
-        assertEquals(1, coordinator.state.value.slots.size)
+        assertEquals(1, coordinator.state.value.slots.size); assertEquals(Shelf.Favorites, coordinator.state.value.shelf)
         coordinator.previewScrapedLabel(library.two, draft); runCurrent()
         coordinator.labelsReady(0, listOf(null, draft.textureKey)); coordinator.labelAction(2); runCurrent()
         assertEquals(library.two.id, coordinator.state.value.lastLabelAppliedTo)
         assertEquals(draft, library.snapshots.value.slots[1]!!.label)
         assertEquals(library.one.id, coordinator.state.value.selectedGame!!.id)
         coordinator.previewScrapedLabel(library.two, draft); runCurrent(); coordinator.destroy()
-        val reopened = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope); runCurrent()
+        val reopened = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope, initialShelf = Shelf.Favorites); runCurrent()
         assertEquals(query, reopened.state.value.query)
         assertEquals(library.one.id, reopened.state.value.selectedGame!!.id)
         reopened.destroy()
+    }
+    private fun disc(index: Int, title: String = "Disc $index") = LibraryGame((index + 0xd0).toString(16).padStart(64, '0'), title, "content://disc$index", system = GameSystem.PS1)
+    @Test fun consoleShelvesKeepTheirOwnFocusAndNeverRewriteStoredOrder() = runTest {
+        val library = Library(); repeat(3) { library.add(disc(it)) }
+        val remembered = mutableListOf<Pair<Shelf, Map<String, String>>>()
+        val coordinator = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope, onBrowseChanged = { shelf, focus -> remembered += shelf to focus })
+        runCurrent()
+        // Opens on the console of the stored selection; a single unified view appears once there are two consoles.
+        assertEquals(Shelf.Console(GameSystem.GBA), coordinator.state.value.shelf)
+        assertEquals(listOf(Shelf.Console(GameSystem.GBA), Shelf.Console(GameSystem.PS1), Shelf.All), coordinator.state.value.shelves)
+        assertEquals(2, coordinator.state.value.slots.size)
+        coordinator.switchShelf(1); runCurrent()
+        assertEquals(Shelf.Console(GameSystem.PS1), coordinator.state.value.shelf); assertEquals(3, coordinator.state.value.slots.size)
+        coordinator.navigate(2); runCurrent()
+        assertEquals(disc(2).id, coordinator.state.value.selectedGame!!.id); assertEquals(4, library.snapshots.value.selectedSlot)
+        coordinator.switchShelf(-1); runCurrent()
+        assertEquals(library.two.id, coordinator.state.value.selectedGame!!.id) // GBA still remembers its own game.
+        coordinator.switchShelf(1); runCurrent()
+        assertEquals(disc(2).id, coordinator.state.value.selectedGame!!.id)
+        coordinator.switchShelf(1); runCurrent()
+        // A unified shelf keeps the game you were on when it contains it.
+        assertEquals(Shelf.All, coordinator.state.value.shelf); assertEquals(disc(2).id, coordinator.state.value.selectedGame!!.id)
+        assertEquals(5, coordinator.state.value.slots.size)
+        coordinator.switchShelf(1); runCurrent(); assertEquals(Shelf.Console(GameSystem.GBA), coordinator.state.value.shelf) // Wraps.
+        assertEquals(listOf(library.one.id, library.two.id, disc(0).id, disc(1).id, disc(2).id), library.snapshots.value.slots.map { it!!.id })
+        assertEquals(Shelf.Console(GameSystem.GBA), remembered.last().first); assertEquals(disc(2).id, remembered.last().second["PS1"])
+        coordinator.destroy()
+        val reopened = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope, initialShelf = Shelf.Console(GameSystem.PS1), initialShelfFocus = remembered.last().second)
+        runCurrent()
+        assertEquals(disc(2).id, reopened.state.value.selectedGame!!.id)
+        reopened.destroy()
+    }
+    @Test fun storedFavouritesFilterBecomesTheFavoritesShelfOnce() = runTest {
+        val library = Library(); library.setFavorite(library.two.id, true); library.setQuery(LibraryQuery(LibrarySort.Title, favoritesOnly = true))
+        val coordinator = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope)
+        runCurrent()
+        assertEquals(Shelf.Favorites, coordinator.state.value.shelf); assertEquals(listOf(library.two.id), coordinator.state.value.slots.map { it!!.id })
+        assertEquals(LibraryQuery(LibrarySort.Title), library.snapshots.value.query) // Sort survives; the hidden flag does not.
+        coordinator.favorite(); runCurrent()
+        // The last favourite leaving empties the shelf, so the view follows the game to its console.
+        assertEquals(Shelf.Console(GameSystem.GBA), coordinator.state.value.shelf); assertEquals(library.two.id, coordinator.state.value.selectedGame!!.id)
+        assertFalse(Shelf.Favorites in coordinator.state.value.shelves)
+        coordinator.destroy()
+    }
+    @Test fun searchSpansEveryConsoleAndLeavingItClearsTheStoredQuery() = runTest {
+        val library = Library(); library.add(disc(0, "Second Orbit"))
+        val coordinator = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope)
+        runCurrent()
+        coordinator.query(LibraryQuery(search = "second")); runCurrent()
+        assertTrue(coordinator.state.value.searching)
+        assertEquals(setOf(GameSystem.GBA, GameSystem.PS1), coordinator.state.value.slots.map { it!!.system }.toSet())
+        coordinator.switchShelf(1); runCurrent()
+        assertFalse(coordinator.state.value.searching); assertEquals("", library.snapshots.value.query.search)
+        assertEquals(Shelf.Console(GameSystem.GBA), coordinator.state.value.shelf)
+        coordinator.destroy()
+    }
+    @Test fun failedLaunchOffersRecoveryAndHidingTheLastGameOfAConsoleMovesToAShelfThatExists() = runTest {
+        val library = Library().apply { requestFailure = true }; library.add(disc(0))
+        val coordinator = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope, reducedMotion = true)
+        runCurrent(); coordinator.rendererReady(0); coordinator.insert(); runCurrent()
+        val failure = coordinator.state.value.launchFailure!!
+        assertEquals(library.two.id, failure.gameId); assertEquals("Missing game", failure.reason); assertEquals("Missing game", coordinator.state.value.message)
+        assertEquals(CollectionScreen.Library, coordinator.state.value.screen); assertFalse(coordinator.state.value.busy)
+        coordinator.dismissLaunchFailure(); assertNull(coordinator.state.value.launchFailure)
+        coordinator.switchShelf(1); runCurrent(); assertEquals(disc(0).id, coordinator.state.value.selectedGame!!.id)
+        coordinator.hideSelected(); runCurrent()
+        assertEquals(Shelf.Console(GameSystem.GBA), coordinator.state.value.shelf); assertEquals(listOf(Shelf.Console(GameSystem.GBA)), coordinator.state.value.shelves)
+        assertNotNull(coordinator.state.value.selectedGame)
+        coordinator.undoHide(); runCurrent()
+        assertEquals(disc(0).id, coordinator.state.value.selectedGame!!.id); assertEquals(Shelf.Console(GameSystem.PS1), coordinator.state.value.shelf)
+        coordinator.destroy()
     }
 
     @Test fun layoutsShareIdentityNavigationAndGridPreviewAcknowledgements() = runTest {
@@ -314,9 +387,9 @@ class CoordinatorTest {
         assertEquals(identity, coordinator.state.value.selectedGame!!.id)
         coordinator.navigateSpatial(0, 1); runCurrent(); assertEquals(4, coordinator.state.value.selection.index)
         coordinator.navigate(15); runCurrent()
-        assertEquals(12, coordinator.state.value.windowStart); assertEquals(8, coordinator.state.value.labels.size)
+        assertEquals(6, coordinator.state.value.windowStart); assertEquals(14, coordinator.state.value.labels.size)
         val label = LabelRef("e".repeat(64)); coordinator.previewLabel { label }; runCurrent()
-        coordinator.labelsReady(0, List(9) { if (it == 7) label.textureKey else null }, firstIndex = 12)
+        coordinator.labelsReady(0, List(14) { if (it == 13) label.textureKey else null }, firstIndex = 6)
         assertTrue(coordinator.state.value.labelPreviewReady)
         coordinator.cancelLabel(); runCurrent()
         coordinator.settings(layout = dev.cartridge.domain.CollectionLayout.Vertical); runCurrent()

@@ -29,3 +29,5 @@ captures/
 __pycache__/
 *.zip
 *.cartridgepack
+# Source models for tools/import_models.py: large, and their textures carry commercial game labels.
+/assets/models/

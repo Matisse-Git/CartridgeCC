@@ -1,5 +1,18 @@
 # Roadmap and acceptance gates
 
+Media models and browsing (2026-10-10, ADR 0019): the cartridge, tall cartridge and disc are now
+converted from three models the owner downloaded, and a game keeps one pooled 3D object while it
+is near the screen, which removed the label flicker on shelves of more than three games. No
+change to emulation, the database schema, save formats or the interface. Host checks and the
+38-test RP5 regression pass (TESTING). Left for the owner's hands: the look of the new models
+under the studio light, and browsing the real library with scraped artwork.
+
+Console-experience redesign (2026-10-10): the interface was rebuilt around console shelves, a
+system menu, goal-based settings with console and per-game scope, and a guided import, without
+changing emulation, assets, the database schema or save formats. Automated and RP5 verification
+passed; the owner's hands-on review is listed in [ux/IMPLEMENTATION_STATUS](ux/IMPLEMENTATION_STATUS.md).
+The next increments it points to are multi-disc import with in-game disc change, then analog pads.
+
 Post-M6 system increment: PS1 is implemented with source-built PCSX ReARMed and a shared disc template.
 See PS1_PROGRESS and ADR 0017. Initial CUE/BIN/ISO/CHD native diagnostic tests pass; commercial-title,
 BIOS-backed and long-duration compatibility remain physical gates. Multi-disc and analog-required

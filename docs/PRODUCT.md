@@ -1,10 +1,27 @@
 # Product scope and UX
 
+**2026-10-10 — console experience.** The interface was redesigned around one idea: the games are
+the interface. Four destinations (Library, Details, System Menu, Pause) replace sixteen; consoles
+are shelves reached with L1/R1; an empty library is the welcome; importing is one folder choice
+with a per-console result; settings are six goal-based sections with console and per-game scope for
+gameplay options; time and battery are real. The complete specification, the audit it answers, the
+research behind it and its verification are in [docs/ux](ux/REDESIGN_SPEC.md). Sections below
+describe earlier milestones; where they name the Tools shelf, the B collection menu, Y / Select /
+Start shortcuts or Console settings, the specification supersedes them.
+
 The 2026-10-10 PS1 increment adds internal PlayStation gameplay and original 3D optical discs.
 CUE/BIN folder import is the owner's first workflow; CHD/PBP/ISO single files and explicit BIOS import
 are also implemented. Disc label scraping remains the primary artwork workflow and reuses existing
 review scopes. Digital controller, one memory card and single-disc operation define the initial scope;
 see PS1_PROGRESS for implemented behavior, device evidence and remaining compatibility checks.
+
+**2026-10-10 — media models and browsing.** At the owner's direction the cartridge, the tall
+cartridge and the disc are converted from three Sketchfab downloads instead of being generated, and
+they carry their makers' console marks on the shell. Each game still shows its own label: the
+downloads' baked game labels are removed and the app's replaceable label takes their place.
+Browsing a shelf longer than the screen no longer re-labels the objects in view; a game keeps its
+object and an object never appears with another game's label. See ADR 0019 and ASSET_PIPELINE.
+Statements below that the bundled media are original or unbranded describe the earlier templates.
 
 Project Cartridge is one native, offline-first console experience: physical media collection →
 insertion → internal gameplay → app-owned pause/save/load → ejection → collection. The cartridge
@@ -176,8 +193,8 @@ formats/unsafe paths/oversized or altered images are rejected. See SCRAPE_PACK_F
 Horizontal remains the default. B → Collection → View cycles Horizontal, Vertical and Grid and saves
 the preference. Focus, accepted labels, metadata, filters, saves and launch behavior are shared. Grid
 has three columns, no horizontal row wrapping and a clamped partial final row. D-pad/left stick follow
-the view's spatial axes; touch arrows advance sequentially. Nine reusable genuine 3D objects bound
-rendering independently of collection size. Reduced motion applies to every layout.
+the view's spatial axes; touch arrows advance sequentially. A fixed pool of reusable genuine 3D
+objects (fifteen per media shape since ADR 0019) bounds rendering independently of collection size. Reduced motion applies to every layout.
 
 ## M5 additional systems
 

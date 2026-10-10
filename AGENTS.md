@@ -35,7 +35,7 @@
   enrichment; persisted exclusions must survive Rescan. Test legacy migrations and restore/Undo.
 - Restore battery data before the first emulated frame. SaveBridge may access only the already-loaded
   core on its GL thread under the session mutex. Keep failed writes visible and previous saves intact.
-- M6 console environment follows the verified M5 GB/GBC increment. Keep media/platform identities explicit; audit and test each embedded core/media increment. Keep M2/M3 physical validation open. Generate original media/lighting/audio from versioned source; keep
+- M6 console environment follows the verified M5 GB/GBC increment. Keep media/platform identities explicit; audit and test each embedded core/media increment. Keep M2/M3 physical validation open. Generate original lighting/audio and the receiving slot from versioned source (media templates: see the ADR 0019 note below); keep
   cmgen/runtime versions matched and KTX light/texture ownership explicit. Preserve the named label
   primitive/UV contract. Measure SurfaceView presentation separately from CPU/Compose frame callbacks.
 - Persist query preferences separately from canonical slots; sorting/filtering must retain focused game
@@ -60,7 +60,25 @@
 
 - After any suspending operation, read current Flow/UI state before copying changed fields. Do not capture a state-copy receiver before IO and overwrite intervening readiness/input updates. The 500-title recreation regression guards this ordering.
 
+- The interface is the console shell (ADR 0018, docs/ux). `ConsoleShell` owns the destination stack and
+  every button's meaning; `CollectionCoordinator` owns sessions and the shelf projection and must not
+  learn about menus again. Rows are data addressed by id — never add behaviour by list position. A new
+  action goes in exactly one place; a new setting needs a real effect, a stated scope and a device check
+  that reads it back. Build screens only from `ui/` tokens and components. Shelves and layouts must
+  keep the focused game's identity. Opaque pages pause Filament; sheets about the focused object do
+  not dim it. Do not show a capability the adapter lacks (multi-disc, rewind, analog pads).
+  Re-run the UX tour (`tools/Test-Device.ps1 -Suite Tour`) and look at its screenshots after any
+  visual change; compiled is not seen.
+
 - PS1 CUE/BIN imports require a granted folder and bounded, generated private bundle paths. Rehash
   tracks on every scan, preserve optional validated SBI, and publish only complete bundles. Never index
   raw BIN tracks as games. Keep per-system core revisions in states, checkpoints and backups; retain
   existing mGBA state compatibility. BIOS import is explicit, verified and excluded from archives.
+
+- The cartridge, tall cartridge and disc are converted from the owner's downloads by
+  `tools/import_models.py` (ADR 0019, ASSET_PIPELINE); never hand-edit those GLBs or bring back a
+  generator that writes them. Keep one named label primitive, its UV contract, the template sizes and
+  the removal of baked game labels. A game keeps its pooled object while it is in the window
+  (`CollectionLayout.slot`): stage labels by key and owner, never by window position, and never draw
+  an object with another game's label or the template's. Re-run `BrowseStabilityTest`
+  (`-Suite Browse`) after any renderer, window or label change.

@@ -56,6 +56,8 @@ class ScrapeReviewTest {
         val second = LibraryGame("2".repeat(64), "Second fixture", "content://fixture/two")
         val localYear = MetadataValue("1999", "Local", second.id, "", "User provided", 1)
         val query = LibraryQuery(LibrarySort.Title, favoritesOnly = true)
+        // An older build's filter: it must arrive as the Favorites shelf with the hidden flag cleared.
+        val viewed = LibraryQuery(LibrarySort.Title)
         val seed = Room.databaseBuilder(context, LibraryDatabase::class.java, "$name.db").build()
         runBlocking {
             val repository = RoomCollectionRepository(context, seed); repository.initialize()
@@ -80,10 +82,10 @@ class ScrapeReviewTest {
                 scenario.onActivity { assertEquals(listOf(second.id), it.scraper.state.value.entries.map { entry -> entry.game.id }) }
                 click("scrape-action-0"); await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.page == ScrapePage.Review }
                 click("review-label"); await(scenario) { it.coordinator.state.value.labelPreviewReady && !it.coordinator.state.value.busy }
-                scenario.onActivity { assertEquals(second.id, it.coordinator.state.value.selectedGame!!.id); assertEquals(query, it.coordinator.state.value.query) }
+                scenario.onActivity { assertEquals(second.id, it.coordinator.state.value.selectedGame!!.id); assertEquals(viewed, it.coordinator.state.value.query); assertEquals(Shelf.Favorites, it.coordinator.state.value.shelf) }
                 // Recreation discards the unapplied draft, without saving its temporary view or focus.
                 scenario.recreate(); await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady && it.scraper.state.value.ready }
-                scenario.onActivity { assertEquals(first.id, it.coordinator.state.value.selectedGame!!.id); assertEquals(query, it.coordinator.state.value.query) }
+                scenario.onActivity { assertEquals(first.id, it.coordinator.state.value.selectedGame!!.id); assertEquals(viewed, it.coordinator.state.value.query); assertEquals(Shelf.Favorites, it.coordinator.state.value.shelf) }
                 ui.tool("scrape").performClick(); click("scrape-action-3")
                 await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.current?.matches?.isNotEmpty() == true }
                 click("scrape-action-0"); await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.page == ScrapePage.Review }
@@ -107,7 +109,7 @@ class ScrapeReviewTest {
                 scenario.onActivity {
                     val game = it.scraper.state.value.current!!.game
                     assertEquals(localYear, game.metadata["year"]); assertFalse(game.metadata.containsKey("description"))
-                    assertEquals("jp", game.label!!.provenance!!.region); assertEquals(query, it.coordinator.state.value.query)
+                    assertEquals("jp", game.label!!.provenance!!.region); assertEquals(viewed, it.coordinator.state.value.query); assertEquals(Shelf.Favorites, it.coordinator.state.value.shelf)
                     assertEquals(1, provider.calls)
                 }
             }

@@ -82,7 +82,7 @@ class Ps1DeviceTest {
         ui.onNodeWithTag("menu-3").performClick();await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.screen==CollectionScreen.Library && it.coordinator.state.value.rendererReady }
     }
     private fun runGame(scenario: ActivityScenario<DebugCollectionActivity>) {
-        var id="";scenario.onActivity { id=it.coordinator.state.value.selectedGame!!.id;assertEquals(GameSystem.PS1,it.coordinator.state.value.selectedGame!!.system);assertEquals(27,it.collectionSurface!!.meshInstanceCount) }
+        var id="";scenario.onActivity { id=it.coordinator.state.value.selectedGame!!.id;assertEquals(GameSystem.PS1,it.coordinator.state.value.selectedGame!!.system);assertEquals(45,it.collectionSurface!!.meshInstanceCount) }
         ui.tool("insert").performClick();await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state==SessionState.Running }
         var before=0
         try { ui.waitUntil(8000) { before=color(scenario);Color.red(before)>Color.blue(before)+40 } }
@@ -160,7 +160,7 @@ class Ps1DeviceTest {
                         scenario.onActivity { activity ->
                             val view=checkNotNull(activity.collectionSurface);val sample=Bitmap.createBitmap(8,8,Bitmap.Config.ARGB_8888)
                             // Sample the printed annulus, away from the genuine center hole.
-                            val x=view.width/2+view.width/10;val y=view.height/2
+                            val x=(view.width*activity.labelCentre()).toInt()+view.width/11;val y=view.height/2
                             PixelCopy.request(view,Rect(x-4,y-4,x+4,y+4),sample,{ status -> rendered.complete(if(status==PixelCopy.SUCCESS) sample.getPixel(4,4) else 0);sample.recycle() },Handler(Looper.getMainLooper()))
                         }
                         pixel=rendered.get(3,TimeUnit.SECONDS)
@@ -171,7 +171,7 @@ class Ps1DeviceTest {
                 runGame(scenario);ui.tool("rescan").performClick();await(scenario) { !it.coordinator.state.value.busy }
                 scenario.onActivity { assertEquals(1,it.coordinator.state.value.allGames.size);assertNotNull(it.coordinator.state.value.selectedGame!!.label) }
                 File(tree,"probe.bin").delete();ui.tool("rescan").performClick();await(scenario) { !it.coordinator.state.value.busy }
-                scenario.onActivity { assertTrue(it.coordinator.state.value.message.orEmpty().contains("missing",true));assertEquals(1,it.coordinator.state.value.allGames.size) }
+                scenario.onActivity { assertTrue(it.shell.lastScan!!.errors.any { error -> error.contains("missing",true) });assertEquals(1,it.coordinator.state.value.allGames.size) }
             }
         } finally { File(tree,"probe.cue").delete();File(tree,"probe.bin").delete();File(tree,"probe.sbi").delete();DebugCollectionActivity.closeDatabases();context.deleteDatabase("$name.db") }
     }

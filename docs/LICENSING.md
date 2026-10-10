@@ -44,7 +44,8 @@ Socket/Slot were references only; no frontend code was copied from them.
 | Gradle wrapper | 8.13 | Apache-2.0; generated wrapper retained, distribution checksum pinned |
 | Oboe in LibretroDroid | b15f5e39c01a7ada306d959e5129620b145fb8b4 | Apache-2.0; corresponding selected source/notice included in a frontend distribution |
 | libretro-common in LibretroDroid | b0c348ea5543c4d7fb0bc479258aa6988b20c0c9 | File-level permissive licenses for the five compiled C files; preserve headers, not a guessed repository-wide license |
-| Cartridge/receiver GLB, PNG, studio IBL, contact WAV, icon/probe | original project generators/source | Original development assets, no adopted third-party art/audio/HDR photographs; project-wide licensing choice remains with the owner |
+| Receiver GLB, studio IBL, contact WAV, icon/probe | original project generators/source | Original development assets, no adopted third-party art/audio/HDR photographs; project-wide licensing choice remains with the owner |
+| Cartridge, tall cartridge and disc GLB (since 2026-10-10) | three models the owner downloaded from Sketchfab, converted by `tools/import_models.py` | Third-party models. The owner states they are free to use and that this build is for personal use only; the individual licence and author of each download are not recorded here. See "Imported media models" below |
 | SaveBridge / SRAM diagnostic | original C/JNI and ARM assembly | No frontend implementation or third-party assets copied; uses public Libretro ABI and Android/NDK platform APIs. Combined-app GPL/source obligations remain |
 
 Inspected sources:
@@ -65,6 +66,23 @@ Preserved texts are in `docs/licenses/`. LibretroDroid's full source/submodule c
 complete hash-pinned archive can be retrieved from those references. The source-built core disables
 Qt/SDL/FFmpeg/libpng/zlib/libzip/SQLite/Lua/debugger dependencies, and retains GBA emulation and audio.
 JitPack's AAR is version-pinned; retain its source and build provenance for any actual release.
+
+## Imported media models
+
+The cartridge, tall cartridge and disc shown in the library are converted from three Sketchfab
+downloads kept under `assets/models` (ADR 0019). The owner supplied them, describes their licence
+as free to use, and uses this build privately. This audit did not see the licence text or author
+credit of any of the three, so nothing here should be read as cleared for redistribution.
+
+What the converted files contain: the makers' geometry and shell textures, including embossed
+console names and logos, a circuit-board texture with its manufacturer's copyright line, and a
+disc maker's print in the disc texture (not shown: the game's label covers that side). What they do not contain: the commercial game labels
+that were baked into both cartridge textures. The conversion fills those regions with plain
+plastic and checks that nothing printed remains, and the embedded placeholder label is original.
+
+Earlier statements in this file that no branded media model is bundled describe the generated
+templates these replaced. Before any distribution beyond the owner's own devices, record each
+model's licence and required attribution, and decide whether the trademarks on the shells may ship.
 
 ## Release gate
 

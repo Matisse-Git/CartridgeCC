@@ -119,7 +119,7 @@ class SessionRecoveryTest {
                 ui.tool("resume-session").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message?.contains("integrity") == true }
                 scenario.onActivity { assertEquals(SessionState.Idle,it.engine.status.value.state); assertEquals(id,it.coordinator.state.value.selectedGame!!.id) }
-                ui.tool("console-settings").performClick(); ui.onNodeWithTag("console-action-10").performScrollTo().performClick()
+                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-gameplay").performClick(); ui.onNodeWithTag("settings-discard").performScrollTo().performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.resumeSession==null }
                 assertNull(store.available())
             }

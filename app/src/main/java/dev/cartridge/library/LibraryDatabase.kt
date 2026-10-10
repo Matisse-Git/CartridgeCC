@@ -65,6 +65,8 @@ interface LibraryDao {
     @Query("SELECT * FROM collection_state WHERE singleton = 0") suspend fun collectionRecord(): CollectionRecord?
     @Update suspend fun updateGame(game: GameRecord)
     @Query("SELECT gameId FROM removed_games") suspend fun removedIds(): List<String>
+    @Query("SELECT games.* FROM games INNER JOIN removed_games ON games.id = removed_games.gameId ORDER BY games.title COLLATE NOCASE")
+    suspend fun removedGames(): List<GameRecord>
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun hide(game: RemovedGameRecord)
     @Query("DELETE FROM removed_games WHERE gameId = :id") suspend fun unhide(id: String)
     @Query("DELETE FROM slots") suspend fun clearSlots()

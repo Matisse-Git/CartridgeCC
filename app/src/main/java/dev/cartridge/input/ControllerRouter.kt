@@ -8,7 +8,11 @@ import kotlin.math.abs
 
 enum class InputMode { Library, Gameplay, Menu, Text, Locked }
 
-/** One route per event. Physical A/B are separate from the collection's action mapping. */
+/**
+ * One route per event. The router reports buttons by role and never decides what a role does: the console
+ * shell gives A, B, X, Y, the shoulders and Start one meaning per screen. Physical A/B stay separate from
+ * gameplay mapping.
+ */
 class ControllerRouter(
     private val navigate: (Int) -> Unit,
     private val select: () -> Unit,
@@ -16,14 +20,17 @@ class ControllerRouter(
     private val pause: () -> Unit,
     private val gameKey: (Int, Int) -> Unit,
     private val gameMotion: (Float, Float) -> Unit,
-    private val chooseGame: () -> Unit = {},
-    private val chooseLabel: () -> Unit = {},
-    private val chooseScrape: () -> Unit = {},
-    private val chooseDirectory: () -> Unit = {},
+    /** Left/right inside a menu: change a value, switch a pane, move across a key grid. */
+    private val adjust: (Int) -> Unit = {},
+    /** X. */
     private val alternate: () -> Unit = {},
+    /** Y. */
+    private val secondary: () -> Unit = {},
+    /** L1 is -1, R1 is +1. */
+    private val shoulder: (Int) -> Unit = {},
+    /** Start. */
+    private val menu: () -> Unit = {},
     private val cancelOperation: () -> Unit = {},
-    private val details: () -> Unit = {},
-    private val favorite: () -> Unit = {},
     private val navigateLibrary: ((Int, Int) -> Unit)? = null,
 ) {
     var mode = InputMode.Library
@@ -94,12 +101,11 @@ class ControllerRouter(
         if (down && event.repeatCount == 0) when (code) {
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_ENTER -> select()
             KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> back()
-            KeyEvent.KEYCODE_BUTTON_X -> if (mode == InputMode.Library) chooseGame() else if (mode == InputMode.Menu) alternate()
-            KeyEvent.KEYCODE_BUTTON_Y -> if (mode == InputMode.Library) chooseScrape()
-            KeyEvent.KEYCODE_BUTTON_SELECT -> if (mode == InputMode.Library) chooseLabel()
-            KeyEvent.KEYCODE_BUTTON_START -> if (mode == InputMode.Library) chooseDirectory()
-            KeyEvent.KEYCODE_BUTTON_R1 -> if (mode == InputMode.Library) details()
-            KeyEvent.KEYCODE_BUTTON_L1 -> if (mode == InputMode.Library) favorite()
+            KeyEvent.KEYCODE_BUTTON_X -> alternate()
+            KeyEvent.KEYCODE_BUTTON_Y -> secondary()
+            KeyEvent.KEYCODE_BUTTON_START -> menu()
+            KeyEvent.KEYCODE_BUTTON_L1 -> shoulder(-1)
+            KeyEvent.KEYCODE_BUTTON_R1 -> shoulder(1)
         }
         return true
     }
@@ -129,12 +135,12 @@ class ControllerRouter(
             else -> analog
         }
         fun threshold(value: Float) = if (abs(value) < deadZone) 0f else if (value > 0) 1f else -1f
-        val y = threshold(axis(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, axisY))
-        val dy = verticalRepeat.poll(y, nowMillis)
-        if (mode == InputMode.Menu) { if (dy != 0) navigate(dy); return }
-        val x = threshold(axis(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, axisX))
-        val dx = horizontalRepeat.poll(x, nowMillis)
-        if (dx != 0 || dy != 0) {
+        val dy = verticalRepeat.poll(threshold(axis(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, axisY)), nowMillis)
+        val dx = horizontalRepeat.poll(threshold(axis(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, axisX)), nowMillis)
+        if (mode == InputMode.Menu) {
+            if (dy != 0) navigate(dy)
+            if (dx != 0) adjust(dx)
+        } else if (dx != 0 || dy != 0) {
             if (navigateLibrary != null) navigateLibrary.invoke(dx, dy) else if (dx != 0) navigate(dx)
         }
     }

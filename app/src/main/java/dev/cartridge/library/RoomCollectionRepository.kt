@@ -128,6 +128,11 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
         val target = if (existing >= 0) existing else position.coerceIn(0, ids.size).also { ids.add(it, gameId) }
         replaceSlots(ids, target)
     }
+    override suspend fun hiddenGames(): List<LibraryGame> = dao.removedGames().map { record ->
+        val metadata = LibraryJson.metadata(record.metadataJson)
+        LibraryGame(record.id, metadata["title"]?.value ?: record.title, record.sourceUri, metadata = metadata,
+            favorite = record.favorite, playMs = record.playMs, lastPlayed = record.lastPlayed, system = GameSystem.valueOf(record.system))
+    }
     private suspend fun replaceSlots(ids: List<String>, selected: Int) {
         dao.clearSlots()
         if (ids.isEmpty()) dao.insertSlot(SlotRecord(0))

@@ -2,7 +2,7 @@ param(
     [string]$Sdk = (Join-Path $PSScriptRoot '../.tools/sdk'),
     [string]$Serial,
     [ValidateRange(1, 50)][int]$Cycles = 3,
-    [ValidateSet('Surface', 'Collection', 'Scrape', 'Library', 'Battery', 'Render', 'Manage', 'Review', 'Pack', 'Layout', 'Systems', 'PS1', 'Environment', 'Recovery', 'Backup', 'Live', 'All')][string]$Suite = 'Surface'
+    [ValidateSet('Surface', 'Collection', 'Scrape', 'Library', 'Battery', 'Render', 'Manage', 'Review', 'Pack', 'Layout', 'Systems', 'PS1', 'Environment', 'Recovery', 'Backup', 'Live', 'Options', 'Tour', 'Browse', 'All')][string]$Suite = 'Surface'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -35,7 +35,7 @@ try {
         Invoke-DeviceAdb -Arguments @('push', '.tools/probe/battery-probe.gba', '/data/local/tmp/battery-probe.gba')
         Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', '/data/local/tmp/battery-probe.gba', 'files/battery-probe.gba')
     }
-    if ($Suite -in @('Systems', 'Environment', 'Recovery', 'All')) {
+    if ($Suite -in @('Systems', 'Environment', 'Recovery', 'Tour', 'All')) {
         python (Join-Path $PSScriptRoot 'probe/generate_gb_probe.py')
         if ($LASTEXITCODE -ne 0) { throw 'GB probe generation failed' }
         foreach ($extension in @('gb', 'gbc')) {
@@ -44,7 +44,7 @@ try {
         }
     }
     Invoke-DeviceAdb -Arguments @('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
-    if ($Suite -in @('PS1', 'All')) {
+    if ($Suite -in @('PS1', 'Options', 'All')) {
         python (Join-Path $PSScriptRoot 'probe/generate_ps1_probe.py')
         if ($LASTEXITCODE -ne 0) { throw 'PS1 probe generation failed' }
         foreach ($extension in @('exe', 'iso', 'chd', 'cue', 'bin')) {
@@ -69,9 +69,14 @@ try {
         'Recovery' { 'dev.cartridge.SessionRecoveryTest' }
         'Backup' { 'dev.cartridge.BackupDeviceTest' }
         'Live' { 'dev.cartridge.ProviderLiveTest' }
-        'All' { 'dev.cartridge.SurfaceHandoffTest,dev.cartridge.CollectionUiTest,dev.cartridge.ProviderContractTest,dev.cartridge.ScrapeUiTest,dev.cartridge.LibraryGrowthTest,dev.cartridge.ScrapeResumeTest,dev.cartridge.BatterySaveTest,dev.cartridge.RenderRefinementTest,dev.cartridge.RenderPacingTest,dev.cartridge.LibraryManagementTest,dev.cartridge.ScrapeReviewTest,dev.cartridge.ScrapePackTest,dev.cartridge.CollectionLayoutDeviceTest,dev.cartridge.AdditionalSystemsTest,dev.cartridge.ConsoleEnvironmentTest,dev.cartridge.SessionRecoveryTest,dev.cartridge.BackupDeviceTest,dev.cartridge.Ps1DeviceTest' }
+        'Options' { 'dev.cartridge.GameOptionsDeviceTest' }
+        # Walks the console with a controller and saves real screenshots to files/ux-tour (see docs/ux).
+        'Tour' { 'dev.cartridge.UxTourTest' }
+        # Steps along a mixed shelf and checks every presented frame for an object without its own label.
+        'Browse' { 'dev.cartridge.BrowseStabilityTest' }
+        'All' { 'dev.cartridge.SurfaceHandoffTest,dev.cartridge.CollectionUiTest,dev.cartridge.ProviderContractTest,dev.cartridge.ScrapeUiTest,dev.cartridge.LibraryGrowthTest,dev.cartridge.ScrapeResumeTest,dev.cartridge.BatterySaveTest,dev.cartridge.RenderRefinementTest,dev.cartridge.RenderPacingTest,dev.cartridge.LibraryManagementTest,dev.cartridge.ScrapeReviewTest,dev.cartridge.ScrapePackTest,dev.cartridge.CollectionLayoutDeviceTest,dev.cartridge.AdditionalSystemsTest,dev.cartridge.ConsoleEnvironmentTest,dev.cartridge.SessionRecoveryTest,dev.cartridge.BackupDeviceTest,dev.cartridge.Ps1DeviceTest,dev.cartridge.GameOptionsDeviceTest,dev.cartridge.UxTourTest,dev.cartridge.BrowseStabilityTest' }
     }
-    $expectedTests = switch ($Suite) { 'Surface' { 1 }; 'Collection' { 2 }; 'Scrape' { 5 }; 'Library' { 4 }; 'Battery' { 2 }; 'Render' { 2 }; 'Manage' { 2 }; 'Review' { 4 }; 'Pack' { 2 }; 'Layout' { 2 }; 'Systems' { 2 }; 'PS1' { 3 }; 'Environment' { 3 }; 'Recovery' { 1 }; 'Backup' { 3 }; 'Live' { 1 }; 'All' { 35 } }
+    $expectedTests = switch ($Suite) { 'Surface' { 1 }; 'Collection' { 2 }; 'Scrape' { 5 }; 'Library' { 4 }; 'Battery' { 2 }; 'Render' { 2 }; 'Manage' { 2 }; 'Review' { 4 }; 'Pack' { 2 }; 'Layout' { 2 }; 'Systems' { 2 }; 'PS1' { 3 }; 'Environment' { 3 }; 'Recovery' { 1 }; 'Backup' { 3 }; 'Live' { 1 }; 'Options' { 1 }; 'Tour' { 1 }; 'Browse' { 1 }; 'All' { 38 } }
     $result = Invoke-DeviceAdb -Arguments @('shell', 'am', 'instrument', '-w', '-r', '-e', 'cycles', "$Cycles", '-e', 'liveProvider', "$($Suite -eq 'Live')".ToLowerInvariant(), '-e', 'class',
         $testClass, 'dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner')
     $result | Set-Content -LiteralPath '.tools/device-test.log'

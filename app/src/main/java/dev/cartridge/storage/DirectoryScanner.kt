@@ -7,42 +7,109 @@ import dev.cartridge.library.CollectionRepository
 import dev.cartridge.library.DirectoryRepository
 import dev.cartridge.library.LibraryGame
 import dev.cartridge.library.IndexedDocument
+import dev.cartridge.domain.ConsoleCatalog
+import dev.cartridge.domain.FolderHint
+import dev.cartridge.domain.FoundFile
 import dev.cartridge.domain.GameSystem
 import kotlinx.coroutines.*
 import java.io.File
 import kotlin.coroutines.coroutineContext
 
-data class ScanResult(val added: Int, val duplicates: Int, val failed: Int, val visited: Int, val errors: List<String>, val unchanged: Int = 0) {
+data class ScanResult(val added: Int, val duplicates: Int, val failed: Int, val visited: Int, val errors: List<String>, val unchanged: Int = 0,
+    /** Newly listed games per console, and games this folder holds that the library already had. */
+    val addedSystems: Map<GameSystem, Int> = emptyMap(), val knownSystems: Map<GameSystem, Int> = emptyMap(),
+    val otherConsoles: Map<String, Int> = emptyMap(), val archives: Int = 0, val playlists: Int = 0,
+    val firstAdded: String? = null, val complete: Boolean = true) {
     val message get() = "Scan complete: $added added · $duplicates duplicates · $failed failed" +
         " · $unchanged unchanged" + errors.firstOrNull()?.let { ". $it" }.orEmpty()
+    operator fun plus(other: ScanResult) = ScanResult(added + other.added, duplicates + other.duplicates, failed + other.failed,
+        visited + other.visited, (errors + other.errors).take(8), unchanged + other.unchanged,
+        merge(addedSystems, other.addedSystems), merge(knownSystems, other.knownSystems), merge(otherConsoles, other.otherConsoles),
+        archives + other.archives, playlists + other.playlists, firstAdded ?: other.firstAdded, complete && other.complete)
+    private fun <K> merge(a: Map<K, Int>, b: Map<K, Int>) = (a.keys + b.keys).associateWith { (a[it] ?: 0) + (b[it] ?: 0) }
+}
+
+/** What a folder holds, counted from names alone. Nothing is read or imported. */
+data class Discovery(val folder: String, val games: Map<GameSystem, Int> = emptyMap(), val otherConsoles: Map<String, Int> = emptyMap(),
+    val archives: Int = 0, val playlists: Int = 0, val complete: Boolean = true) {
+    val total get() = games.values.sum()
 }
 
 /** Read-only traversal of a user-granted tree; completed imports are committed individually. */
 class DirectoryScanner(private val resolver: ContentResolver, private val roms: File,
     private val repository: CollectionRepository, private val directories: DirectoryRepository) {
-    suspend fun scan(tree: Uri, progress: suspend (String) -> Unit, verifyAll: Boolean = false): ScanResult = withContext(Dispatchers.IO) {
+    private fun folderName(tree: Uri): String {
+        var name = DocumentsContract.getTreeDocumentId(tree).substringAfterLast('/').substringAfterLast(':')
+        runCatching {
+            resolver.query(DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree)),
+                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) name = it.getString(0).orEmpty()
+            }
+        }
+        return name
+    }
+
+    /** A names-only pass so an import can say what it found before the slower hashing begins. */
+    suspend fun discover(tree: Uri): Discovery = withContext(Dispatchers.IO) {
+        require(DocumentsContract.isTreeUri(tree)) { "Choose a game folder through the Android picker" }
+        val name = folderName(tree)
+        val games = mutableMapOf<GameSystem, Int>(); val others = mutableMapOf<String, Int>()
+        var archives = 0; var playlists = 0; var visited = 0; var complete = true
+        val pending = ArrayDeque<Triple<String, Int, FolderHint?>>()
+        pending.add(Triple(DocumentsContract.getTreeDocumentId(tree), 0, ConsoleCatalog.folderHint(name)))
+        val seen = mutableSetOf<String>()
+        while (pending.isNotEmpty() && visited < 10_000) {
+            coroutineContext.ensureActive()
+            val (parent, depth, hint) = pending.removeFirst()
+            if (!seen.add(parent) || depth > 16) continue
+            try {
+                resolver.query(DocumentsContract.buildChildDocumentsUriUsingTree(tree, parent), arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE), null, null, null)?.use {
+                    while (it.moveToNext() && ++visited <= 10_000) {
+                        val child = it.getString(1).orEmpty()
+                        if (it.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) pending.add(Triple(it.getString(0), depth + 1, ConsoleCatalog.folderHint(child) ?: hint))
+                        else when (val found = ConsoleCatalog.classify(child, hint)) {
+                            // A stray Windows program is not a game; PS-X executables are counted when the folder says PlayStation.
+                            is FoundFile.Game -> if (!child.endsWith(".exe", true) || hint == FolderHint.Supported(GameSystem.PS1)) games[found.system] = (games[found.system] ?: 0) + 1
+                            is FoundFile.OtherConsole -> others[found.console] = (others[found.console] ?: 0) + 1
+                            FoundFile.Archive -> archives++
+                            FoundFile.Playlist -> playlists++
+                            FoundFile.Ignored -> Unit
+                        }
+                    }
+                } ?: run { complete = false }
+            } catch (exception: Exception) {
+                if (exception is CancellationException) throw exception
+                complete = false
+            }
+        }
+        Discovery(name, games, others, archives, playlists, complete && visited < 10_000)
+    }
+
+    suspend fun scan(tree: Uri, progress: suspend (String) -> Unit, verifyAll: Boolean = false,
+        handled: suspend (String, Int) -> Unit = { _, _ -> }): ScanResult = withContext(Dispatchers.IO) {
         require(DocumentsContract.isTreeUri(tree)) { "Choose a ROM folder through the Android picker" }
         directories.rememberDirectory(tree.toString())
         val indexed = directories.indexed(tree.toString()).associateBy { it.documentUri }
         val documents = mutableSetOf<String>()
         var complete = true
-        var folderName = DocumentsContract.getTreeDocumentId(tree).substringAfterLast('/').substringAfterLast(':')
-        runCatching {
-            resolver.query(DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree)),
-                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use {
-                if (it.moveToFirst()) folderName = it.getString(0).orEmpty()
-            }
-        }
-        val pending = ArrayDeque<Pair<String, Int>>()
-        pending.add(DocumentsContract.getTreeDocumentId(tree) to 0)
+        val folderName = folderName(tree)
+        val pending = ArrayDeque<Triple<String, Int, FolderHint?>>()
+        pending.add(Triple(DocumentsContract.getTreeDocumentId(tree), 0, ConsoleCatalog.folderHint(folderName)))
         val seen = mutableSetOf<String>()
-        var added = 0; var duplicates = 0; var failed = 0; var visited = 0; var unchanged = 0
+        var added = 0; var duplicates = 0; var failed = 0; var visited = 0; var unchanged = 0; var games = 0
+        var archives = 0; var playlists = 0; var firstAdded: String? = null
+        val addedSystems = mutableMapOf<GameSystem, Int>(); val knownSystems = mutableMapOf<GameSystem, Int>(); val others = mutableMapOf<String, Int>()
         val errors = mutableListOf<String>()
         fun failure(message: String) { failed++; if (errors.size < 8) errors += message }
+        fun listed(game: LibraryGame, new: Boolean) {
+            if (new) { added++; addedSystems[game.system] = (addedSystems[game.system] ?: 0) + 1; if (firstAdded == null) firstAdded = game.id }
+            else { duplicates++; knownSystems[game.system] = (knownSystems[game.system] ?: 0) + 1 }
+        }
         val importer = RomImporter(resolver, roms)
         while (pending.isNotEmpty()) {
             coroutineContext.ensureActive()
-            val (parent, depth) = pending.removeFirst()
+            val (parent, depth, hint) = pending.removeFirst()
             if (!seen.add(parent)) continue
             if (depth > 16) { complete = false; failure("A folder exceeds the 16-level scan limit"); continue }
             val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parent)
@@ -57,11 +124,21 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
                         check(++visited <= 10_000) { "Scan stopped at 10,000 entries; choose a smaller folder" }
                         val documentId = it.getString(0); val name = it.getString(1).orEmpty()
                         if (it.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) {
-                            pending.add(documentId to depth + 1)
-                        } else if (GameSystem.supports(name)) {
-                            withContext(Dispatchers.Main) { progress("Scanning $name · $added added · $duplicates duplicates · $failed failed") }
+                            pending.add(Triple(documentId, depth + 1, ConsoleCatalog.folderHint(name) ?: hint))
+                            continue
+                        }
+                        val uri = DocumentsContract.buildDocumentUriUsingTree(tree, documentId)
+                        when (val found = ConsoleCatalog.classify(name, hint)) {
+                            // A disc already in the library keeps its index entry even if its folder is named for another console.
+                            is FoundFile.OtherConsole -> if (indexed[uri.toString()] == null) { others[found.console] = (others[found.console] ?: 0) + 1; continue }
+                            FoundFile.Archive -> { archives++; continue }
+                            FoundFile.Playlist -> { playlists++; continue }
+                            FoundFile.Ignored -> continue
+                            is FoundFile.Game -> Unit
+                        }
+                        if (GameSystem.supports(name)) {
+                            withContext(Dispatchers.Main) { progress("Scanning $name · $added added · $duplicates duplicates · $failed failed"); handled(name, games) }
                             try {
-                                val uri = DocumentsContract.buildDocumentUriUsingTree(tree, documentId)
                                 documents += uri.toString()
                                 val bytes = if (it.isNull(3)) -1 else it.getLong(3)
                                 val modified = if (it.isNull(4)) 0 else it.getLong(4)
@@ -70,7 +147,8 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
                                 val cached = old?.let { entry -> cachedSystem?.let { GameFiles.resolve(roms, entry.gameId, it) } }
                                 if (!verifyAll && old != null && bytes > 0 && modified > 0 &&
                                     !name.endsWith(".cue", true) && old.bytes == bytes && old.modified == modified && cached?.isFile == true && cached.length() == bytes) {
-                                    if (repository.add(LibraryGame(old.gameId, name.substringBeforeLast('.'), uri.toString(), system = checkNotNull(cachedSystem)))) added++ else duplicates++
+                                    val game = LibraryGame(old.gameId, name.substringBeforeLast('.'), uri.toString(), system = checkNotNull(cachedSystem))
+                                    listed(game, repository.add(game)); games++
                                     directories.index(old.copy(missing = false)); unchanged++
                                     continue
                                 }
@@ -86,10 +164,13 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
                                     }
                                     require(matches.size <= 1) { "Ambiguous CUE track: $track" }; matches.singleOrNull()
                                 }) { taskContext.ensureActive() }
-                                if (repository.add(LibraryGame(game.request.id, game.title, uri.toString(), system = game.request.system))) added++ else duplicates++
+                                val entry = LibraryGame(game.request.id, game.title, uri.toString(), system = game.request.system)
+                                listed(entry, repository.add(entry)); games++
                                 directories.index(IndexedDocument(tree.toString(), uri.toString(), game.request.id, bytes, modified))
                             } catch (exception: Exception) {
                                 if (exception is CancellationException) throw exception
+                                // Windows programs often sit beside games. Only a folder named for PlayStation makes an .exe a claim.
+                                if (name.endsWith(".exe", true) && hint != FolderHint.Supported(GameSystem.PS1)) continue
                                 failure("$name: ${exception.message ?: "Cannot import this file"}")
                             }
                         }
@@ -103,6 +184,6 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
             }
         }
         directories.finishScan(tree.toString(), folderName, documents, complete, errors.firstOrNull())
-        ScanResult(added, duplicates, failed, visited, errors, unchanged)
+        ScanResult(added, duplicates, failed, visited, errors, unchanged, addedSystems, knownSystems, others, archives, playlists, firstAdded, complete)
     }
 }

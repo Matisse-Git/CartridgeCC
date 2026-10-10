@@ -43,7 +43,7 @@ class LibraryManagementTest {
     private fun key(scenario: ActivityScenario<DebugCollectionActivity>, code: Int) {
         scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code)) }
         // Navigation samples held directions on Choreographer; hold through a real display frame.
-        if (code in setOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN)) Thread.sleep(80)
+        if (code in setOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT)) Thread.sleep(80)
         scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code)) }
         ui.waitForIdle()
     }
@@ -60,39 +60,51 @@ class LibraryManagementTest {
                 var first = ""; scenario.onActivity { first = it.coordinator.state.value.selectedGame!!.id }
                 choose("probe-two.gba"); await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.slots.size == 2 }
                 var second = ""; scenario.onActivity { second = it.coordinator.state.value.selectedGame!!.id }
-                key(scenario, KeyEvent.KEYCODE_BUTTON_L1)
+                key(scenario, KeyEvent.KEYCODE_BUTTON_Y)
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.favorite == true }
-                key(scenario, KeyEvent.KEYCODE_BUTTON_R1)
+                key(scenario, KeyEvent.KEYCODE_BUTTON_X)
                 ui.onNodeWithTag("details-panel").assertIsDisplayed()
-                ui.onNodeWithTag("details-year").assertTextEquals("Not set")
-                key(scenario, KeyEvent.KEYCODE_DPAD_DOWN); key(scenario, KeyEvent.KEYCODE_BUTTON_A)
+                ui.onNodeWithTag("details-history").assertTextEquals("Not played yet")
+                // Controller only: Manage game is the last details row, Edit details the third row of that sheet.
+                repeat(4) { key(scenario, KeyEvent.KEYCODE_DPAD_DOWN) }; key(scenario, KeyEvent.KEYCODE_BUTTON_A)
+                ui.onNodeWithTag("sheet-manage").assertIsDisplayed()
+                repeat(2) { key(scenario, KeyEvent.KEYCODE_DPAD_DOWN) }; key(scenario, KeyEvent.KEYCODE_BUTTON_A)
+                ui.onNodeWithTag("page-edit").assertIsDisplayed()
+                key(scenario, KeyEvent.KEYCODE_BUTTON_A)
                 ui.onNodeWithTag("edit-title").performTextReplacement("Aster Pilot")
-                ui.onNodeWithTag("edit-year").performTextReplacement("2002")
+                key(scenario, KeyEvent.KEYCODE_BUTTON_START)
+                ui.onNodeWithTag("field-year").performClick()
+                // The grid types without touch: focus starts on Q, so 2-0-0-2 is typed from the number row.
+                key(scenario, KeyEvent.KEYCODE_DPAD_UP); key(scenario, KeyEvent.KEYCODE_DPAD_RIGHT); key(scenario, KeyEvent.KEYCODE_BUTTON_A)
+                repeat(8) { key(scenario, KeyEvent.KEYCODE_DPAD_RIGHT) }; key(scenario, KeyEvent.KEYCODE_BUTTON_A); key(scenario, KeyEvent.KEYCODE_BUTTON_A)
+                repeat(8) { key(scenario, KeyEvent.KEYCODE_DPAD_LEFT) }; key(scenario, KeyEvent.KEYCODE_BUTTON_A)
+                ui.onNodeWithTag("edit-year").assertTextEquals("2002")
+                key(scenario, KeyEvent.KEYCODE_BUTTON_START)
                 ui.onNodeWithTag("metadata-save").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.title == "Aster Pilot" }
-                ui.onNodeWithTag("details-year").assertTextEquals("2002")
-                key(scenario, KeyEvent.KEYCODE_BUTTON_B)
-                key(scenario, KeyEvent.KEYCODE_BUTTON_B)
-                ui.onNodeWithTag("collection-action-3").performClick()
+                ui.onNodeWithTag("details-subtitle").assertTextContains("2002", substring = true)
+                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-library").performClick()
+                ui.onNodeWithTag("settings-sort").performScrollTo().performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.query.sort == LibrarySort.Title }
                 scenario.onActivity { assertEquals(second, it.coordinator.state.value.selectedGame!!.id); assertEquals(0, it.coordinator.state.value.selection.index) }
-                ui.onNodeWithTag("collection-action-4").performClick()
-                await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.slots.size == 1 }
-                key(scenario, KeyEvent.KEYCODE_BUTTON_B)
+                ui.home(); key(scenario, KeyEvent.KEYCODE_BUTTON_R1)
+                await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.shelf == Shelf.Favorites && it.coordinator.state.value.slots.size == 1 }
                 scenario.recreate()
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
-                scenario.onActivity { assertEquals(second, it.coordinator.state.value.selectedGame!!.id); assertTrue(it.coordinator.state.value.query.favoritesOnly); assertEquals("2002", it.coordinator.state.value.selectedGame!!.metadata["year"]!!.value) }
-                ui.tool("collection-menu").performClick(); ui.onNodeWithTag("library-manager-open").performScrollTo().performClick()
-                ui.onNodeWithTag("library-action-5").performScrollTo().performClick()
+                scenario.onActivity { assertEquals(second, it.coordinator.state.value.selectedGame!!.id); assertEquals(Shelf.Favorites, it.coordinator.state.value.shelf); assertEquals("2002", it.coordinator.state.value.selectedGame!!.metadata["year"]!!.value) }
+                ui.tool("search").performClick()
                 ui.onNodeWithTag("library-search-text").performTextReplacement("no match")
-                ui.onNodeWithTag("library-search-apply").performClick()
+                ui.onNodeWithTag("text-done").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame == null }
-                ui.onNodeWithTag("selected-title").assertTextEquals("No matching games")
+                ui.onNodeWithTag("selected-title").assertTextEquals("No games match “no match”")
                 scenario.recreate(); await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 scenario.onActivity { assertEquals("no match", it.coordinator.state.value.query.search); assertEquals(2, it.coordinator.state.value.allGames.size) }
-                ui.tool("collection-menu").performClick(); ui.onNodeWithTag("collection-action-5").performClick()
+                key(scenario, KeyEvent.KEYCODE_BUTTON_B) // From the library, B leaves a search.
+                await(scenario) { !it.coordinator.state.value.busy && !it.coordinator.state.value.searching && it.coordinator.state.value.shelf == Shelf.Favorites }
+                key(scenario, KeyEvent.KEYCODE_BUTTON_L1)
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.slots.size == 2 }
-                key(scenario, KeyEvent.KEYCODE_BUTTON_B)
+                scenario.onActivity { it.coordinator.query(LibraryQuery()) }
+                await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.query.sort == LibrarySort.Added }
                 scenario.onActivity { it.coordinator.navigate(1 - it.coordinator.state.value.selection.index) }
                 ui.tool("insert").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Running }

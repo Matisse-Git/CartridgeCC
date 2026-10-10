@@ -67,7 +67,7 @@ class ScrapeResumeTest {
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame != null }
                 choose("probe-two.gba")
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame != null }
-                ui.onNodeWithTag("scrape").performClick(); ui.onNodeWithTag("scrape-action-2").performClick() // All games.
+                ui.tool("scrape").performClick(); ui.onNodeWithTag("scrape-action-2").performClick() // All games.
                 await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.current?.searched == true }
                 assertEquals(1, provider.calls.size) // Review is available before searching the second title.
                 ui.onNodeWithTag("scrape-action-0").performClick()
@@ -88,7 +88,7 @@ class ScrapeResumeTest {
                     assertFalse(it.scraper.state.value.entries[1].searched)
                     provider.gate = null
                 }
-                ui.onNodeWithTag("scrape").performClick(); ui.onNodeWithTag("scrape-action-3").performClick()
+                ui.tool("scrape").performClick(); ui.onNodeWithTag("scrape-action-3").performClick()
                 await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.entries.all { entry -> entry.searched } }
                 scenario.onActivity {
                     assertEquals(1, provider.calls.count { it.contains("one") })
@@ -97,7 +97,7 @@ class ScrapeResumeTest {
                 }
                 scenario.recreate()
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady && it.scraper.state.value.ready }
-                ui.onNodeWithTag("scrape").performClick(); ui.onNodeWithTag("scrape-action-3").performClick()
+                ui.tool("scrape").performClick(); ui.onNodeWithTag("scrape-action-3").performClick()
                 await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.current!!.matches.isNotEmpty() }
                 scenario.onActivity {
                     assertEquals(1, it.scraper.state.value.index)

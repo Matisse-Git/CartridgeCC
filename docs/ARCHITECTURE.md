@@ -1,8 +1,66 @@
 # Architecture
 
+## Console shell (2026-10-10 redesign)
+
+The interface layer was replaced; emulation, rendering ownership, persistence and import mechanics
+were not. ADR 0018 records the decisions; [docs/ux](ux/REDESIGN_SPEC.md) records the design. Where
+an older section below describes the Tools shelf, the collection menu on B, `LibraryMenu`/`Details`
+coordinator screens, `ConsolePanel` or `LibraryPanels`, this section supersedes it.
+
+| Layer | Owns | Does not own |
+|---|---|---|
+| `MainActivity` | window, lifecycle, activity-result pickers, key/motion delivery, hosting the Filament and emulator views | what is on screen, what a button means |
+| `shell/ConsoleShell` | the destination stack, focus by row id, every controller role, presentation preferences, import flow state, the operations that need a `Context` (scan, import, backup, BIOS) | session or library truth |
+| `shell/ShellPages` | rows for every destination, derived from state on each read | any stored state |
+| `session/CollectionCoordinator` | the serialized operation, the native session, the shelf projection and focus identity | menus, cursors, overlays |
+| `ui/` | tokens, components, library chrome, overlay rendering | decisions |
+
+Input: `ControllerRouter` still sends each event down exactly one route (Library, Gameplay, Menu,
+Text, Locked) and still polls held directions on a Choreographer callback, but it now reports
+buttons by role — select, back, alternate (X), secondary (Y), shoulder, menu (Start), adjust
+(left/right in a menu) — and `ConsoleShell` assigns the meaning. `ConsoleShell.inputMode()` is the
+single place a mode is chosen. The shell is told about every coordinator and engine change through
+`sync`, where it clears overlays when the scene changes (library, game, label preview), reports a
+finished scraper preview, counts launches and raises the launch-recovery sheet.
+
+Shelves: `library/Shelf` projects the canonical snapshot inside the coordinator after
+`LibraryQuery` sorting. The shelf and a per-shelf focused content id are presentation preferences
+(`shelf`, `shelfFocus`); Room still stores only canonical order, the selected slot and the query.
+Focus resolution order is: explicit target, the game already focused, what this shelf last showed,
+the stored selection. A scrape preview of a game outside the view still uses a transient projection
+that is never persisted.
+
+Rendering: Filament keeps rendering beneath translucent sheets and is paused beneath opaque
+pages (`ConsoleShell.base != null`) and the artwork workflow. `CartridgeSurface.presentation`
+moves the focused object aside for Details, its sheets, the label preview and the welcome.
+Label material instances carry a polygon offset because a label lies in, or 0.05 mm above, its
+recess floor.
+
+Browsing (ADR 0019): a game keeps one pooled object for as long as it is in the window.
+`CollectionLayout.slot(index)` picks the object from the shelf index alone, out of
+`CollectionLayout.POOL` (15) per media template, and the window is what rests on screen plus what
+one step brings in: five objects for the carousels, five rows for the grid. The Activity keeps
+decoded labels in a map by image key (a decoded accepted label, or a `TypesetLabel` of the title)
+and stages `system, owner, key, pixels?` per window entry through `CartridgeSurface.setWindow`.
+`CartridgeLabels` binds a texture only for an object that entered the window, keeps a game's
+current label up while its replacement decodes, and never draws an object with another game's
+label or the template's: an object that changed hands stays hidden until its own label is bound.
+Arriving objects were labelled while still off screen, so a step re-labels nothing in view. Grid
+rows outside the three on screen stay ready and grow in or out as the grid scrolls.
+
+Options: `environment/GameOptions` and `OptionStore` resolve default → console → game.
+`LibretroEngine` asks for them per `GameRequest`; `cartridge_screen_effect` selects the
+LibretroDroid shader and is never sent to a core; PlayStation's BIOS and memory-card variables
+are applied last.
+
+Screen wake: the window no longer sets `FLAG_KEEP_SCREEN_ON`. The Compose root keeps the screen on
+while a scan or artwork search is running; the emulator's own view keeps it on during play.
+`DebugCollectionActivity` restores the flag because instrumentation injects input without user
+activity.
+
 The PS1 increment adds explicit system-selected cores and immutable scoped disc bundles without
 changing the single-session/surface ownership strategy. See ADR 0017 and PS1_PROGRESS for the source
-pin, CUE track confinement, BIOS ownership, 27-instance bounded media pool and per-core save revisions.
+pin, CUE track confinement, BIOS ownership, bounded media pool (45 instances since ADR 0019) and per-core save revisions.
 Historical M0–M6 sections below describe their original scope; PS1 details take precedence where noted.
 
 One Android module keeps the feasibility work reviewable. Packages separate pure navigation/session
@@ -35,7 +93,7 @@ Pause clears all previously forwarded keys/axes. No HOME interception or system-
 
 ## Graphics ownership
 
-Filament uses a SurfaceView/UiHelper swapchain. A bounded nine-slot pool holds each supported physical template, sharing meshes and shell textures/materials. Three carousel objects or up to nine grid objects are visible; slots represent a moving window around the global selection. CartridgeLabels duplicates only the named label material per visible instance
+Filament uses a SurfaceView/UiHelper swapchain. A bounded fifteen-object pool holds each supported physical template, sharing meshes and shell textures/materials. Three carousel objects or up to nine grid objects rest on screen; each shelf index of the staged window owns the pooled object `CollectionLayout.slot` gives it (ADR 0019). CartridgeLabels duplicates only the named label material per staged instance
 and owns its replacement SRGB8_A8 texture. GLB/image file reads and label decoding use IO; every Filament/JNI resource call stays on Main. Texture
 resources load asynchronously and renderables are added when ready. A Choreographer callback updates
 root transforms and draws; the focus spring retargets in place. Backgrounding pauses that loop.
@@ -243,7 +301,8 @@ No new library/native integration or change to GPU ownership; see ADR 0011.
 
 ## M4 layouts
 
-ADR 0012 supersedes the earlier fixed three-instance description. CollectionLayout owns spatial
+ADR 0012 supersedes the earlier fixed three-instance description; ADR 0019 in turn replaces its
+nine-instance pool and positional window with the stable fifteen-object pool described under Rendering. CollectionLayout owns spatial
 movement and bounded windows over the same canonical/query projection. All layouts share the session
 coordinator and nine-instance GLB pool: three active in Horizontal/Vertical, nine in Grid. Labels and
 acknowledgements map through windowStart; the decode cache is bounded to twice the visible count.

@@ -67,7 +67,7 @@ class ScrapeUiTest {
                     ui.tool("choose-game").performClick(); ui.waitForIdle()
                 } finally { Intents.release() }
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame != null }
-                ui.onNodeWithTag("scrape").performClick()
+                ui.tool("scrape").performClick()
                 ui.onNodeWithTag("scrape-action-0").performClick()
                 await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.current?.searched == true }
                 ui.onNodeWithTag("scrape-action-0").performClick() // First provider match.

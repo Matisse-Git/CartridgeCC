@@ -15,9 +15,11 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-enum class CollectionScreen { Library, LibraryMenu, Details, Inserting, Handoff, Emulator, Ejecting, LabelPreview }
+enum class CollectionScreen { Library, Inserting, Handoff, Emulator, Ejecting, LabelPreview }
 data class LabelDraft(val gameId: String, val label: LabelRef)
 data class RemovedEntry(val gameId: String, val position: Int)
+/** A game that did not start. The session is already released; the library entry is untouched. */
+data class LaunchFailure(val gameId: String, val title: String, val system: GameSystem, val reason: String)
 data class CollectionState(
     val screen: CollectionScreen = CollectionScreen.Library,
     val selection: Selection = Selection(count = 1),
@@ -26,7 +28,6 @@ data class CollectionState(
     val message: String? = null,
     val rendererReady: Boolean = false,
     val busy: Boolean = false,
-    val menuIndex: Int = 0,
     val reducedMotion: Boolean = false,
     val alternateShortcut: Boolean = false,
     val viewportGeneration: Int = 0,
@@ -40,13 +41,18 @@ data class CollectionState(
     val lastLabelAppliedTo: String? = null,
     val layout: CollectionLayout = CollectionLayout.Horizontal,
     val resumeSession: ResumeSession? = null,
+    val shelf: Shelf = Shelf.All,
+    val launchFailure: LaunchFailure? = null,
 ) {
     val selectedGame get() = slots[selection.index]
     val title get() = selectedGame?.title ?: if (allGames.isNotEmpty()) "No matching games" else "Your collection is empty"
-    val labels get() = slots.subList(windowStart, (windowStart + layout.visibleCount).coerceAtMost(slots.size)).map { game ->
-        if (game?.id == labelDraft?.gameId && labelDraft != null) labelDraft.label else game?.label }
+    /** The bounded slice of the shelf that owns GPU objects and decoded labels: what is on screen and what one step brings in. */
+    val window get() = slots.subList(windowStart, (windowStart + layout.windowCount).coerceAtMost(slots.size))
+    val labels get() = window.map { game -> if (game?.id == labelDraft?.gameId && labelDraft != null) labelDraft.label else game?.label }
     val windowStart get() = layout.windowStart(selection.index, slots.size)
-    val systems get() = slots.subList(windowStart, (windowStart + layout.visibleCount).coerceAtMost(slots.size)).map { it?.system ?: GameSystem.GBA }
+    val systems get() = window.map { it?.system ?: GameSystem.GBA }
+    val shelves get() = Shelf.available(allGames)
+    val searching get() = query.search.isNotBlank()
 }
 
 /** Main-thread ports return only after the old GPU owner has synchronously detached/flushed. */
@@ -55,7 +61,10 @@ interface RendererHandoff {
     fun releaseEmulator()
 }
 
-/** Activity-owned, Android-free coordinator. One user operation; repeated presses cannot queue sessions. */
+/**
+ * Activity-owned, Android-free coordinator. One user operation; repeated presses cannot queue sessions.
+ * It owns the library projection and the native session, not menus: overlays live in the console shell.
+ */
 class CollectionCoordinator(
     private val engine: EmulationEngine,
     private val repository: CollectionRepository,
@@ -68,6 +77,9 @@ class CollectionCoordinator(
     private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
     private val wallMillis: () -> Long = System::currentTimeMillis,
     private val sessionStore: SessionStore? = null,
+    private val initialShelf: Shelf? = null,
+    initialShelfFocus: Map<String, String> = emptyMap(),
+    private val onBrowseChanged: (Shelf, Map<String, String>) -> Unit = { _, _ -> },
 ) {
     private val mutableState = MutableStateFlow(CollectionState(reducedMotion = reducedMotion, alternateShortcut = alternateShortcut, layout = layout))
     val state = mutableState.asStateFlow()
@@ -86,21 +98,30 @@ class CollectionCoordinator(
     private var playActive = false
     private val pendingHistory = mutableMapOf<String, Pair<Long, Long?>>()
     private var playStartedAt: Long? = null
-    // A filtered-out scrape target is projected only for the draft. Never persist a temporary query
-    // or selection: a process death during preview must leave the user's collection view intact.
+    // A scrape target outside the current shelf or search is projected only for the draft. Never persist a
+    // temporary query or selection: a process death during preview must leave the user's collection view intact.
     private var previewGameId: String? = null
     private var resumeAfterBackground = false
+    private val shelfFocus = initialShelfFocus.toMutableMap()
+    private var launchTarget: LibraryGame? = null
 
     init {
         observers += scope.launch {
             try {
-                val initial = repository.initialize()
-                applySnapshot(initial, forceFocus = true)
+                var initial = repository.initialize()
+                var shelf = initialShelf
+                // The favourites filter became a shelf. Move a stored flag across once so no view stays filtered without a control.
+                if (initial.query.favoritesOnly) {
+                    repository.setQuery(initial.query.copy(favoritesOnly = false))
+                    initial = repository.initialize()
+                    if (initial.slots.any { it?.favorite == true }) shelf = Shelf.Favorites
+                }
+                applySnapshot(initial, startup = true, startShelf = shelf)
                 mutableState.value = state.value.copy(loaded = true)
                 readResume()
                 repository.snapshots.collect { snapshot ->
                     canonical = snapshot
-                    if (state.value.screen in setOf(CollectionScreen.Library, CollectionScreen.LibraryMenu, CollectionScreen.Details)) applySnapshot(snapshot)
+                    if (state.value.screen == CollectionScreen.Library) applySnapshot(snapshot)
                 }
             } catch (failure: Exception) {
                 if (failure is CancellationException) throw failure
@@ -129,7 +150,7 @@ class CollectionCoordinator(
             // the filesystem is checked. A captured receiver could clear its one-shot readiness.
             mutableState.value = state.value.copy(resumeSession = saved)
         }
-        catch (failure: Exception) { if (failure is CancellationException) throw failure; notify("Saved session unavailable: ${failure.message}. Discard it in Console settings.") }
+        catch (failure: Exception) { if (failure is CancellationException) throw failure; notify("Saved session unavailable: ${failure.message}. Discard it in Settings.") }
     }
     fun discardResume() {
         if (state.value.screen != CollectionScreen.Library) return
@@ -140,12 +161,14 @@ class CollectionCoordinator(
         if (!foreground || state.value.screen != CollectionScreen.Library || state.value.busy || !state.value.loaded) return
         val game = state.value.allGames.firstOrNull { it.id == saved.id && it.system == saved.system }
             ?: return notify("The saved game's library entry is missing. Restore the entry or discard this session.")
+        launchTarget = null // A failed restore is reported in place; the checkpoint stays available.
         runAction(isLaunch = true) {
             val bytes = withContext(Dispatchers.IO) { checkNotNull(sessionStore).read(saved) }
             val request = repository.gameRequest(game).copy(resumeState = bytes)
+            mutableState.value = state.value.copy(shelf = shelfShowing(game))
             previewGameId = game.id; applySnapshot(canonical)
             mutableState.value = state.value.copy(screen = CollectionScreen.Handoff, rendererReady = false)
-            renderers.releaseLibrary(); mutableState.value = state.value.copy(screen = CollectionScreen.Emulator, menuIndex = 0)
+            renderers.releaseLibrary(); mutableState.value = state.value.copy(screen = CollectionScreen.Emulator)
             playingId = game.id
             engine.prepare(request)
             check(engine.status.value.state == SessionState.Running) { engine.status.value.error ?: "The saved session did not start" }
@@ -154,15 +177,92 @@ class CollectionCoordinator(
             notify("Session restored")
         }
     }
-    private fun applySnapshot(snapshot: LibrarySnapshot, forceFocus: Boolean = false) {
+    /**
+     * Projects the canonical collection onto the current shelf. Focus follows a game's identity: an explicit
+     * target, then the game already focused, then what this shelf last showed, then the stored selection.
+     */
+    private fun applySnapshot(snapshot: LibrarySnapshot, focusId: String? = null, startup: Boolean = false,
+        startShelf: Shelf? = null, shelfChanged: Boolean = false) {
         canonical = snapshot
-        val focus = previewGameId ?: if (forceFocus) snapshot.slots[snapshot.selectedSlot]?.id else state.value.selectedGame?.id ?: snapshot.slots[snapshot.selectedSlot]?.id
         val games = snapshot.slots.filterNotNull()
-        val matching = if (previewGameId != null) games else snapshot.query.apply(games)
-        val projected: List<LibraryGame?> = if (matching.isEmpty()) listOf(null) else matching
-        val index = projected.indexOfFirst { it?.id == focus }.takeIf { it >= 0 }
-            ?: state.value.selection.index.coerceAtMost(projected.lastIndex)
-        mutableState.value = state.value.copy(slots = projected, selection = Selection(index, projected.size), allGames = games, query = snapshot.query)
+        val current = state.value
+        val stored = snapshot.slots[snapshot.selectedSlot]?.id
+        val focused = focusId ?: previewGameId ?: if (startup) null else current.selectedGame?.id
+        val shelves = Shelf.available(games)
+        var shelf = if (startup) startShelf ?: games.firstOrNull { it.id == stored }?.let { Shelf.Console(it.system) } ?: Shelf.All else current.shelf
+        if (shelf !in shelves) shelf = games.firstOrNull { it.id == (focused ?: stored) }?.let { Shelf.Console(it.system) }?.takeIf { it in shelves }
+            ?: shelves.firstOrNull() ?: Shelf.All
+        val matching = when {
+            previewGameId != null -> games
+            snapshot.query.search.isNotBlank() -> snapshot.query.copy(favoritesOnly = false).apply(games)
+            shelf == Shelf.Recent -> shelf.apply(games)
+            else -> shelf.apply(snapshot.query.copy(favoritesOnly = false).apply(games))
+        }
+        val projected: List<LibraryGame?> = matching.ifEmpty { listOf(null) }
+        val index = listOf(focused, shelfFocus[shelf.key], stored).firstNotNullOfOrNull { id ->
+            if (id == null) null else projected.indexOfFirst { it?.id == id }.takeIf { it >= 0 }
+        } ?: if (startup || shelfChanged || shelf != current.shelf) 0 else current.selection.index.coerceAtMost(projected.lastIndex)
+        mutableState.value = state.value.copy(slots = projected, selection = Selection(index, projected.size), allGames = games,
+            query = snapshot.query, shelf = shelf)
+        rememberBrowse()
+    }
+    private fun rememberBrowse() {
+        if (previewGameId != null || state.value.screen == CollectionScreen.LabelPreview) return
+        state.value.selectedGame?.id?.let { shelfFocus[state.value.shelf.key] = it }
+        onBrowseChanged(state.value.shelf, shelfFocus.toMap())
+    }
+    /** The shelf to stand on when [game] must be visible: the current one if it already shows it. */
+    private fun shelfShowing(game: LibraryGame): Shelf =
+        if (state.value.shelf.apply(listOf(game)).isNotEmpty()) state.value.shelf else Shelf.Console(game.system)
+    private fun persistFocus() {
+        val id = state.value.selectedGame?.id ?: return
+        focusJob?.cancel()
+        focusJob = scope.launch {
+            try { repository.select(canonical.slots.indexOfFirst { it?.id == id }.coerceAtLeast(0)) }
+            catch (failure: Exception) {
+                if (failure is CancellationException) throw failure
+                mutableState.value = state.value.copy(message = "Could not remember selection: ${failure.message}")
+            }
+        }
+    }
+    fun chooseShelf(shelf: Shelf) {
+        val current = state.value
+        if (destroyed || !foreground || current.busy || !current.loaded || current.screen != CollectionScreen.Library || shelf !in current.shelves) return
+        if (current.searching) {
+            // Leaving search for a shelf is one step; the stored search is cleared with it.
+            runAction {
+                focusJob?.cancelAndJoin(); repository.setQuery(state.value.query.copy(search = ""))
+                mutableState.value = state.value.copy(shelf = shelf)
+                applySnapshot(repository.initialize(), shelfChanged = true); persistFocus()
+            }
+        } else if (shelf != current.shelf) {
+            rememberBrowse()
+            mutableState.value = current.copy(shelf = shelf, message = null)
+            applySnapshot(canonical, shelfChanged = true)
+            persistFocus()
+        }
+    }
+    fun switchShelf(delta: Int) {
+        val shelves = state.value.shelves
+        val index = shelves.indexOf(state.value.shelf).coerceAtLeast(0)
+        if (state.value.searching) chooseShelf(shelves[index])
+        else if (shelves.size > 1) chooseShelf(shelves[Math.floorMod(index + delta, shelves.size)])
+    }
+    /** Stand on a shelf that shows this game and focus it, e.g. after an import. */
+    fun reveal(gameId: String) {
+        if (state.value.screen != CollectionScreen.Library || !state.value.loaded) return
+        runAction { focusJob?.cancelAndJoin(); show(gameId) }
+    }
+    private suspend fun show(gameId: String) {
+        if (state.value.searching) repository.setQuery(state.value.query.copy(search = ""))
+        var snapshot = repository.initialize()
+        val position = snapshot.slots.indexOfFirst { it?.id == gameId }
+        if (position >= 0) {
+            repository.select(position)
+            snapshot = repository.initialize()
+            mutableState.value = state.value.copy(shelf = shelfShowing(snapshot.slots[position]!!))
+        }
+        applySnapshot(snapshot, focusId = gameId)
     }
     private suspend fun savePlay(keepRunning: Boolean) = playMutex.withLock {
         val id = playingId ?: return@withLock
@@ -181,33 +281,28 @@ class CollectionCoordinator(
         if (pendingHistory.isEmpty()) mutableState.value = state.value.copy(historyWarning = null)
     }
     fun query(query: LibraryQuery) {
-        if (state.value.screen !in setOf(CollectionScreen.Library, CollectionScreen.LibraryMenu)) return
-        runAction { focusJob?.cancelAndJoin(); repository.setQuery(query); applySnapshot(repository.initialize()) }
+        if (state.value.screen != CollectionScreen.Library) return
+        runAction { focusJob?.cancelAndJoin(); repository.setQuery(query.copy(favoritesOnly = false)); applySnapshot(repository.initialize()) }
     }
     fun favorite() {
-        if (state.value.screen !in setOf(CollectionScreen.Library, CollectionScreen.Details)) return
+        if (state.value.screen != CollectionScreen.Library) return
         val game = state.value.selectedGame ?: return
         runAction {
             repository.setFavorite(game.id, !game.favorite); applySnapshot(repository.initialize())
-            if (state.value.screen == CollectionScreen.Details && state.value.selectedGame?.id != game.id) closeDetails()
+            notify(if (game.favorite) "Removed from Favorites" else "Added to Favorites")
         }
     }
-    fun details() {
-        if (state.value.screen == CollectionScreen.Library && !state.value.busy && state.value.selectedGame != null)
-            mutableState.value = state.value.copy(screen = CollectionScreen.Details, menuIndex = 0, message = null)
-    }
-    fun closeDetails() { if (!state.value.busy) mutableState.value = state.value.copy(screen = CollectionScreen.Library) }
     fun editMetadata(values: Map<String, String>) {
         val game = state.value.selectedGame ?: return
-        if (state.value.screen != CollectionScreen.Details) return
+        if (state.value.screen != CollectionScreen.Library || values.isEmpty()) return
         runAction {
             repository.setMetadata(game.id, values.mapValues { MetadataValue(it.value.trim(), "Local", game.id, "", "User provided", wallMillis()) })
-            applySnapshot(repository.initialize()); notify("Metadata saved")
+            applySnapshot(repository.initialize()); notify("Details saved")
         }
     }
     fun undoEnrichment() {
         val game = state.value.selectedGame ?: return
-        if (state.value.screen != CollectionScreen.Details) return
+        if (state.value.screen != CollectionScreen.Library) return
         runAction {
             notify(if (repository.undoEnrichment(game.id)) "Last artwork / metadata change undone" else "Nothing to undo")
             applySnapshot(repository.initialize())
@@ -233,79 +328,46 @@ class CollectionCoordinator(
     fun navigate(delta: Int) {
         if (destroyed || !foreground || state.value.busy || !state.value.loaded) return
         val current = state.value
-        if (current.screen == CollectionScreen.LibraryMenu) {
-            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 8))
-        } else if (current.screen == CollectionScreen.Details) {
-            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 5))
-        } else if (engine.status.value.state == SessionState.Paused) {
-            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 5))
-        } else if (current.screen == CollectionScreen.LabelPreview) {
-            mutableState.value = current.copy(menuIndex = (current.menuIndex + delta).coerceIn(0, 3))
-        } else if (current.screen == CollectionScreen.Library) {
-            val selection = current.selection.move(delta)
-            mutableState.value = current.copy(selection = selection, message = null)
-            focusJob?.cancel()
-            focusJob = scope.launch {
-                try { state.value.slots[selection.index]?.id?.let { id -> repository.select(canonical.slots.indexOfFirst { it?.id == id }.coerceAtLeast(0)) } }
-                catch (failure: Exception) {
-                    if (failure is CancellationException) throw failure
-                    mutableState.value = state.value.copy(message = "Could not remember selection: ${failure.message}")
-                }
-            }
+        if (current.screen != CollectionScreen.Library) return
+        val selection = current.selection.move(delta)
+        if (selection == current.selection) return
+        mutableState.value = current.copy(selection = selection, message = null)
+        rememberBrowse()
+        persistFocus()
+    }
+    /** Hide only the library entry. The game file, saves and artwork stay; a rescan will not bring it back. */
+    fun hideSelected() {
+        if (state.value.screen != CollectionScreen.Library || state.value.busy) return
+        val game = state.value.selectedGame ?: return
+        val entry = RemovedEntry(game.id, canonical.slots.indexOfFirst { it?.id == game.id })
+        runAction {
+            focusJob?.cancelAndJoin()
+            repository.remove(game.id)
+            refreshLibrary()
+            mutableState.value = state.value.copy(removedEntry = entry, message = "${game.title} hidden. Its file, saves and artwork are kept.")
         }
     }
-    fun select() {
-        when {
-            state.value.screen == CollectionScreen.LibraryMenu -> libraryAction(state.value.menuIndex)
-            state.value.screen == CollectionScreen.LabelPreview -> labelAction(state.value.menuIndex)
-            engine.status.value.state == SessionState.Paused -> menuAction(state.value.menuIndex)
-            else -> insert()
+    fun undoHide() {
+        if (state.value.screen != CollectionScreen.Library || state.value.busy) return
+        val entry = state.value.removedEntry ?: return
+        runAction {
+            focusJob?.cancelAndJoin()
+            repository.restore(entry.gameId, entry.position)
+            show(entry.gameId)
+            mutableState.value = state.value.copy(removedEntry = null, message = "Back in your library")
         }
     }
-    fun back() {
-        if (state.value.busy) return
-        if (state.value.screen == CollectionScreen.Library) openLibraryMenu()
-        else if (state.value.screen == CollectionScreen.Details) closeDetails()
-        else if (state.value.screen == CollectionScreen.LibraryMenu) libraryAction(0)
-        else if (state.value.screen == CollectionScreen.LabelPreview) cancelLabel()
-        else if (engine.status.value.state == SessionState.Paused) menuAction(0)
-    }
-    fun openLibraryMenu() {
-        if (foreground && state.value.loaded && !state.value.busy && state.value.screen == CollectionScreen.Library)
-            mutableState.value = state.value.copy(screen = CollectionScreen.LibraryMenu, menuIndex = 0, message = null)
-    }
-    fun libraryAction(index: Int) {
-        if (state.value.screen != CollectionScreen.LibraryMenu || state.value.busy) return
-        when (index) {
-            0 -> mutableState.value = state.value.copy(screen = CollectionScreen.Library)
-            1 -> state.value.selectedGame?.let { game ->
-                val entry = RemovedEntry(game.id, canonical.slots.indexOfFirst { it?.id == game.id })
-                runAction {
-                    focusJob?.cancelAndJoin()
-                    repository.remove(game.id)
-                    refreshLibrary()
-                    mutableState.value = state.value.copy(screen = CollectionScreen.Library, removedEntry = entry,
-                        message = "Entry removed. ROM, saves and artwork kept. Undo is available in B → Collection.")
-                }
-            }
-            2 -> state.value.removedEntry?.let { entry ->
-                runAction {
-                    focusJob?.cancelAndJoin()
-                    repository.restore(entry.gameId, entry.position)
-                    refreshLibrary()
-                    mutableState.value = state.value.copy(screen = CollectionScreen.Library, removedEntry = null, message = "Entry restored")
-                }
-            }
-            3 -> query(state.value.query.copy(sort = LibrarySort.entries[(state.value.query.sort.ordinal + 1) % LibrarySort.entries.size]))
-            4 -> query(state.value.query.copy(favoritesOnly = !state.value.query.favoritesOnly))
-            5 -> query(LibraryQuery())
-            7 -> settings(layout = state.value.layout.next())
+    /** Return a hidden game from Settings. It rejoins the end of the collection and takes focus. */
+    fun restoreHidden(gameId: String) {
+        if (state.value.screen != CollectionScreen.Library || state.value.busy) return
+        runAction {
+            focusJob?.cancelAndJoin()
+            repository.restore(gameId, canonical.slots.count { it != null })
+            show(gameId)
+            mutableState.value = state.value.copy(removedEntry = state.value.removedEntry?.takeIf { it.gameId != gameId }, message = "Back in your library")
         }
     }
-    private suspend fun refreshLibrary() {
-        val snapshot = repository.initialize()
-        applySnapshot(snapshot, forceFocus = true)
-    }
+    private suspend fun refreshLibrary() = applySnapshot(repository.initialize())
     fun settings(reducedMotion: Boolean = state.value.reducedMotion, alternateShortcut: Boolean = state.value.alternateShortcut, layout: CollectionLayout = state.value.layout) {
         if (!state.value.busy) {
             val changed = layout != state.value.layout
@@ -314,13 +376,16 @@ class CollectionCoordinator(
         }
     }
     fun notify(message: String) { if (!destroyed) mutableState.value = state.value.copy(message = message) }
+    fun dismissMessage() { if (!destroyed && state.value.message != null) mutableState.value = state.value.copy(message = null) }
+    fun dismissLaunchFailure() { if (!destroyed && state.value.launchFailure != null) mutableState.value = state.value.copy(launchFailure = null) }
 
     fun insert() {
         val selected = state.value
         if (!foreground || !selected.loaded || selected.screen != CollectionScreen.Library || !selected.rendererReady) return
-        val game = selected.selectedGame ?: return notify("Choose a game file for this cartridge first.")
+        val game = selected.selectedGame ?: return
+        launchTarget = game
         runAction(isLaunch = true) {
-            mutableState.value = state.value.copy(screen = CollectionScreen.Inserting, message = null)
+            mutableState.value = state.value.copy(screen = CollectionScreen.Inserting, message = null, launchFailure = null)
             coroutineScope {
                 val request = async { repository.gameRequest(game) }
                 if (!selected.reducedMotion) delay(dev.cartridge.domain.MediaMotion.INSERT_MS.toLong())
@@ -336,8 +401,9 @@ class CollectionCoordinator(
     }
     fun pause() {
         if (engine.status.value.state != SessionState.Running) return
-        runAction { playJob?.cancel(); savePlay(false); playActive = false; engine.pause(); mutableState.value = state.value.copy(menuIndex = 0) }
+        runAction { playJob?.cancel(); savePlay(false); playActive = false; engine.pause() }
     }
+    /** 0 resume · 1 save state · 2 load state · 3 eject. Positions are a stable contract for the pause menu. */
     fun menuAction(index: Int) {
         if (engine.status.value.state != SessionState.Paused) return
         runAction {
@@ -350,12 +416,7 @@ class CollectionCoordinator(
         }
     }
     fun configureGame(options: Map<String, String>, applied: () -> Unit) {
-        if (engine.status.value.state == SessionState.Paused) runAction { engine.configure(options); applied(); notify("Game settings saved") }
-    }
-    fun assignGame(import: suspend () -> LibraryGame) {
-        val selected = state.value.selection.index
-        if (state.value.screen != CollectionScreen.Library || !state.value.loaded) return
-        runAction { val game = import(); repository.assign(selected, game); notify("Game added") }
+        if (engine.status.value.state == SessionState.Paused) runAction { engine.configure(options); applied() }
     }
     fun addGame(import: suspend () -> LibraryGame) {
         if (state.value.screen != CollectionScreen.Library || !state.value.loaded) return
@@ -363,18 +424,16 @@ class CollectionCoordinator(
             val game = import()
             focusJob?.cancelAndJoin()
             val added = repository.add(game, restoreRemoved = true)
-            repository.setQuery(state.value.query.copy(favoritesOnly = false, search = ""))
-            val snapshot = repository.initialize()
-            repository.select(snapshot.slots.indexOfFirst { it?.id == game.id }.coerceAtLeast(0))
-            refreshLibrary()
+            show(game.id)
             notify(if (added) "Game added" else "Selected the existing entry")
         }
     }
+    /** A blank result leaves reporting to the caller's own import summary. */
     fun scanDirectory(scan: suspend ((String) -> Unit) -> String) {
         if (state.value.screen != CollectionScreen.Library || !state.value.loaded) return
         runAction {
             mutableState.value = state.value.copy(scanning = true)
-            try { notify(scan(::notify)) }
+            try { scan(::notify).let { if (it.isNotBlank()) notify(it) else dismissMessage() } }
             finally { mutableState.value = state.value.copy(scanning = false) }
         }
     }
@@ -392,7 +451,7 @@ class CollectionCoordinator(
         val game = selected.selectedGame ?: return notify("Choose a game before assigning its label.")
         runAction {
             val label = import()
-            mutableState.value = state.value.copy(screen = CollectionScreen.LabelPreview, labelDraft = LabelDraft(game.id, label), menuIndex = 0, labelPreviewReady = false, lastLabelAppliedTo = null)
+            mutableState.value = state.value.copy(screen = CollectionScreen.LabelPreview, labelDraft = LabelDraft(game.id, label), labelPreviewReady = false, lastLabelAppliedTo = null)
         }
     }
     fun previewScrapedLabel(game: LibraryGame, label: LabelRef) {
@@ -405,15 +464,16 @@ class CollectionCoordinator(
             if (state.value.slots.none { it?.id == game.id }) {
                 previewGameId = game.id
             } else repository.select(position)
-            applySnapshot(repository.initialize(), forceFocus = true)
+            applySnapshot(repository.initialize(), focusId = game.id)
             mutableState.value = state.value.copy(screen = CollectionScreen.LabelPreview, labelDraft = LabelDraft(game.id, label),
-                menuIndex = 0, labelPreviewReady = false, lastLabelAppliedTo = null)
+                labelPreviewReady = false, lastLabelAppliedTo = null)
         }
     }
     private suspend fun restorePreviewView() {
         previewGameId = null
         refreshLibrary()
     }
+    /** 0 fit/crop · 1 rotate · 2 apply · 3 cancel. */
     fun labelAction(index: Int) {
         if (state.value.busy) return
         val draft = state.value.labelDraft ?: return
@@ -440,13 +500,14 @@ class CollectionCoordinator(
     fun removeLabel() {
         val game = state.value.selectedGame ?: return
         if (state.value.screen != CollectionScreen.Library) return
-        runAction { repository.setLabel(game.id, null); notify("Original study label restored") }
+        runAction { repository.setLabel(game.id, null); notify("Label removed") }
     }
 
     private fun runAction(isLaunch: Boolean = false, action: suspend () -> Unit) {
         if (destroyed || state.value.busy || backgroundJob?.isActive == true) return
         mutableState.value = state.value.copy(busy = true, message = null)
         launching = isLaunch
+        val target = if (isLaunch) launchTarget else null
         actionJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try { action() }
             catch (failure: TimeoutCancellationException) {
@@ -458,6 +519,9 @@ class CollectionCoordinator(
             } catch (failure: Exception) {
                 if (isLaunch || engine.status.value.state == SessionState.Error || state.value.screen in setOf(CollectionScreen.Inserting, CollectionScreen.Handoff)) {
                     eject(failure.message, animate = false)
+                    // A launch that failed gets a recovery sheet; the same text stays in message for callers that read it.
+                    if (target != null && !destroyed) mutableState.value = state.value.copy(
+                        launchFailure = LaunchFailure(target.id, target.title, target.system, state.value.message ?: failure.message ?: "The game did not start"))
                 } else notify(failure.message ?: "Operation failed")
             } finally {
                 launching = false
