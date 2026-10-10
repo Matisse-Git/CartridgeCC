@@ -66,15 +66,26 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
                                 val bytes = if (it.isNull(3)) -1 else it.getLong(3)
                                 val modified = if (it.isNull(4)) 0 else it.getLong(4)
                                 val old = indexed[uri.toString()]
-                                val cached = old?.let { entry -> GameSystem.entries.map { File(roms, "${entry.gameId}.${it.extension}") }.firstOrNull(File::isFile) }
+                                val cachedSystem = old?.let { entry -> GameSystem.entries.firstOrNull { GameFiles.resolve(roms, entry.gameId, it).isFile } }
+                                val cached = old?.let { entry -> cachedSystem?.let { GameFiles.resolve(roms, entry.gameId, it) } }
                                 if (!verifyAll && old != null && bytes > 0 && modified > 0 &&
-                                    old.bytes == bytes && old.modified == modified && cached?.isFile == true && cached.length() == bytes) {
-                                    if (repository.add(LibraryGame(old.gameId, name.substringBeforeLast('.'), uri.toString(), system = GameSystem.entries.first { it.extension == cached.extension }))) added++ else duplicates++
+                                    !name.endsWith(".cue", true) && old.bytes == bytes && old.modified == modified && cached?.isFile == true && cached.length() == bytes) {
+                                    if (repository.add(LibraryGame(old.gameId, name.substringBeforeLast('.'), uri.toString(), system = checkNotNull(cachedSystem)))) added++ else duplicates++
                                     directories.index(old.copy(missing = false)); unchanged++
                                     continue
                                 }
                                 val taskContext = coroutineContext
-                                val game = importer.import(uri) { taskContext.ensureActive() }
+                                val game = importer.import(uri, siblings = { track ->
+                                    val matches = mutableListOf<Uri>()
+                                    resolver.query(children, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { tracks ->
+                                        var count = 0
+                                        while (tracks.moveToNext()) {
+                                            taskContext.ensureActive(); require(++count <= 10_000) { "Too many files in the track folder" }
+                                            if (tracks.getString(1).equals(track,ignoreCase=true)) matches += DocumentsContract.buildDocumentUriUsingTree(tree, tracks.getString(0))
+                                        }
+                                    }
+                                    require(matches.size <= 1) { "Ambiguous CUE track: $track" }; matches.singleOrNull()
+                                }) { taskContext.ensureActive() }
                                 if (repository.add(LibraryGame(game.request.id, game.title, uri.toString(), system = game.request.system))) added++ else duplicates++
                                 directories.index(IndexedDocument(tree.toString(), uri.toString(), game.request.id, bytes, modified))
                             } catch (exception: Exception) {

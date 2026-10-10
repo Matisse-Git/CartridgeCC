@@ -20,7 +20,7 @@ class BackupReview internal constructor(internal val directory: File, internal v
     val saveCount get() = blobs.count { it.kind in setOf("sram", "rtc", "state") }
     override fun close() { directory.deleteRecursively() }
 }
-internal data class BackupBlob(val path: String, val sha: String, val bytes: Long, val id: String, val kind: String)
+internal data class BackupBlob(val path: String, val sha: String, val bytes: Long, val id: String, val kind: String, val core: String? = null)
 
 class BackupStore(private val repository: BackupRepository, private val labels: LabelStore, private val saves: SaveStore,
     private val sessions: SessionStore, private val staging: File) {
@@ -43,7 +43,7 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
                     currentCoroutineContext().ensureActive()
                     saves.read(game.id, kind)?.let { bytes ->
                         val path = "saves/${game.id}.$kind"; val file = File(temporary, "${game.id}.$kind").apply { writeBytes(bytes) }
-                        blobs.add(BackupBlob(path, hash(file), file.length(), game.id, kind)); files[path] = file
+                        blobs.add(BackupBlob(path, hash(file), file.length(), game.id, kind, if (kind == "state") GameSystem.valueOf(game.system).coreRevision else null)); files[path] = file
                     }
                 }
             }
@@ -53,8 +53,8 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
                 val path = "session/state.bin"; blobs.add(BackupBlob(path, hash(file), file.length(), it.id, "session")); files[path] = file
             }
             val root = encodeLibrary(library).put("format", FORMAT).put("version", 1).put("core", SessionStore.CORE).put("settings", preferences)
-                .put("blobs", JSONArray(blobs.map { JSONObject().put("path", it.path).put("sha256", it.sha).put("bytes", it.bytes).put("id", it.id).put("kind", it.kind) }))
-            session?.let { root.put("session", JSONObject().put("id", it.id).put("system", it.system.name).put("savedAt", it.savedAt).put("core", SessionStore.CORE)) }
+                .put("blobs", JSONArray(blobs.map { JSONObject().put("path", it.path).put("sha256", it.sha).put("bytes", it.bytes).put("id", it.id).put("kind", it.kind).put("core", it.core) }))
+            session?.let { root.put("session", JSONObject().put("id", it.id).put("system", it.system.name).put("savedAt", it.savedAt).put("core", it.system.coreRevision)) }
             val manifest = root.toString().toByteArray(Charsets.UTF_8)
             require(manifest.size <= LIMITS.manifest && blobs.size + 1 <= LIMITS.entries && blobs.sumOf { it.bytes } + manifest.size <= LIMITS.expanded) { "Backup exceeds supported limits" }
             ZipOutputStream(output).use { zip ->
@@ -77,7 +77,7 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
             val settings = root.getJSONObject("settings").also(BackupPreferences::validate)
             val array = root.getJSONArray("blobs"); require(array.length() < LIMITS.entries)
             val blobs = (0 until array.length()).map { index -> array.getJSONObject(index).let {
-                BackupBlob(it.getString("path"), it.getString("sha256"), it.getLong("bytes"), it.getString("id"), it.getString("kind")) } }
+                BackupBlob(it.getString("path"), it.getString("sha256"), it.getLong("bytes"), it.getString("id"), it.getString("kind"), if (it.has("core")) it.getString("core") else null) } }
             if (blobs.any { it.kind in setOf("state", "session") }) require(root.getString("core") == SessionStore.CORE) { "Saved states use a different core revision" }
             require(blobs.map { it.path }.distinct().size == blobs.size && files.keys == (blobs.map { it.path } + "backup.json").toSet()) { "Undeclared or duplicate backup data" }
             val ids = library.games.associateBy { it.id }
@@ -86,6 +86,7 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
             blobs.forEach { blob ->
                 task.ensureActive()
                 require(blob.id.matches(HASH) && blob.sha.matches(HASH)) { "Invalid backup identity" }
+                if (blob.kind == "state") require((blob.core ?: root.getString("core")) == GameSystem.valueOf(checkNotNull(ids[blob.id]).system).coreRevision) { "Saved state uses a different console core revision" }
                 val expected = when(blob.kind) {
                     "image" -> "images/${blob.id}.image"
                     "sram", "rtc", "state" -> { require(blob.id in ids); "saves/${blob.id}.${blob.kind}" }
@@ -99,7 +100,7 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
                 if (blob.kind == "image") { require(blob.sha == blob.id); labels.validateImage(file) }
             }
             val session = root.optJSONObject("session")?.let {
-                require(it.getString("core") == SessionStore.CORE) { "The saved session uses a different core revision" }
+                require(it.getString("core") == GameSystem.valueOf(it.getString("system")).coreRevision) { "The saved session uses a different core revision" }
                 ResumeSession(it.getString("id"), GameSystem.valueOf(it.getString("system")), it.getLong("savedAt")).also { value ->
                     require(value.savedAt >= 0 && ids[value.id]?.system == value.system.name && blobs.singleOrNull { b -> b.kind == "session" }?.id == value.id)
                 }

@@ -13,11 +13,12 @@ data class ImportedGame(val request: GameRequest, val title: String)
 
 /** Bounded single-document import; originals stay under the user's control. */
 class RomImporter(private val resolver: ContentResolver, private val directory: File) {
-    fun import(uri: Uri, checkCancelled: () -> Unit = {}): ImportedGame {
+    fun import(uri: Uri, siblings: ((String) -> Uri?)? = null, checkCancelled: () -> Unit = {}): ImportedGame {
         val title = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) it.getString(0) else null
         } ?: "User game.gba"
-        require(GameSystem.supports(title)) { "Choose an uncompressed .gba, .gb or .gbc file" }
+        require(GameSystem.supports(title)) { "Choose GBA, GB/GBC or PS1 CHD, PBP, ISO, CUE or PS-X EXE content" }
+        if (title.substringAfterLast('.').lowercase() in GameSystem.discExtensions) return Ps1Importer(resolver, directory).import(uri, title, siblings, checkCancelled)
         val limit = if (title.endsWith(".gba", ignoreCase = true)) 32L * 1024 * 1024 else 8L * 1024 * 1024 + 64
         check(directory.isDirectory || directory.mkdirs())
         val temporary = File.createTempFile("rom-", ".tmp", directory)

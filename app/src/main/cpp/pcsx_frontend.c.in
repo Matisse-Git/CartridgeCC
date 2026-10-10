@@ -1,0 +1,32 @@
+/* Original readiness instrumentation around the unchanged GPL-2.0-or-later frontend. */
+#define retro_set_video_refresh cartridge_pcsx_set_video_refresh
+#define retro_init cartridge_pcsx_init
+#define retro_set_audio_sample_batch cartridge_pcsx_set_audio_sample_batch
+#include "@pcsx_SOURCE_DIR@/frontend/libretro.c"
+#undef retro_set_video_refresh
+#undef retro_init
+#undef retro_set_audio_sample_batch
+static retro_video_refresh_t cartridge_video;
+static uint64_t cartridge_frames;
+static retro_audio_sample_batch_t cartridge_audio;
+static uint64_t cartridge_audio_frames;
+static void cartridge_refresh(const void *data, unsigned width, unsigned height, size_t pitch) {
+    if (data && data != RETRO_HW_FRAME_BUFFER_VALID) ++cartridge_frames;
+    if (cartridge_video) cartridge_video(data, width, height, pitch);
+}
+void retro_set_video_refresh(retro_video_refresh_t cb) {
+    cartridge_video = cb;
+    cartridge_pcsx_set_video_refresh(cartridge_refresh);
+}
+static size_t cartridge_audio_batch(const int16_t *data, size_t frames) {
+    if (data) for (size_t n = 0; n < frames * 2; ++n) {
+        if (data[n]) { cartridge_audio_frames += frames; break; }
+    }
+    return cartridge_audio ? cartridge_audio(data, frames) : frames;
+}
+void retro_set_audio_sample_batch(retro_audio_sample_batch_t cb) {
+    cartridge_audio = cb; cartridge_pcsx_set_audio_sample_batch(cartridge_audio_batch);
+}
+void retro_init(void) { cartridge_frames = 0; cartridge_audio_frames = 0; cartridge_pcsx_init(); }
+uint64_t cartridge_pcsx_video_frames(void) { return cartridge_frames; }
+uint64_t cartridge_pcsx_audio_frames(void) { return cartridge_audio_frames; }

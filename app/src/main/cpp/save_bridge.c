@@ -25,6 +25,7 @@ Java_dev_cartridge_emulation_SaveBridge_frameCount(JNIEnv* env, jobject receiver
     (*env)->ReleaseStringUTFChars(env, path, utf);
     if (!handle) { fail(env, "The emulator core is not loaded"); return 0; }
     uint64_t (*count)(void) = (uint64_t (*)(void))dlsym(handle, "cartridge_mgba_video_frames");
+    if (!count) count = (uint64_t (*)(void))dlsym(handle, "cartridge_pcsx_video_frames");
     jlong frames = count ? (jlong)count() : 0;
     if (!count) fail(env, "The core cannot report video readiness");
     dlclose(handle);
@@ -45,14 +46,31 @@ static bool openMemory(JNIEnv* env, jstring path, CoreMemory* memory, unsigned k
         dlclose(memory->handle); fail(env, "The core has no Libretro save memory ABI"); return false;
     }
     void (*syncSavedata)(void) = (void (*)(void))dlsym(memory->handle, "cartridge_mgba_sync_savedata");
-    if (!syncSavedata) { dlclose(memory->handle); fail(env, "The core cannot synchronize battery memory"); return false; }
-    syncSavedata();
+    // mGBA needs its VFile synchronization extension; PCSX exposes Mcd1Data directly.
+    if (syncSavedata) syncSavedata();
+    else if (!dlsym(memory->handle, "cartridge_pcsx_video_frames")) {
+        dlclose(memory->handle); fail(env, "The core cannot synchronize save memory"); return false;
+    }
     memory->size = getSize(kind);
     memory->bytes = getData(kind);
     if ((kind != SAVE_RAM && kind != RTC) || memory->size > (kind == RTC ? 4096 : MAX_CART_SAVE) || (memory->size && !memory->bytes)) {
         dlclose(memory->handle); fail(env, "Invalid cartridge save memory"); return false;
     }
     return true;
+}
+
+// Diagnostic counts actual non-silent PCM delivered to the frontend, not acoustic output.
+JNIEXPORT jlong JNICALL
+Java_dev_cartridge_emulation_SaveBridge_audioFrames(JNIEnv* env, jobject receiver, jstring path) {
+    (void)receiver;
+    const char* utf = path ? (*env)->GetStringUTFChars(env, path, NULL) : NULL;
+    if (!utf) { fail(env, "Missing core path"); return 0; }
+    void* handle = dlopen(utf, RTLD_NOW | RTLD_NOLOAD);
+    (*env)->ReleaseStringUTFChars(env, path, utf);
+    if (!handle) { fail(env, "The emulator core is not loaded"); return 0; }
+    uint64_t (*count)(void) = (uint64_t (*)(void))dlsym(handle, "cartridge_pcsx_audio_frames");
+    jlong result = count ? (jlong)count() : 0;
+    dlclose(handle); return result;
 }
 
 JNIEXPORT jbyteArray JNICALL

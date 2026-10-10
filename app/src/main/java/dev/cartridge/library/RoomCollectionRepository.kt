@@ -204,19 +204,19 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
     override suspend fun facts(gameId: String): LibraryFacts = withContext(Dispatchers.IO) {
         val sources = dao.sources(gameId)
         val saves = File(context.filesDir, "saves")
-        LibraryFacts(File(roms, "$gameId.${GameSystem.valueOf(checkNotNull(dao.game(gameId)).system).extension}").isFile,
+        LibraryFacts(dev.cartridge.storage.GameFiles.resolve(roms, gameId, GameSystem.valueOf(checkNotNull(dao.game(gameId)).system)).isFile,
             when { sources.isEmpty() -> "Original not checked by a folder scan"
                 sources.all { it.missing } -> "Original missing at last complete scan"
                 else -> "Original found at last scan" },
             File(saves, "$gameId.sram").lastModified(), File(saves, "$gameId.state").lastModified())
     }
     override suspend fun gameRequest(game: LibraryGame): GameRequest = withContext(Dispatchers.IO) {
-        val file = File(roms, "${game.id}.${game.system.extension}")
+        val file = dev.cartridge.storage.GameFiles.resolve(roms, game.id, game.system)
         if (!file.isFile) {
             val restored = RomImporter(context.contentResolver, roms).import(Uri.parse(game.sourceUri))
             check(restored.request.id == game.id) { "The original game changed. Choose the same ROM file again." }
         }
-        GameRequest(file, game.id, game.system)
+        GameRequest(dev.cartridge.storage.GameFiles.resolve(roms, game.id, game.system), game.id, game.system)
     }
     private fun snapshot(rows: List<SlotRow>): LibrarySnapshot {
         val bySlot = rows.associateBy { it.slot }

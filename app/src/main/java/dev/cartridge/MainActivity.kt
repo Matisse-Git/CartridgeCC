@@ -99,6 +99,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
     private lateinit var repository: CollectionRepository
     private lateinit var sessionStore: SessionStore
     private var chooseBackup: (() -> Unit)? = null
+    private var chooseBios: (() -> Unit)? = null
+    private var biosStatus by mutableStateOf("PS1 BIOS: HLE (limited compatibility)")
     private var exportBackup: (() -> Unit)? = null
     private var backupReview by mutableStateOf<BackupReview?>(null)
     private var restorePreferences by mutableStateOf(false)
@@ -219,6 +221,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         if (coordinator.state.value.screen == CollectionScreen.LibraryMenu) coordinator.back()
         consolePage = page; consoleFocus = 0; refreshInputMode()
         if (page == ConsolePage.Notices) loadNotice()
+        lifecycleScope.launch { biosStatus = withContext(Dispatchers.IO) { dev.cartridge.storage.Ps1BiosStore(File(filesDir, "system")).description() } }
     }
     private fun consoleBack() {
         if (coordinator.state.value.busy) return
@@ -230,20 +233,21 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         ConsolePage.Setup -> listOf("Choose game folder", "Controller", "Continue to collection")
         ConsolePage.Settings -> listOf("Back", "Controller", "Game settings", if (coordinator.state.value.reducedMotion) "Motion: Off" else "Motion: On",
             if (soundEnabled) "Media sound: On" else "Media sound: Off", if (homeEnabled) "HOME candidate: On" else "HOME candidate: Off",
-            "Choose Android default home", "First-run setup", "About & licences", "Resume saved session", "Discard saved session", "Export backup", "Restore backup", "Android device settings")
+            "Choose Android default home", "First-run setup", "About & licences", "Resume saved session", "Discard saved session", "Export backup", "Restore backup", "Android device settings", "Import PS1 BIOS")
         ConsolePage.Controllers -> listOf("Back", if (consoleSettings.swapMenuButtons) "Menu select: B / back: A" else "Menu select: A / back: B",
             if (consoleSettings.swapGameButtons) "Gameplay A/B: Swapped" else "Gameplay A/B: Direct",
             if (consoleSettings.swapShoulders) "Gameplay L/R: Swapped" else "Gameplay L/R: Direct",
             "Stick dead zone: ${(consoleSettings.deadZone * 100).toInt()}%",
             if (coordinator.state.value.alternateShortcut) "Pause: Start + Select" else "Pause: L3 + R3", "Reset controller")
-        ConsolePage.Game -> listOf("Back", if (consoleSettings.audioFilter) "Audio smoothing: On" else "Audio smoothing: Off", "Frames skipped: ${consoleSettings.frameSkip}")
+        ConsolePage.Game -> if (coordinator.state.value.selectedGame?.system == dev.cartridge.domain.GameSystem.PS1) listOf("Back", "Import PS1 BIOS")
+            else listOf("Back", if (consoleSettings.audioFilter) "Audio smoothing: On" else "Audio smoothing: Off", "Frames skipped: ${consoleSettings.frameSkip}")
         ConsolePage.Notices -> listOf("Back", "Next licence")
         ConsolePage.Backup -> listOf("Merge missing data", if (restorePreferences) "Restore settings: Yes" else "Restore settings: No", "Cancel")
         null -> emptyList()
     }
     private fun changeConsole(next: ConsoleSettings) {
         val commit = { consoleSettings = next; ConsolePreferences(presentationPreferences()).write(next); applyControllerSettings() }
-        if (engine.status.value.state == SessionState.Paused && next.coreOptions() != consoleSettings.coreOptions()) coordinator.configureGame(next.coreOptions(), commit)
+        if (engine.status.value.state == SessionState.Paused && coordinator.state.value.selectedGame?.system != dev.cartridge.domain.GameSystem.PS1 && next.coreOptions() != consoleSettings.coreOptions()) coordinator.configureGame(next.coreOptions(), commit)
         else commit()
     }
     private fun consoleAction(index: Int) {
@@ -268,6 +272,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                     else if (index == 11) exportBackup?.invoke() else chooseBackup?.invoke()
                 13 -> try { startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) }
                     catch (failure: Exception) { coordinator.notify("Android settings unavailable: ${failure.message}") }
+                14 -> { consoleBack(); chooseBios?.invoke() }
             }
             ConsolePage.Controllers -> when(index) {
                 0 -> consoleBack(); 1 -> changeConsole(consoleSettings.copy(swapMenuButtons = !consoleSettings.swapMenuButtons))
@@ -277,7 +282,9 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 5 -> { val next = !coordinator.state.value.alternateShortcut; coordinator.settings(alternateShortcut = next); presentationPreferences().edit { putBoolean("alternateShortcut", next) } }
                 6 -> { changeConsole(consoleSettings.copy(swapMenuButtons = false, swapGameButtons = false, swapShoulders = false, deadZone = .35f)); coordinator.settings(alternateShortcut = false); presentationPreferences().edit { putBoolean("alternateShortcut", false) } }
             }
-            ConsolePage.Game -> when(index) { 0 -> consoleBack(); 1 -> changeConsole(consoleSettings.copy(audioFilter = !consoleSettings.audioFilter)); 2 -> changeConsole(consoleSettings.copy(frameSkip = (consoleSettings.frameSkip + 1) % 3)) }
+            ConsolePage.Game -> if (coordinator.state.value.selectedGame?.system == dev.cartridge.domain.GameSystem.PS1) {
+                when(index) { 0 -> consoleBack(); 1 -> { consoleBack(); chooseBios?.invoke() } }
+            } else when(index) { 0 -> consoleBack(); 1 -> changeConsole(consoleSettings.copy(audioFilter = !consoleSettings.audioFilter)); 2 -> changeConsole(consoleSettings.copy(frameSkip = (consoleSettings.frameSkip + 1) % 3)) }
             ConsolePage.Notices -> when(index) { 0 -> consoleBack(); 1 -> { noticeIndex++; loadNotice() } }
             ConsolePage.Backup -> when(index) { 0 -> mergeBackup(); 1 -> restorePreferences = !restorePreferences; 2 -> consoleBack() }
             null -> Unit
@@ -336,7 +343,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
             noticeText = withContext(Dispatchers.IO) {
                 val names = assets.list("licenses").orEmpty().sorted()
                 if (names.isEmpty()) "License files unavailable" else names[noticeIndex % names.size].let { name ->
-                    "Cartridge · mGBA 0.10.5 · LibretroDroid 0.14.0 · Filament 1.72.1\nOriginal project assets; private user ROMs/artwork remain user controlled.\n\n$name\n\n" + assets.open("licenses/$name").bufferedReader().use { it.readText() }
+                    "Cartridge · mGBA 0.10.5 · PCSX ReARMed c8816799 · LibretroDroid 0.14.0 · Filament 1.72.1\nOriginal project assets; private user ROMs/artwork remain user controlled.\n\n$name\n\n" + assets.open("licenses/$name").bufferedReader().use { it.readText() }
                 }
             }
         }
@@ -466,12 +473,22 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
         val directoryPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { it?.let(::scanDirectory) }
         val packPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importPack) }
         val backupPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::readBackup) }
+        val biosPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let { coordinator.libraryOperation {
+                val message = withContext(Dispatchers.IO) { dev.cartridge.storage.Ps1BiosStore(File(filesDir, "system")).import(contentResolver, it) }
+                biosStatus = "PS1 BIOS: Imported"; coordinator.notify(message)
+            } }
+        }
         val backupWriter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { it?.let(::writeBackup) }
         DisposableEffect(gamePicker, labelPicker) {
             chooseGame = { if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) { addingGame = true; gamePicker.launch(arrayOf("*/*")) } }
             chooseDirectory = { if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) directoryPicker.launch(null) }
             choosePack = { if (!scraper.state.value.busy) packPicker.launch(arrayOf("application/zip", "application/octet-stream")) }
             chooseBackup = { if (!coordinator.state.value.busy) backupPicker.launch(arrayOf("application/zip", "application/octet-stream")) }
+            chooseBios = {
+                if (engine.status.value.state != SessionState.Idle) coordinator.notify("Eject before importing the PS1 BIOS")
+                else if (!coordinator.state.value.busy) biosPicker.launch(arrayOf("*/*"))
+            }
             exportBackup = { if (!coordinator.state.value.busy) backupWriter.launch("Cartridge-backup.zip") }
             chooseLabel = {
                 if (!coordinator.state.value.busy && coordinator.state.value.screen == CollectionScreen.Library) {
@@ -479,7 +496,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                     else labelPicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
                 }
             }
-            onDispose { chooseGame = null; chooseLabel = null; chooseDirectory = null; choosePack = null; chooseBackup = null; exportBackup = null }
+            onDispose { chooseGame = null; chooseLabel = null; chooseDirectory = null; choosePack = null; chooseBackup = null; exportBackup = null; chooseBios = null }
         }
         MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFD8C7A8), background = Color(0xFF191817))) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -611,7 +628,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener 
                 listOfNotNull(status.saveWarning ?: state.message, state.historyWarning).joinToString("\n").takeIf(String::isNotEmpty)?.let { Text(it, color = Color(0xFFE2CFAE), modifier = Modifier.align(Alignment.BottomStart)
                     .background(Color(0xEE191817)).padding(16.dp).testTag("message"), fontSize = 13.sp) }
                 if (scrape.visible) ScrapePanel(scrape, scraper)
-                consolePage?.let { ConsolePanel(it, consoleChoices(), consoleFocus, state.busy, ::consoleAction, noticeText) }
+                consolePage?.let { ConsolePanel(it, consoleChoices(), consoleFocus, state.busy, ::consoleAction, if (consolePage == ConsolePage.Game && coordinator.state.value.selectedGame?.system == dev.cartridge.domain.GameSystem.PS1) biosStatus else noticeText) }
             }
         }
     }

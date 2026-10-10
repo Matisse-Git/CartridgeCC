@@ -40,13 +40,17 @@ class CartridgeSurface(
     private val resourceLoader: ResourceLoader
     private val receiverLoader: ResourceLoader
     private val tallLoader: ResourceLoader
+    private val discLoader: ResourceLoader
     private val asset: FilamentAsset
     private val receiver: FilamentAsset
     private val tallAsset: FilamentAsset
+    private val discAsset: FilamentAsset
     private val labels: CartridgeLabels
     private val tallLabels: CartridgeLabels
+    private val discLabels: CartridgeLabels
     private val instances = arrayOfNulls<FilamentInstance>(9)
     private val tallInstances = arrayOfNulls<FilamentInstance>(9)
+    private val discInstances = arrayOfNulls<FilamentInstance>(9)
     private val uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
     private val light: Int
     private val indirectLight: IndirectLight
@@ -57,7 +61,7 @@ class CartridgeSurface(
     private var previousLayout = CollectionLayout.Horizontal
     var layout: CollectionLayout = CollectionLayout.Horizontal
     internal val poolCapacity get() = instances.size
-    internal val meshInstanceCount get() = instances.size + tallInstances.size
+    internal val meshInstanceCount get() = instances.size + tallInstances.size + discInstances.size
     var systems: List<GameSystem> = List(9) { GameSystem.GBA }
     private val matrix = FloatArray(16)
     private val renderables = IntArray(128)
@@ -82,10 +86,12 @@ class CartridgeSurface(
         require(pixels.size <= instances.size)
         if (!closed) {
             val pooled = List(instances.size) { pixels.getOrNull(it) }
-            val short = pooled.mapIndexed { index, label -> label.takeUnless { systems.getOrNull(index)?.tallCartridge == true } }
+            val short = pooled.mapIndexed { index, label -> label.takeIf { systems.getOrNull(index) == GameSystem.GBA } }
             val tall = pooled.mapIndexed { index, label -> label.takeIf { systems.getOrNull(index)?.tallCartridge == true } }
-            if (labels.desired.map { it?.key } != short.map { it?.key } || tallLabels.desired.map { it?.key } != tall.map { it?.key }) labelFailure = false
+            val disc = pooled.mapIndexed { index, label -> label.takeIf { systems.getOrNull(index) == GameSystem.PS1 } }
+            if (labels.desired.map { it?.key } != short.map { it?.key } || tallLabels.desired.map { it?.key } != tall.map { it?.key } || discLabels.desired.map { it?.key } != disc.map { it?.key }) labelFailure = false
             labels.desired = short; tallLabels.desired = tall
+            discLabels.desired = disc
         }
     }
 
@@ -132,12 +138,17 @@ class CartridgeSurface(
         tallLoader = ResourceLoader(engine)
         check(tallLoader.asyncBeginLoad(tallAsset)) { "Cannot load tall cartridge resources" }
         tallAsset.releaseSourceData()
+        discAsset = checkNotNull(assetLoader.createInstancedAsset(ByteBuffer.wrap(bytes.disc), discInstances)) { "Cannot decode optical disc GLB" }
+        discLoader = ResourceLoader(engine)
+        check(discLoader.asyncBeginLoad(discAsset)) { "Cannot load optical disc resources" }
+        discAsset.releaseSourceData()
         receiver = checkNotNull(assetLoader.createAsset(ByteBuffer.wrap(bytes.receiver))) { "Cannot decode receiving slot" }
         receiverLoader = ResourceLoader(engine)
         check(receiverLoader.asyncBeginLoad(receiver)) { "Cannot load receiving slot" }
         receiver.releaseSourceData()
         labels = CartridgeLabels(engine, instances)
         tallLabels = CartridgeLabels(engine, tallInstances)
+        discLabels = CartridgeLabels(engine, discInstances)
         uiHelper.renderCallback = object : UiHelper.RendererCallback {
             override fun onNativeWindowChanged(surface: Surface) {
                 swapChain?.let(engine::destroySwapChain)
@@ -182,6 +193,7 @@ class CartridgeSurface(
         resourceLoader.asyncUpdateLoad()
         receiverLoader.asyncUpdateLoad()
         tallLoader.asyncUpdateLoad()
+        discLoader.asyncUpdateLoad()
         while (true) {
             val count = asset.popRenderables(renderables)
             if (count == 0) break
@@ -197,15 +209,20 @@ class CartridgeSurface(
             if (count == 0) break
             scene.addEntities(renderables.copyOf(count))
         }
-        if (resourceLoader.asyncGetLoadProgress() >= 1f && tallLoader.asyncGetLoadProgress() >= 1f && !labelFailure) {
-            try { labels.update(); tallLabels.update() }
+        while (true) {
+            val count = discAsset.popRenderables(renderables)
+            if (count == 0) break
+            scene.addEntities(renderables.copyOf(count))
+        }
+        if (resourceLoader.asyncGetLoadProgress() >= 1f && tallLoader.asyncGetLoadProgress() >= 1f && discLoader.asyncGetLoadProgress() >= 1f && !labelFailure) {
+            try { labels.update(); tallLabels.update(); discLabels.update() }
             catch (failure: Exception) {
                 labelFailure = true
                 android.util.Log.e("CartridgeRenderer", "Label texture preparation failed", failure)
                 onLabelError("Cannot prepare this label preview. Try another image.")
             }
         }
-        for ((tall, pool) in listOf(false to instances, true to tallInstances)) pool.forEachIndexed { index, instance ->
+        for ((format, pool) in listOf(0 to instances, 1 to tallInstances, 2 to discInstances)) pool.forEachIndexed { index, instance ->
             val global = index + windowStart
             val offset = global - focus
             val selected = global == selection
@@ -214,18 +231,19 @@ class CartridgeSurface(
             val pose = MediaMotion.pose(if (selected && !reducedMotion) insertion else 0f)
             val x = when (layout) { CollectionLayout.Horizontal -> offset * 1.85f; CollectionLayout.Vertical -> 0f; CollectionLayout.Grid -> (global % 3 - 1) * 1.35f }
             val y = when (layout) { CollectionLayout.Horizontal -> 0f; CollectionLayout.Vertical -> -offset * 1.30f; CollectionLayout.Grid -> (gridCenter - global / 3) * .85f }
-            val visible = index < layout.visibleCount && global < collectionCount && (systems.getOrNull(index)?.tallCartridge == true) == tall
+            val system = systems.getOrNull(index) ?: GameSystem.GBA
+            val visible = index < layout.visibleCount && global < collectionCount && format == when { system == GameSystem.PS1 -> 2; system.tallCartridge -> 1; else -> 0 }
             Matrix.translateM(matrix, 0, x * (1f - pose.alignment), y * (1f - pose.alignment) + emphasis * lift * .5f + pose.height,
                 if (visible) emphasis * .12f else -100f)
             Matrix.rotateM(matrix, 0, (-10f - emphasis * lift * 25f) * (1f - pose.alignment), 1f, 0f, 0f)
             val angle = if (layout == CollectionLayout.Grid) (global % 3 - 1) * -8f else offset.coerceIn(-1f, 1f) * -22f + 8f
             Matrix.rotateM(matrix, 0, angle * (1f - pose.alignment), 0f, 1f, 0f)
             val restScale = if (layout == CollectionLayout.Grid) 16f + emphasis * 2f else 22f + emphasis * 5f
-            val scale = (restScale + (27f - restScale) * pose.alignment) * if (tall) .62f else 1f
+            val scale = (restScale + (27f - restScale) * pose.alignment) * when(format) { 1 -> .62f; 2 -> .46f; else -> 1f }
             Matrix.scaleM(matrix, 0, scale, scale, scale)
             engine.transformManager.setTransform(engine.transformManager.getInstance(instance!!.root), matrix)
         }
-        val slot = if (reducedMotion) 0f else MediaMotion.pose(insertion).slot
+        val slot = if (reducedMotion || systems.getOrNull(selection - windowStart) == GameSystem.PS1) 0f else MediaMotion.pose(insertion).slot
         Matrix.setIdentityM(matrix, 0)
         Matrix.translateM(matrix, 0, 0f, -.90f + .17f * slot, if (slot > .001f) 0f else -100f)
         Matrix.scaleM(matrix, 0, 27f, 27f, 27f)
@@ -236,8 +254,8 @@ class CartridgeSurface(
             renderer.render(view)
             renderer.endFrame()
             submitted = true
-            onLabelsReady(windowStart, (0 until layout.visibleCount).map { if (systems.getOrNull(it)?.tallCartridge == true) tallLabels.keys[it] else labels.keys[it] })
-            if (!reportedReady && resourceLoader.asyncGetLoadProgress() >= 1f && receiverLoader.asyncGetLoadProgress() >= 1f && tallLoader.asyncGetLoadProgress() >= 1f) {
+            onLabelsReady(windowStart, (0 until layout.visibleCount).map { when { systems.getOrNull(it) == GameSystem.PS1 -> discLabels.keys[it]; systems.getOrNull(it)?.tallCartridge == true -> tallLabels.keys[it]; else -> labels.keys[it] } })
+            if (!reportedReady && resourceLoader.asyncGetLoadProgress() >= 1f && receiverLoader.asyncGetLoadProgress() >= 1f && tallLoader.asyncGetLoadProgress() >= 1f && discLoader.asyncGetLoadProgress() >= 1f) {
                 reportedReady = true
                 onReady()
             }
@@ -253,17 +271,22 @@ class CartridgeSurface(
         resourceLoader.asyncCancelLoad()
         receiverLoader.asyncCancelLoad()
         tallLoader.asyncCancelLoad()
+        discLoader.asyncCancelLoad()
         scene.removeEntities(asset.entities)
         scene.removeEntities(receiver.entities)
         scene.removeEntities(tallAsset.entities)
+        scene.removeEntities(discAsset.entities)
         labels.close()
         tallLabels.close()
+        discLabels.close()
         assetLoader.destroyAsset(asset)
         assetLoader.destroyAsset(receiver)
         assetLoader.destroyAsset(tallAsset)
+        assetLoader.destroyAsset(discAsset)
         resourceLoader.destroy()
         receiverLoader.destroy()
         tallLoader.destroy()
+        discLoader.destroy()
         assetLoader.destroy()
         materialProvider.destroyMaterials()
         materialProvider.destroy()

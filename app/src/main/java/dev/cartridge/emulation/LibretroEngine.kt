@@ -72,8 +72,8 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 ownsNative = true
                 this@LibretroEngine.game = game
                 require(game.rom.isFile) { "The game file is missing" }
-                val core = File(context.applicationInfo.nativeLibraryDir, "libmgba_libretro.so")
-                check(core.isFile) { "The packaged arm64 mGBA core is missing" }
+                val core = File(context.applicationInfo.nativeLibraryDir, game.system.coreFile)
+                check(core.isFile) { "The packaged ${game.system.title} core is missing" }
                 corePath = core.absolutePath
                 val savedRam = withContext(Dispatchers.IO) { saves.read(game.id, "sram") }
                 val savedRtc = withContext(Dispatchers.IO) { saves.read(game.id, "rtc") }
@@ -86,7 +86,9 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                     savesDirectory = File(context.filesDir, "saves").apply { mkdirs() }.path
                     rumbleEventsEnabled = false
                     enableMicrophone = false
-                    variables = coreOptions().map { Variable(it.key, it.value) }.toTypedArray()
+                    variables = (if (game.system == dev.cartridge.domain.GameSystem.PS1) mapOf(
+                        "pcsx_rearmed_bios" to "auto", "pcsx_rearmed_memcard1" to "libretro", "pcsx_rearmed_memcard2" to "disabled")
+                        else coreOptions()).map { Variable(it.key, it.value) }.toTypedArray()
                 }
                 val view = GLRetroView(context, data).apply { isFocusable = false }
                 val session = SessionOwner()
@@ -251,14 +253,15 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     override suspend fun saveState() = pausedOperation {
         val current = checkNotNull(game)
         val bytes = onGl { SaveBridge.captureState(corePath) }
-        withContext(NonCancellable + Dispatchers.IO) { saves.write(current.id, "state", bytes) }
+        withContext(NonCancellable + Dispatchers.IO) { saves.write(current.id, "state", dev.cartridge.storage.ManualState.encode(current.system, bytes)) }
         checkpointWithWarning()
     }
     override suspend fun loadState() = pausedOperation {
         val current = checkNotNull(game)
         val bytes = withContext(Dispatchers.IO) { saves.read(current.id, "state") }
             ?: error("There is no saved state for this game")
-        check(onGl { unserializeState(bytes, false) }) { "The core rejected this saved state" }
+        val native = dev.cartridge.storage.ManualState.decode(current.system, bytes)
+        check(onGl { unserializeState(native, false) }) { "The core rejected this saved state" }
         checkpointWithWarning()
     }
     override suspend fun persistSaveRam() = pausedOperation {

@@ -59,3 +59,8 @@
 - Report actual process death, cold Activity recreation, screen sleep and reboot as separate evidence. Diagnostic holding tests intentionally terminated by the host are not reported as passing JUnit tests. Keep owner HOME/default choices and library data unchanged during diagnostics.
 
 - After any suspending operation, read current Flow/UI state before copying changed fields. Do not capture a state-copy receiver before IO and overwrite intervening readiness/input updates. The 500-title recreation regression guards this ordering.
+
+- PS1 CUE/BIN imports require a granted folder and bounded, generated private bundle paths. Rehash
+  tracks on every scan, preserve optional validated SBI, and publish only complete bundles. Never index
+  raw BIN tracks as games. Keep per-system core revisions in states, checkpoints and backups; retain
+  existing mGBA state compatibility. BIOS import is explicit, verified and excluded from archives.

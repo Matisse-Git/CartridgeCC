@@ -29,6 +29,7 @@ target_sources(mgba_libretro PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/cartridge_mgba
 # Android packages native libraries whose filename begins with lib.
 set_target_properties(mgba_libretro PROPERTIES PREFIX "lib")
 target_link_options(mgba_libretro PRIVATE "-Wl,-z,max-page-size=16384")
+include(pcsx.cmake)
 
 add_library(cartridge_saves SHARED save_bridge.c)
 target_compile_features(cartridge_saves PRIVATE c_std_11)

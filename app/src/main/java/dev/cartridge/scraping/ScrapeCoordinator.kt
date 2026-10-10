@@ -140,7 +140,7 @@ class ScrapeCoordinator(
         require(!entry.local) { "Saved pack candidates are missing. Import the pack again." }
         mutableState.value = state.value.copy(progress = "Searching ${index + 1} / ${state.value.entries.size}: ${entry.game.title}")
         val result = try {
-            val file = withContext(ioDispatcher) { if (entry.corrected) null else File(roms, "${entry.game.id}.${entry.game.system.extension}").takeIf(File::isFile) }
+            val file = withContext(ioDispatcher) { if (entry.corrected || entry.game.system == dev.cartridge.domain.GameSystem.PS1) null else dev.cartridge.storage.GameFiles.resolve(roms, entry.game.id, entry.game.system).takeIf(File::isFile) }
             val matches = provider.search(entry.query, file, entry.game.system)
             journal.saveMatches(entry.game.id, matches)
             // Other titles' candidates stay on disk, not in a growing batch-wide RAM list.

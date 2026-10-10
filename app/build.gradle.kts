@@ -14,8 +14,8 @@ android {
         applicationId = "dev.cartridge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "0.6.3-console-validation"
+        versionCode = 17
+        versionName = "0.7.0-ps1"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
@@ -24,7 +24,10 @@ android {
                 providers.gradleProperty("mgbaSource").orNull?.let {
                     arguments += "-DFETCHCONTENT_SOURCE_DIR_MGBA=$it"
                 }
-                targets += listOf("mgba_libretro", "cartridge_saves")
+                providers.gradleProperty("pcsxSource").orNull?.let {
+                    arguments += "-DFETCHCONTENT_SOURCE_DIR_PCSX=$it"
+                }
+                targets += listOf("mgba_libretro", "pcsx_rearmed_libretro", "cartridge_saves")
             }
         }
     }

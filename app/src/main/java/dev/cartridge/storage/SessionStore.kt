@@ -24,7 +24,7 @@ class SessionStore(private val directory: File) {
         try {
             FileOutputStream(state).use { it.write(bytes); it.fd.sync() }
             val values = Properties().apply {
-                setProperty("version", "1"); setProperty("core", CORE); setProperty("id", id)
+                setProperty("version", "1"); setProperty("core", system.coreRevision); setProperty("id", id)
                 setProperty("system", system.name); setProperty("savedAt", time.toString())
                 setProperty("generation", generation); setProperty("sha256", hash(bytes)); setProperty("size", bytes.size.toString())
             }
@@ -38,7 +38,7 @@ class SessionStore(private val directory: File) {
         if (!manifest.exists()) return null
         require(manifest.length() in 1..8192) { "The resume record is invalid. Eject or discard it to recover." }
         val values = Properties().apply { manifest.inputStream().use(::load) }
-        require(values.getProperty("version") == "1" && values.getProperty("core") == CORE) { "The saved session uses a different core build" }
+        require(values.getProperty("version") == "1" && values.getProperty("core") == GameSystem.valueOf(values.getProperty("system")).coreRevision) { "The saved session uses a different core build" }
         require(values.getProperty("id", "").matches(HASH) && values.getProperty("generation", "").matches(UUID_NAME)
             && values.getProperty("sha256", "").matches(HASH)) { "The resume record is invalid" }
         require(values.getProperty("size").toInt() in 1..MAX_STATE && values.getProperty("savedAt").toLong() >= 0)

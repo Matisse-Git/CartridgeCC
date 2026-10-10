@@ -27,7 +27,7 @@ enum class ConsolePage { Setup, Settings, Controllers, Game, Notices, Backup }
                 Text(when(page) {
                     ConsolePage.Setup -> "Choose your own game folder, browse physical media and play inside Cartridge. Artwork scraping offers a choice of labels and metadata. You can set up your collection now or come back later."
                     ConsolePage.Controllers -> "Menu and gameplay buttons are configured separately. Android HOME and power controls remain system controls. A neutral stick releases navigation immediately."
-                    ConsolePage.Game -> "These settings apply to the embedded GBA, GB and GBC core. Frame skipping trades smoothness for less rendering work."
+                    ConsolePage.Game -> if (notices.startsWith("PS1 BIOS:")) "$notices\n\nEmbedded PCSX ReARMed uses a digital PS1 controller and native resolution. HLE works for some games; import your own BIOS for better compatibility. Memory card slot 1 is saved per game; slot 2 is disabled. Eject before importing firmware." else "These settings apply to the embedded GBA, GB and GBC core. Frame skipping trades smoothness for less rendering work."
                     ConsolePage.Settings -> "Choose how Cartridge feels on this device. HOME mode is optional; Android asks you before changing the default home app."
                     ConsolePage.Notices -> notices
                     ConsolePage.Backup -> notices

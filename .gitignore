@@ -14,6 +14,17 @@ local.properties
 *.gbc
 *.gb
 *.bios
+# User PS1 discs, firmware, executable content and memory cards; keep only probe generators.
+*.bin
+*.cue
+*.iso
+*.chd
+*.pbp
+*.m3u
+*.sbi
+*.exe
+*.mcr
+*.srm
 captures/
 __pycache__/
 *.zip
