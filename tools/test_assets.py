@@ -160,5 +160,26 @@ class TallCartridgeAssetTest(unittest.TestCase):
         image=reader.doc['bufferViews'][reader.doc['images'][0]['bufferView']]
         self.assertEqual((512,448), struct.unpack_from('>II',reader.binary,image['byteOffset']+16))
 
+class OpticalDiscAssetTest(unittest.TestCase):
+    def load(self):
+        raw=MODEL.with_name('ps1_disc.glb').read_bytes()
+        size=struct.unpack_from('<I',raw,12)[0]
+        reader=CartridgeAssetTest();reader.doc=json.loads(raw[20:20+size]);reader.binary=raw[28+size:]
+        return reader
+    def test_disc_is_a_physical_annulus_with_correct_winding(self):
+        reader=self.load();reader.test_all_buffer_ranges_and_indices_are_valid();reader.test_normals_and_triangle_winding_agree()
+        points=[]
+        for p in reader.doc['meshes'][0]['primitives']:
+            xyz,_=reader.values(p['attributes']['POSITION']);points.extend(zip(xyz[::3],xyz[1::3],xyz[2::3]))
+        self.assertTrue(all(x*x+y*y >= .00749**2 for x,y,z in points))
+        self.assertAlmostEqual(.0012,max(p[2] for p in points)-min(p[2] for p in points),places=6)
+        self.assertAlmostEqual(.12,max(p[0] for p in points)-min(p[0] for p in points),places=5)
+    def test_disc_label_has_square_uvs_and_one_named_replacement(self):
+        reader=self.load();reader.test_label_is_embedded_and_replaceable_material()
+        labels=[p for p in reader.doc['meshes'][0]['primitives'] if reader.doc['materials'][p['material']]['name']=='Replaceable fictional label']
+        self.assertEqual(1,len(labels));uv,_=reader.values(labels[0]['attributes']['TEXCOORD_0']);self.assertTrue(all(0<=n<=1 for n in uv))
+        image=reader.doc['bufferViews'][reader.doc['images'][0]['bufferView']]
+        self.assertEqual((512,512),struct.unpack_from('>II',reader.binary,image['byteOffset']+16))
+
 if __name__ == '__main__':
     unittest.main()
