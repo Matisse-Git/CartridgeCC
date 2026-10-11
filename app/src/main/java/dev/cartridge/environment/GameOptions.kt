@@ -13,11 +13,12 @@ enum class CoreFamily(val title: String) {
 data class OptionChoice(val value: String, val title: String)
 
 /**
- * A gameplay choice the pinned build really honours. [variable] is the core's own key; null means the
- * frontend applies it. [live] options take effect on a paused game; the rest apply at the next start.
+ * A gameplay choice the pinned build really honours. A null [family] means every console. [variable] is the
+ * core's own key; null means the frontend applies it, under [key]. [live] options take effect on a paused
+ * game; the rest apply at the next start.
  */
-data class GameOption(val id: String, val family: CoreFamily, val variable: String?, val title: String, val help: String,
-    val choices: List<OptionChoice>, val default: String, val live: Boolean) {
+data class GameOption(val id: String, val family: CoreFamily?, val variable: String?, val title: String, val help: String,
+    val choices: List<OptionChoice>, val default: String, val live: Boolean, val key: String = variable ?: GameOptions.SCREEN_EFFECT) {
     init { require(choices.any { it.value == default }) }
     fun title(value: String) = choices.firstOrNull { it.value == value }?.title ?: choices.first { it.value == default }.title
     fun next(value: String, delta: Int = 1): String {
@@ -27,13 +28,18 @@ data class GameOption(val id: String, val family: CoreFamily, val variable: Stri
 }
 
 object GameOptions {
-    /** Session key consumed by the emulator adapter, never forwarded to a core. */
+    /** Session keys consumed by the emulator adapter, never forwarded to a core. */
     const val SCREEN_EFFECT = "cartridge_screen_effect"
+    const val START_FROM_STATE = "cartridge_start_from_state"
+    val adapterKeys = setOf(SCREEN_EFFECT, START_FROM_STATE)
     private val effects = listOf(OptionChoice("standard", "Standard"), OptionChoice("sharp", "Sharp pixels"),
         OptionChoice("lcd", "Handheld LCD"), OptionChoice("crt", "Television"))
     private val onOff = listOf(OptionChoice("disabled", "Off"), OptionChoice("enabled", "On"))
 
     val all = listOf(
+        GameOption("startFromState", null, null, "Start from save state",
+            "Starts a game from its last Save State instead of from the beginning. A game without one starts as usual, and in-game saves are kept as they are.",
+            onOff, "disabled", live = false, key = START_FROM_STATE),
         GameOption("handheld.effect", CoreFamily.Handheld, null, "Screen effect",
             "How the picture is drawn on this screen. Handheld LCD adds the original pixel grid.", effects, "standard", live = true),
         GameOption("audioFilter", CoreFamily.Handheld, "mgba_audio_low_pass_filter", "Audio smoothing",
@@ -49,7 +55,8 @@ object GameOptions {
             "The console's original dither pattern. Turn it off for flatter, cleaner colours.",
             listOf(OptionChoice("enabled", "On"), OptionChoice("disabled", "Off")), "enabled", live = false))
 
-    fun forFamily(family: CoreFamily) = all.filter { it.family == family }
+    /** A console's own options and the ones every console shares. */
+    fun forFamily(family: CoreFamily) = all.filter { it.family == null || it.family == family }
     fun forSystem(system: GameSystem) = forFamily(CoreFamily.of(system))
 
     /** Game overrides win over console values, which win over defaults. Unknown stored values fall back. */
@@ -58,9 +65,9 @@ object GameOptions {
             listOf(game[option.id], console[option.id]).firstOrNull { value -> value != null && option.choices.any { it.value == value } } ?: option.default
         }
 
-    /** The map handed to the emulator adapter: core variables plus the reserved screen-effect key. */
+    /** The map handed to the emulator adapter: core variables plus the adapter's own reserved keys. */
     fun session(resolved: Map<GameOption, String>, liveOnly: Boolean = false): Map<String, String> =
-        resolved.filterKeys { !liveOnly || it.live }.entries.associate { (option, value) -> (option.variable ?: SCREEN_EFFECT) to value }
+        resolved.filterKeys { !liveOnly || it.live }.entries.associate { (option, value) -> option.key to value }
 }
 
 /** Console defaults and per-game overrides. The two original mGBA keys keep their backed-up names and types. */

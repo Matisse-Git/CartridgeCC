@@ -1,6 +1,33 @@
 # Tests and actual results
 
-Console feel, 2026-10-10 (ADR 0020; uncommitted on `redesign/console-experience` after `a4e52ce`,
+Start from save state, 2026-10-10 (the commit after `afcd58e`, merged to `master`;
+versionCode 17, debug APK SHA-256 begins `5b5a105dfb2a6956`): both APKs build; 64 host tests pass;
+lint has zero errors and 24 warnings; 10 asset checks pass. On the connected RP5 (Android 13,
+`RP5_V1.0.0.189_20251128_174732_user`) the full regression on that build is **44 of 44 in 373.1 s**.
+
+- **The option.** `GameOptionsDeviceTest` plays the original Game Boy probe, whose A button flips its
+  picture and one byte of battery memory. It saves a state on the flipped picture, flips back and
+  leaves. With the option off the game starts from the beginning. Turned on once under Settings ›
+  Gameplay it is stored for both core families, and the next start shows the picture the state was
+  saved on, with no notice. The battery byte read back afterwards is the one saved last, not the
+  state's. A per-game override returns that game to a fresh start while the console setting stays
+  on. With 4 KiB of junk in place of the state the game still starts from the beginning, the notice
+  appears, and the file is byte-identical afterwards. With no state there is nothing to report.
+- **Two defects found by this run, neither in the new option.** The first two full runs were 43 of
+  44, both in `LibraryGrowthTest`. (1) A label never appeared after a recreation; repeating the test
+  with its predecessors reproduced a `ConcurrentModificationException` in the label cache. Since
+  `afcd58e` labels decode three at a time, and under the Compose test dispatcher their results can
+  be delivered on the decoding threads, two at once. The cache is now synchronized; that test and
+  `BrowseStabilityTest` then passed twelve times in a row. In the installed app results are
+  delivered on the main thread, so this should not have shown there; that is reasoning from the
+  dispatcher, not something measured. (2) The test pressed Refresh Library before the row existed:
+  the folder list loads asynchronously and the library is now ready sooner after a recreation.
+  `ToolShelf` waits for a control to appear before using it, as a player would.
+- **Not covered.** A PlayStation state at a start (the code path is shared, the PS1 revision check
+  and core are not exercised by this test), and any commercial game.
+
+
+Console feel, 2026-10-10 (ADR 0020; commit `afcd58e`,
 versionCode 17, debug APK SHA-256 begins `7cc3c7ca787c9f4d`): both APKs build; 62 host tests pass;
 lint has zero errors and 24 warnings; 10 asset checks pass and the Khronos validator reports zero
 errors and zero warnings for the three GLBs. On the connected RP5 (Android 13,
@@ -42,7 +69,7 @@ were run again on the final build and pass.
   also shows over the unchanged profiling activity, so it is the device's state, not this change.
 
 
-Media models and browse stability, 2026-10-10 (uncommitted on `redesign/console-experience`,
+Media models and browse stability, 2026-10-10 (commit `a4e52ce`,
 versionCode 17, debug APK SHA-256 begins `1f7fcb556a98c31c`): both APKs build; 59 host tests pass,
 two of them new layout-window tests; lint has zero errors and 24 warnings; 11 asset checks pass and
 the Khronos validator reports zero errors and zero warnings for all four GLBs. On the connected
@@ -73,7 +100,7 @@ RP5 (Android 13, `RP5_V1.0.0.189_20251128_174732_user`) the full regression is *
   the studio light is the owner's call.
 
 
-Console-experience redesign, 2026-10-10 (uncommitted on `redesign/console-experience`, versionCode
+Console-experience redesign, 2026-10-10 (commit `a4e52ce`, versionCode
 17): both APKs build; 57 host tests pass; lint has zero errors and 24 warnings; 12 asset checks
 pass. On the connected RP5 (Android 13, `RP5_V1.0.0.189_20251128_174732_user`) the full regression
 is **37 of 37 in 262.5 s** — the 35 existing tests, reaching controls through the new interface,

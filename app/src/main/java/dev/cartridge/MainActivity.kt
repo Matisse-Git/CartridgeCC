@@ -312,14 +312,19 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         LaunchedEffect(keys) {
             val focus = state.selection.index - windowStart
             val needed = keys.toSet()
-            fun publish() {
-                while (cache.size > state.layout.windowCount * 2) cache.keys.firstOrNull { it !in needed }?.let { cache.remove(it) } ?: break
-                decoded = cache.toMap()
+            // Results return from the decoding threads. On the device they are delivered on the main thread, but
+            // the cache must not depend on that: a test dispatcher may hand them over on the threads they came from.
+            fun publish(arrived: LabelPixels? = null) {
+                decoded = synchronized(cache) {
+                    if (arrived != null) cache[arrived.key] = arrived
+                    while (cache.size > state.layout.windowCount * 2) cache.keys.firstOrNull { it !in needed }?.let { cache.remove(it) } ?: break
+                    cache.toMap()
+                }
             }
-            // Only labels new to the window wait for IO: nearest the focus first, a few at a time. A decode that
-            // has started is kept even if the window has moved on, so fast browsing never repeats the work; one
-            // still queued when the window moves on is dropped.
-            specs.withIndex().sortedBy { kotlin.math.abs(it.index - focus) }.map { it.value }.filter { it.key !in cache }.distinctBy { it.key }.forEach { spec ->
+            val known = synchronized(cache) { cache.keys.toSet() }
+            // Only labels new to the window wait for IO: nearest the focus first, a few at a time. One still queued
+            // when the window moves on is dropped; one already decoding is finished and used by whoever asks next.
+            specs.withIndex().sortedBy { kotlin.math.abs(it.index - focus) }.map { it.value }.filter { it.key !in known }.distinctBy { it.key }.forEach { spec ->
                 launch {
                     val asked = coroutineContext.job
                     val pixels = withContext(labelDecoding + NonCancellable) {
@@ -329,8 +334,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                         // The object still needs a face: its title in type, under the key it was asked for.
                         withContext(labelDecoding + NonCancellable) { runCatching { TypesetLabel.render(spec.title, spec.system).copy(key = spec.key) }.getOrNull() }
                     } ?: return@launch
-                    cache[spec.key] = pixels
-                    publish()
+                    publish(pixels)
                 }
             }
             publish()

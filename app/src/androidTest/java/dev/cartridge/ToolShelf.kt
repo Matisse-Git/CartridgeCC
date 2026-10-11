@@ -50,10 +50,14 @@ internal fun ComposeTestRule.home() {
 internal fun ComposeTestRule.tool(tag: String): SemanticsNodeInteraction {
     fun through(vararg path: String): SemanticsNodeInteraction {
         home()
+        // A row can depend on something still loading, as Refresh Library does on the folder list just after
+        // the console opens. A player presses it when it appears; so does this.
         path.dropLast(1).forEach { step ->
+            waitUntil(5_000) { shown(step) }
             onNodeWithTag(step).also { node -> runCatching { node.performScrollTo() } }.performClick()
             waitForIdle()
         }
+        waitUntil(5_000) { shown(path.last()) }
         return onNodeWithTag(path.last()).also { node -> runCatching { node.performScrollTo() } }
     }
     return when (tag) {

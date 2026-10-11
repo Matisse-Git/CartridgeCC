@@ -90,3 +90,8 @@
   `LibraryPacingTest` (`-Suite Pacing`, and `-e games 3000`) before blaming the GPU. The right stick
   is `AXIS_Z`/`AXIS_RZ` on the RP5 and belongs to the interface outside gameplay only. A focused row
   must look focused whatever is behind it and whether or not it can be used.
+
+- Starting from a save state (SAVE_RELIABILITY) is optional and can never stop a game from starting:
+  a missing, unreadable or refused manual state means a start from the beginning and one notice, and
+  the file is left alone. Restore the battery save again after a state is loaded at a start. An
+  option with no core family belongs to every console; keep adapter-only keys out of core variables.

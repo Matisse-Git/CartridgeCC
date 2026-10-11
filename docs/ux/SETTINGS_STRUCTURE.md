@@ -56,7 +56,16 @@ options are per console, under Gameplay.
 
 ## Gameplay
 
-Options belong to a console. Each console that shares a core shares a heading.
+Options belong to a console. Each console that shares a core shares a heading. One option belongs
+to every console and comes first.
+
+**Every console**
+
+| Row | Choices | Applies | Core |
+|---|---|---|---|
+| Start from save state | Off · On. On starts a game from its last Save State; without one, or if it cannot be loaded, the game starts from the beginning | next start | frontend (`option.startFromState`); never sent to a core |
+
+A game can override it like any other option (`game.<content id>.startFromState`).
 
 **Game Boy · Color · Advance**
 

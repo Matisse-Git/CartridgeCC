@@ -170,6 +170,13 @@ termination can still lose changes since the latest completed checkpoint. Automa
 checkpoints are separate from manual states: wake restores the game paused, and a cold launch
 offers **Continue <game>** as the first row of the menu. Play history counts Running time only.
 
+**Settings › Gameplay › Start from save state** (off by default) starts every game from its last
+Save State instead of from the beginning; a game can be set differently from its own Game options.
+A game without a state starts as usual. If a state cannot be loaded the game still starts, from the
+beginning, and says so; the state file is left alone. In-game saves are put back after the state
+loads, so turning this on never rolls a battery or memory-card save back by itself. The state is
+the one made with Save State in the pause menu: it is as old as the last time you made one.
+
 ### Artwork
 
 START › Artwork & Info is the reviewed workflow: This game, Choose consoles, All games, Choose

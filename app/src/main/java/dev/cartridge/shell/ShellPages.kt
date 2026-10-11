@@ -234,11 +234,12 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
     fun header(title: String) = MenuRow("header:$title", title, RowKind.Header)
     fun toggle(id: String, title: String, checked: Boolean, note: String? = null, enabled: Boolean = true, tag: String = "settings-$id", set: (Boolean) -> Unit) =
         MenuRow(id, title, RowKind.Toggle, note = note, checked = checked, enabled = enabled, tag = tag, adjust = { set(!checked) })
-    fun optionRows(family: CoreFamily) = GameOptions.forFamily(family).map { option ->
-        val value = GameOptions.resolve(if (family == CoreFamily.PlayStation) GameSystem.PS1 else GameSystem.GBA, options.console(family)).getValue(option)
+    // A null family is the options every console shares.
+    fun optionRows(family: CoreFamily?) = GameOptions.all.filter { it.family == family }.map { option ->
+        val value = GameOptions.resolve(if (family == CoreFamily.PlayStation) GameSystem.PS1 else GameSystem.GBA, options.console(family ?: CoreFamily.Handheld)).getValue(option)
         MenuRow("option:${option.id}", option.title, RowKind.Choice, value = option.title(value),
-            note = "${family.title}: " + option.help + if (option.live) "" else " Applies from a game's next start.", tag = "option-${option.id}",
-            adjust = { delta -> setConsoleOption(option, option.next(value, delta)) })
+            note = (family?.let { "${it.title}: " } ?: "") + option.help + if (option.live || option.variable == null) "" else " Applies from a game's next start.",
+            tag = "option-${option.id}", adjust = { delta -> setConsoleOption(option, option.next(value, delta)) })
     }
     return when (category) {
         SettingsCategory.Library -> buildList {
@@ -282,6 +283,8 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
             toggle("sound", "Insert and eject sound", sound, enabled = !state.reducedMotion,
                 note = if (state.reducedMotion) "Plays with full motion only" else null) { changeSound(it) })
         SettingsCategory.Gameplay -> buildList {
+            add(header("Every console"))
+            addAll(optionRows(null))
             add(header(CoreFamily.Handheld.title))
             addAll(optionRows(CoreFamily.Handheld))
             add(header(CoreFamily.PlayStation.title))

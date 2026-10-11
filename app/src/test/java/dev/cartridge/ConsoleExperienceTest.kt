@@ -53,6 +53,20 @@ class ConsoleExperienceTest {
         assertEquals(FoundFile.Ignored, ConsoleCatalog.classify("orbit (track 2).bin")); assertEquals(FoundFile.Ignored, ConsoleCatalog.classify("notes.txt"))
     }
 
+    @Test fun startFromSaveStateIsOneChoiceForEveryConsoleThatAGameCanOverride() {
+        val start = GameOptions.all.single { it.id == "startFromState" }
+        assertNull(start.family); assertNull(start.variable); assertFalse(start.live)
+        // Off unless asked for, on every console, under the same stored id.
+        for (system in GameSystem.entries) assertEquals("disabled", GameOptions.resolve(system, emptyMap()).getValue(start))
+        for (family in CoreFamily.entries) assertTrue(start in GameOptions.forFamily(family))
+        assertEquals("enabled", GameOptions.resolve(GameSystem.PS1, mapOf(start.id to "enabled")).getValue(start))
+        assertEquals("disabled", GameOptions.resolve(GameSystem.GBA, mapOf(start.id to "enabled"), mapOf(start.id to "disabled")).getValue(start))
+        // It reaches the adapter under its own reserved key and is never offered to a core or to a paused game.
+        val session = GameOptions.session(GameOptions.resolve(GameSystem.GBC, mapOf(start.id to "enabled")))
+        assertEquals("enabled", session[GameOptions.START_FROM_STATE]); assertEquals("standard", session[GameOptions.SCREEN_EFFECT])
+        assertEquals(setOf("mgba_audio_low_pass_filter", "mgba_frameskip"), session.keys - GameOptions.adapterKeys)
+        assertFalse(GameOptions.START_FROM_STATE in GameOptions.session(GameOptions.resolve(GameSystem.GBC, mapOf(start.id to "enabled")), liveOnly = true))
+    }
     @Test fun gameChoicesOverrideConsoleChoicesAndUnknownStoredValuesFallBack() {
         val sharp = GameOptions.all.single { it.id == "playstation.sharp3d" }
         val effect = GameOptions.all.single { it.id == "playstation.effect" }

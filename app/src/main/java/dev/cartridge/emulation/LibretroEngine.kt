@@ -84,6 +84,16 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 lastWrittenRam = savedRam
                 lastWrittenRtc = savedRtc
                 val options = sessionOptions(game)
+                // A start that continues from the game's own Save State. A missing or unreadable one is no reason
+                // for the game not to start; a resumed session already has its state.
+                var startNotice: String? = null
+                val startState = if (game.resumeState != null || options[GameOptions.START_FROM_STATE] != "enabled") null else try {
+                    withContext(Dispatchers.IO) { saves.read(game.id, "state") }?.let { dev.cartridge.storage.ManualState.decode(game.system, it) }
+                } catch (failure: Exception) {
+                    if (failure is CancellationException) throw failure
+                    startNotice = STATE_NOT_USED
+                    null
+                }
                 val data = GLRetroViewData(context).apply {
                     coreFilePath = core.absolutePath
                     gameFilePath = game.rom.absolutePath
@@ -93,7 +103,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                     enableMicrophone = false
                     shader = screenEffect(options[GameOptions.SCREEN_EFFECT])
                     // Firmware and memory-card ownership are fixed by the save design; user options cannot replace them.
-                    variables = ((options - GameOptions.SCREEN_EFFECT) + if (game.system == dev.cartridge.domain.GameSystem.PS1) mapOf(
+                    variables = ((options - GameOptions.adapterKeys) + if (game.system == dev.cartridge.domain.GameSystem.PS1) mapOf(
                         "pcsx_rearmed_bios" to "auto", "pcsx_rearmed_memcard1" to "libretro", "pcsx_rearmed_memcard2" to "disabled")
                         else emptyMap()).map { Variable(it.key, it.value) }.toTypedArray()
                 }
@@ -146,23 +156,40 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                         "The embedded core did not finish loading the game. The battery save was kept."))
                 }
                 withTimeout(15_000) { setupConfirmed.await() }
-                if (savedRam != null && savedRam.isNotEmpty()) {
-                    check(onGl {
-                        SaveBridge.restore(corePath, savedRam) && SaveBridge.read(corePath).let { restored ->
-                            restored.size >= savedRam.size && savedRam.indices.all { restored[it] == savedRam[it] }
-                        }
-                    }) { "The core rejected the stored battery save. The original file was kept." }
+                suspend fun restoreBattery() {
+                    if (savedRam != null && savedRam.isNotEmpty()) {
+                        check(onGl {
+                            SaveBridge.restore(corePath, savedRam) && SaveBridge.read(corePath).let { restored ->
+                                restored.size >= savedRam.size && savedRam.indices.all { restored[it] == savedRam[it] }
+                            }
+                        }) { "The core rejected the stored battery save. The original file was kept." }
+                    }
+                    if (savedRtc != null && savedRtc.isNotEmpty()) {
+                        check(onGl { SaveBridge.restore(corePath, savedRtc, 1) }) { "The core rejected the cartridge clock save. The original file was kept." }
+                    }
                 }
-                if (savedRtc != null && savedRtc.isNotEmpty()) {
-                    check(onGl { SaveBridge.restore(corePath, savedRtc, 1) }) { "The core rejected the cartridge clock save. The original file was kept." }
-                }
+                restoreBattery()
                 game.resumeState?.let { bytes ->
                     require(bytes.isNotEmpty() && bytes.size <= SessionStore.MAX_STATE) { "The resume state is invalid" }
                     check(onGl { unserializeState(bytes, false) }) { "The core rejected the saved session" }
                 }
+                if (startState != null) {
+                    val accepted = try { onGl { unserializeState(startState, false) } }
+                        catch (failure: CancellationException) { throw failure }
+                        catch (failure: Exception) { false }
+                    if (!accepted) {
+                        // A refused state may have been applied in part: power the game on again and say so.
+                        onGl { reset(false) }
+                        startNotice = STATE_NOT_USED
+                    }
+                    // A state carries the battery memory of the moment it was made. The cartridge keeps what was
+                    // saved last, so starting from a state never rolls an in-game save back.
+                    restoreBattery()
+                }
                 session.registry.currentState = Lifecycle.State.RESUMED
                 withTimeout(15_000) { ready.await() }
                 transition(SessionState.Running)
+                startNotice?.let { mutableStatus.value = status.value.copy(notice = it) }
                 startCheckpoints()
             } catch (failure: Throwable) {
                 releaseNative()
@@ -320,7 +347,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
         }
     }
     override suspend fun configure(options: Map<String, String>) = pausedOperation {
-        val variables = options - GameOptions.SCREEN_EFFECT
+        val variables = options - GameOptions.adapterKeys
         if (variables.isNotEmpty()) onGl {
             val supported = getVariables().mapNotNull { it.key }.toSet()
             require(variables.keys.all { it in supported }) { "Unsupported core option" }
@@ -360,5 +387,8 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     }
     /** Last-resort Activity destruction barrier; regular ejection persists RAM first. */
     fun releaseOnDestroy() { releaseNative() }
-    companion object { private val nativeClaim = AtomicBoolean(false) }
+    companion object {
+        private val nativeClaim = AtomicBoolean(false)
+        private const val STATE_NOT_USED = "This game's save state could not be loaded, so it started from the beginning. The state was kept."
+    }
 }

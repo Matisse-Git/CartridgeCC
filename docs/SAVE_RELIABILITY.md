@@ -60,3 +60,27 @@ physical validation. Short tests and code inspection do not establish a leak-fre
 
 Next: finish the GBA media/insertion asset, then profile larger libraries and sustained gameplay.
 The owner deferred scraper UX redesign; its working reviewed API workflow remains the main artwork path.
+
+## Starting from a save state — 2026-10-10
+
+Settings › Gameplay › Start from save state, off by default, with a per-game override.
+
+- The manual state is loaded during `prepare`, before the first emulated frame and after the battery
+  save has been restored. A session being resumed already has its state and is not affected.
+- The pinned wrapper synchronises a loaded state's own battery memory into the core, which is what a
+  manual Load State is expected to do. At a start that would roll an in-game save back to the moment
+  the state was made, without the player asking. So the battery save and clock are restored a second
+  time after the state: the console's memory comes from the state, the cartridge's from the last
+  save. `lastWrittenRam` still matches memory, so no checkpoint is written because of it.
+- No state: an ordinary start. A state that cannot be read, has the wrong PS1 core revision, or is
+  refused by the core: the core is reset, the battery is restored again, the game starts from the
+  beginning and a notice says so once. The state file is never rewritten or deleted.
+- The state is only as recent as the last Save State. Progress made afterwards and kept only by an
+  in-game save is still on the cartridge, but the game resumes from the older moment; saving
+  in-game from there replaces the newer save, as loading a state by hand always could.
+
+Verified on the RP5 with the original Game Boy probe (`GameOptionsDeviceTest`): the picture the
+state was saved on is shown at boot; the battery byte stays at the value saved last, not the
+state's; a per-game override returns that game to a fresh start; 4 KiB of junk in place of the
+state starts the game from the beginning with the notice and is byte-identical afterwards; a
+missing state reports nothing. Not verified: a PlayStation state at boot, and any commercial game.

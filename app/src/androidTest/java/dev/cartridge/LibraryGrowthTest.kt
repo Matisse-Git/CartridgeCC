@@ -47,6 +47,18 @@ class LibraryGrowthTest {
     }
     private fun bluePixels(scenario: ActivityScenario<DebugCollectionActivity>) {
         ui.waitForIdle()
+        var last = 0
+        try { bluePixelsWithin(scenario) { last = it } }
+        catch (failure: Throwable) {
+            // What the stage believed when the label did not show: enough to tell a missing texture from a misplaced object.
+            scenario.onActivity { val state = it.coordinator.state.value; val surface = it.collectionSurface
+                android.util.Log.e("CartridgeGrowth", "no blue label: pixel=${Integer.toHexString(last)} selection=${state.selection.index}/${state.selection.count} window=${state.windowStart} screen=${state.screen} " +
+                    "ready=${state.rendererReady} curtain=${state.curtain} busy=${state.busy} message=${state.message} label=${state.selectedGame?.label?.assetId?.take(8)} " +
+                    "focus=${surface?.focusPosition} spin=${surface?.spinAngles} unbound=${surface?.stagedUnbound} unlabelled=${surface?.unlabelledOnStage} uploads=${surface?.labelUploads} ${surface?.diagnosticState}") }
+            throw failure
+        }
+    }
+    private fun bluePixelsWithin(scenario: ActivityScenario<DebugCollectionActivity>, seen: (Int) -> Unit) {
         ui.waitUntil(8000) {
             val color = CompletableFuture<Int>()
             scenario.onActivity {
@@ -57,7 +69,7 @@ class LibraryGrowthTest {
                     color.complete(if (result == PixelCopy.SUCCESS) bitmap.getPixel(4, 4) else 0); bitmap.recycle()
                 }, Handler(Looper.getMainLooper()))
             }
-            val pixel = color.get(3, TimeUnit.SECONDS)
+            val pixel = color.get(3, TimeUnit.SECONDS); seen(pixel)
             Color.blue(pixel) > 100 && Color.blue(pixel) > Color.red(pixel) * 2 && Color.blue(pixel) > Color.green(pixel) * 2
         }
     }

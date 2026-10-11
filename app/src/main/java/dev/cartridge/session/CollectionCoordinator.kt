@@ -96,6 +96,7 @@ class CollectionCoordinator(
     private var actionJob: Job? = null
     private var focusJob: Job? = null
     private var focusPending = false
+    private var engineNotice: String? = null
     private var backgroundJob: Job? = null
     private var launching = false
     private var foreground = true
@@ -147,6 +148,9 @@ class CollectionCoordinator(
                         while (isActive) { delay(15_000); savePlay(true) }
                     }
                 } else if (playActive) { playActive = false; playJob?.cancel(); savePlay(false) }
+                // Something the engine has to say about this start, once.
+                if (status.notice != null && status.notice != engineNotice) notify(status.notice)
+                engineNotice = status.notice
                 if (status.state == SessionState.Error && !state.value.busy && !destroyed) {
                     runAction { eject(status.error, animate = false) }
                 }

@@ -122,6 +122,23 @@ class CoordinatorTest {
         assertEquals(CollectionScreen.Library, coordinator.state.value.screen); assertFalse(coordinator.state.value.busy)
         coordinator.destroy()
     }
+    @Test fun whatTheEngineSaysAboutAStartIsShownOnce() = runTest {
+        val engine = Engine()
+        val coordinator = CollectionCoordinator(engine, Library(), Surfaces(), backgroundScope, reducedMotion = true)
+        runCurrent(); coordinator.rendererReady(0); coordinator.insert(); runCurrent()
+        assertNull(coordinator.state.value.message)
+        engine.status.value = EngineStatus(SessionState.Running, notice = "The save state could not be loaded"); runCurrent()
+        assertEquals("The save state could not be loaded", coordinator.state.value.message)
+        // The same status with another field changed is not a second announcement.
+        coordinator.dismissMessage()
+        engine.status.value = engine.status.value.copy(saveWarning = "Checkpoint failed"); runCurrent()
+        assertNull(coordinator.state.value.message)
+        // A later start may say it again.
+        engine.status.value = EngineStatus(SessionState.Paused); runCurrent()
+        engine.status.value = EngineStatus(SessionState.Running, notice = "The save state could not be loaded"); runCurrent()
+        assertEquals("The save state could not be loaded", coordinator.state.value.message)
+        coordinator.destroy()
+    }
     @Test fun aFailedStartKeepsTheScreenClosedUntilTheLibraryIsDrawnAgain() = runTest {
         val library = Library().apply { requestFailure = true }
         val coordinator = CollectionCoordinator(Engine(), library, Surfaces(), backgroundScope, reducedMotion = true)

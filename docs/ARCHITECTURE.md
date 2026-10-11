@@ -64,7 +64,13 @@ rows outside the three on screen stay ready and grow in or out as the grid scrol
 Options: `environment/GameOptions` and `OptionStore` resolve default → console → game.
 `LibretroEngine` asks for them per `GameRequest`; `cartridge_screen_effect` selects the
 LibretroDroid shader and is never sent to a core; PlayStation's BIOS and memory-card variables
-are applied last.
+are applied last. An option with no family belongs to every console. `cartridge_start_from_state`
+is the one such option: when it resolves to enabled and no session is being resumed, `prepare`
+reads the game's manual state, loads it before the first frame, and then restores the battery
+save and clock again, because a state carries the battery memory of the moment it was made and the
+cartridge must keep what was saved last. A missing state is an ordinary start. An unreadable or
+refused one resets the core, starts from the beginning and reports once through
+`EngineStatus.notice`; the file is not changed.
 
 Screen wake: the window no longer sets `FLAG_KEEP_SCREEN_ON`. The Compose root keeps the screen on
 while a scan or artwork search is running; the emulator's own view keeps it on during play.
