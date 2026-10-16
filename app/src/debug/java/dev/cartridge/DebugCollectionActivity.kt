@@ -20,6 +20,9 @@ class DebugCollectionActivity : MainActivity() {
     override fun createSessionStore() = dev.cartridge.storage.SessionStore(File(filesDir, "${intent.getStringExtra("testDatabase")}-session"))
     // Original diagnostics are written against the built-in BIOS; the owner's firmware stays out of them.
     override fun systemDirectory() = File(filesDir, "m1-test-system")
+    // A device test names a preset inside the installed shader library for every game it starts.
+    override fun sessionShader(game: dev.cartridge.emulation.GameRequest) =
+        intent.getStringExtra("testShader")?.let { File(dev.cartridge.shaders.ShaderLibrary.root(this), it) }
     override fun createRepository(): CollectionRepository {
         val name = checkNotNull(intent.getStringExtra("testDatabase"))
         require(name.matches(Regex("m1-test-[a-f0-9-]+")))

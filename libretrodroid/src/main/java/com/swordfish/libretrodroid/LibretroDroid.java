@@ -37,6 +37,8 @@ public class LibretroDroid {
     public static final int SHADER_UPSCALE_CUT = 4;
     public static final int SHADER_UPSCALE_CUT2 = 5;
     public static final int SHADER_UPSCALE_CUT3 = 6;
+    // Cartridge: a RetroArch GLSL preset (ShaderPreset).
+    public static final int SHADER_PRESET = 7;
 
     public static final String SHADER_UPSCALE_CUT_PARAM_USE_DYNAMIC_BLEND = "USE_DYNAMIC_BLEND";
     public static final String SHADER_UPSCALE_CUT_PARAM_BLEND_MIN_CONTRAST_EDGE = "BLEND_MIN_CONTRAST_EDGE";
@@ -113,6 +115,11 @@ public class LibretroDroid {
     public static native void setFrameSpeed(int speed);
     public static native void setAudioEnabled(boolean enabled);
     public static native void setShaderConfig(GLRetroShader shader);
+    // Cartridge: why the last requested preset could not be built, once, or null.
+    public static native String takeShaderFailure();
+    // Cartridge: builds the preset and draws one frame with it in a context of its own on the calling
+    // thread, which must have none current. Null when it worked, else why it did not.
+    public static native String checkShaderPreset(GLRetroShader shader);
     public static native void setViewport(float x, float y, float width, float height);
     public static native void setViewportAlignment(int viewportAlignment);
 

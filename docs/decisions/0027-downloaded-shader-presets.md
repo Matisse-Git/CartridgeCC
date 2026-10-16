@@ -1,6 +1,6 @@
 # ADR 0027: Downloaded shader presets
 
-Date: 2026-10-16. Status: accepted; step 1 of 4 done.
+Date: 2026-10-16. Status: accepted; steps 1 and 2 of 4 done.
 
 ## Context
 
@@ -68,7 +68,8 @@ Each is its own commit, checked on the RP5 before the next starts.
    source, its two submodules fetched by archive hash, and the minimum needed to build with NDK 27.
    Public Java API, exported JNI functions and linked libraries were compared with the AAR. Device
    results are in `docs/TESTING.md`.
-2. `.glslp` loader and drawing, plus the separate check context.
+2. `.glslp` loader and drawing, plus the separate check context. Done 2026-10-16: see "What the RP5
+   showed" below and `docs/TESTING.md`.
 3. The Update button: download, bounded extraction, atomic swap.
 4. Settings, picker, per-console and per-game rows, the link to Screen effect, backup, docs, and
    the UX tour.
@@ -77,6 +78,34 @@ Done means, on the RP5 with one of the owner's games per console (consoles witho
 as not run): crt-royale on a software-drawn console and on one that draws for itself, an LCD preset
 with frame history on Game Boy Advance, a deliberately broken preset, each level of the
 game/console/global chain winning once, and a real sleep with a shader active.
+
+## What the RP5 showed (step 2, 2026-10-16)
+
+The library's GLSL presets were written for desktop OpenGL. GLSL ES, which is all the RP5 has, allows
+less, and RetroArch's own GL driver does nothing about it, so on a GLES device RetroArch refuses the same
+presets. Checked on the RP5's Adreno 650 with the whole library at `libretro/glsl-shaders@148ce728`:
+
+| How a pass is compiled | Presets that build and draw (of 621) |
+| --- | --- |
+| RetroArch's way only | 503 |
+| also parameters as the shader's own constants, GLSL ES 3.00 for 1.10/1.20 sources, default precision, derivatives enabled | 524 |
+| also global initialisers moved into `main` and int frame counters as floats (`GlslCompat`) | 544 |
+| also the pass translated as desktop GLSL 3.30 by glslang and SPIRV-Cross, before the rewritten source | **605** |
+
+Each later way is tried only when the ones before it fail. Precision qualifiers are read as highp
+everywhere, as desktop GL reads them. Of the 16 still refused, two are broken in the library itself (a
+missing pass file, a preset without passes); the others have errors no desktop driver should accept either
+(a vec4 assigned to a vec3, no precision in a GLES branch, Cg's `float2`, a syntax error).
+
+- **crt-royale's GLSL port needs the translator.** It empties `const` with a macro, so every one of its
+  settings is a global initialised from others, and it passes ints where functions take floats. Rewriting
+  the source by hand got half of it through and drew black; translated, all twelve passes build (3.3 s) and
+  draw what they should, at 60 fps on the owner's Super Nintendo and PlayStation 2 games.
+- **The Adreno 650's compiler gets one construct wrong.** crt-guest-dr-venom drew far too dark: read back
+  pass by pass, its colour was right until `cmask1 *= TATE < 0.5 ? SlotMask(a) : SlotMask(b);`, which the
+  driver evaluates to 0 although each call returns 1; written with `if`, it gives 1. Every pass is now given
+  to the GPU with each `x op= cond ? f(a) : g(b);` written as branches (`GlslCompat.selectedCallsAsBranches`),
+  which means the same; the final picture's mean on the check's test card went from 0.10 to 0.42.
 
 ## Consequences
 

@@ -302,6 +302,8 @@ own shim (`cartridge_shim.c`) or adapter rather than in an engine's source:
 1. Flycast left a vertex buffer bound, so the host's copy to the screen drew nothing: black.
 2. Dolphin remembers what it bound and skips repeating it; the host rebinds the screen, its own
    program and texture. Everything the host's copy touches is now saved before it and put back after.
+   Since a shader preset can make that copy read up to sixteen textures and upload lookup images
+   (ADR 0027), all sixteen texture units, their samplers and the pixel-unpack state are kept too.
 3. The host leaves the screen bound when it calls the core. A frame that only shows a picture
    (Dolphin showing the video chip's memory) then drew to the screen and was wiped. The host's
    framebuffer is now bound before a frame wherever the screen is bound, and only there: binding it

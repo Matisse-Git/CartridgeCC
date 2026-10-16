@@ -33,6 +33,8 @@ public:
     // Conversion from LibretroDroid types
     static Variable variableFromJava(JNIEnv* env, jobject obj);
     static ShaderManager::Config shaderFromJava(JNIEnv* env, jobject obj);
+    // Cartridge: a ShaderPreset's fields.
+    static std::shared_ptr<const PresetSpec> presetFromJava(JNIEnv* env, jobject obj);
 
     static jint throwRetroException(JNIEnv* env, int errorCode);
     static void forEachOnJavaIterable(JNIEnv* env, jobject jList, const std::function<void(jobject)> &lambda);

@@ -1,5 +1,47 @@
 # Tests and actual results
 
+## Shader presets, step 2 — 2026-10-16 (ADR 0027)
+
+Working tree on top of `2272768`. Device: Retroid Pocket 5, Android 13,
+`RP5_V1.0.0.189_20251128_174732_user`, Adreno 650, OpenGL ES 3.2 (float framebuffers 32-bit, border
+clamp, 16 texture units, as the host logs them). The library was pushed by hand to the app's private
+`files/shaders/library` (`libretro/glsl-shaders@148ce728`, 621 presets); downloading it is step 3. A few
+test presets of this work's own (a broken one, a float round trip, instrumented copies of crt-guest) sit in
+its `cartridge-test` folder on the device and are not counted below.
+
+**Host.** Both APKs build. Unit tests pass, among them `PresetReaderTest` (7) and `GlslCompatTest` (6).
+Lint: zero errors. 10 asset checks pass. Read on the PC, 619 of the 621 presets are readable; the other two
+are broken in the library itself.
+
+**RP5.**
+
+- **Regression: 60 of 60** in 665 s (`OK (60 tests)`): the 58 earlier tests and `ShaderPresetTest`. The
+  shim now keeps sixteen texture units and the unpack state; the host is built with glslang and
+  SPIRV-Cross.
+- `ShaderPresetTest`: a broken preset is refused with the compiler's message; a preset reading the previous
+  frame builds and draws; **605 of the 621 presets build and draw** in the check's own context (503 the way
+  RetroArch compiles them, see ADR 0027), most in 10 to 100 ms, crt-royale in about 3.3 s, nnedi3's largest
+  in about 10 s.
+- Read back from the GPU: a float round trip (`pow(x, 10)` into a float framebuffer, then `pow(x, 0.1)`)
+  gives its input back (0.4966 against 0.4965); crt-guest-dr-venom's final picture went from 0.10 to 0.42
+  of full brightness once the Adreno fault was written around; crt-royale's from black to 0.41.
+- `RealGameCheck` with presets, one of the owner's games each, 30 s, pictures looked at:
+
+| Console | Preset | Result |
+|---|---|---|
+| Super Nintendo | crt-royale | CRT mask, scanlines and glow; 60.0 fps, no late frame |
+| Super Nintendo | crt-guest-dr-venom | bright, scanlined; 60.0 fps, no late frame |
+| Game Boy Advance | lcd-grid-v2-gba-color-motionblur (previous frames) | LCD grid; 60.0 fps; at second 10 crt-royale was checked in its own context in 1.9 s while the game was paused, and the game resumed |
+| PlayStation | a deliberately broken preset | normal picture and the notice with the compiler's reason |
+| Dreamcast | crt-royale, real sleep at 20 s | restored from its checkpoint and carried on; 57.7 fps, 2 late frames, as without a preset |
+| GameCube | crt-royale, real sleep at 20 s | stayed loaded and carried on (1314 → 1436 core runs); 57.1 fps, 3 late frames, as without a preset |
+| PlayStation 2 | crt-royale, real sleep at 20 s | stayed loaded and carried on (1396 → 1521); 60.0 fps |
+
+- **No preset, nine consoles**, against the build with the prebuilt library (section below): every game
+  presented at the same rate and the shim's counters agree; GameCube had 8 late frames against 6, Dreamcast
+  3 against 3. **Not run with a real game:** NES, Genesis, Master System and Game Gear (no owner game on the
+  device); Saturn was not run with a preset.
+
 ## LibretroDroid built from source — 2026-10-16 (ADR 0027 step 1, `libretrodroid/UPSTREAM.md`)
 
 Working tree on top of `ef2d9f7`, versionCode 17. Device: Retroid Pocket 5, Android 13,

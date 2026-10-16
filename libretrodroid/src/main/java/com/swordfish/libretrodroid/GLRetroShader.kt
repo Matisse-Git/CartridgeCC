@@ -17,4 +17,9 @@
 
 package com.swordfish.libretrodroid
 
-internal data class GLRetroShader(val type: Int, val params: Map<String, String> = emptyMap())
+internal data class GLRetroShader(
+    val type: Int,
+    val params: Map<String, String> = emptyMap(),
+    // Cartridge: set only for SHADER_PRESET.
+    val preset: ShaderPreset? = null,
+)

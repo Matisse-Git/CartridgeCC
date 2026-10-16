@@ -18,9 +18,12 @@
 #ifndef LIBRETRODROID_SHADERMANAGER_H
 #define LIBRETRODROID_SHADERMANAGER_H
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "presetchain.h"
 
 namespace libretrodroid {
 
@@ -51,14 +54,17 @@ public:
         SHADER_UPSCALE_CUT = 4,
         SHADER_UPSCALE_CUT2 = 5,
         SHADER_UPSCALE_CUT3 = 6,
+        // Cartridge: a RetroArch GLSL preset, drawn by PresetChain; the built-in chain is the default one.
+        SHADER_PRESET = 7,
     };
 
     struct Config {
         Type type;
         std::unordered_map<std::string, std::string> params;
+        std::shared_ptr<const PresetSpec> preset = nullptr;
 
         inline bool operator==(const Config& other) {
-            return type == other.type && params == other.params;
+            return type == other.type && params == other.params && preset == other.preset;
         }
     };
 

@@ -18,6 +18,7 @@ so". [CONSOLES](CONSOLES.md) lists the fields and the status of each console.
 | `cpp/cores.cmake`, `cartridge_shim.c` | cores that need only the Libretro ABI, with shared frame and PCM counters |
 | `cpp/flycast.cmake`, `armsx2.cmake`, `dolphin.cmake`, `core_wrap.cmake` | the three engines that draw for themselves (ADR 0023, 0026): one in this CMake tree, two as projects of their own, all given the second build of the shim |
 | `storage/CoreData` | an engine's own packaged data, unpacked into the private system folder once per build of its core |
+| `shaders/PresetReader`, `GlslCompat`, `ShaderLibrary` | a RetroArch GLSL preset read as RetroArch reads it, a GLSL ES form of each pass for when its own does not compile, and the images decoded for the host (ADR 0027) |
 | `libretrodroid/` (module) | the host: LibretroDroid 0.14.0 built from its source since 2026-10-16 (ADR 0027), GLSurfaceView, final drawing pass, audio and input; its changes from the tag are listed in its `UPSTREAM.md` |
 
 Identity: the enum name is the stored id. GBA, GB, GBC and PS1 keep their names, order and hashes.
@@ -59,7 +60,7 @@ written for cores that hand it a finished picture, so the second build of `cartr
 |---|---|
 | `retro_set_environment` | notes where the host's framebuffer is asked for; replaces a nominal base size with the size the core really draws |
 | `retro_run` | binds the host's framebuffer where the screen is bound, and only there; does not run the core while enough of its sound is still waiting; reports a repeated frame when the core says nothing; hands the host one run's worth of sound |
-| `retro_set_video_refresh` | around the host's copy to the screen, saves and restores every piece of GL state the copy touches |
+| `retro_set_video_refresh` | around the host's copy to the screen, saves and restores every piece of GL state the copy touches, sixteen texture units and the unpack state included (a shader preset's passes, ADR 0027) |
 | `retro_set_audio_sample_batch` | holds the core's sound for `retro_run` to hand on, and counts it |
 | `retro_unload_game`, and `cartridge_unload` beside it | lets the game be unloaded on the thread it ran on, before the host does it from Main and finds nothing left to do; for ARMSX2 (`CARTRIDGE_UNLOAD_FIRST`) the game before its context, the reverse of the host's order |
 

@@ -27,6 +27,27 @@ if(NOT libretro_common_POPULATED)
     FetchContent_Populate(libretro_common)
 endif()
 
+# Cartridge: glslang and SPIRV-Cross at the Vulkan SDK 1.4.363.0 tags, for shader-preset passes GLSL ES will
+# not compile as written (ADR 0027). Only the GLSL front end and the GLSL back end are built.
+FetchContent_Declare(glslang
+    URL https://codeload.github.com/KhronosGroup/glslang/zip/refs/tags/vulkan-sdk-1.4.363.0
+    URL_HASH SHA256=1041701e37fbe62ec6e3e80515fdfcb696ee69e5a5731cd8aa0db32bf458fde8
+)
+FetchContent_Declare(spirv_cross
+    URL https://codeload.github.com/KhronosGroup/SPIRV-Cross/zip/refs/tags/vulkan-sdk-1.4.363.0
+    URL_HASH SHA256=637ee99192da3cea88bb81c97bcb7177d7b0010f75d2afd6c97f8e7b7d2a0c90
+)
+foreach(option BUILD_EXTERNAL GLSLANG_TESTS GLSLANG_ENABLE_INSTALL ENABLE_GLSLANG_BINARIES ENABLE_GLSLANG_JS ENABLE_HLSL
+        ENABLE_OPT ENABLE_PCH ENABLE_CTEST BUILD_SHARED_LIBS SPIRV_CROSS_SHARED SPIRV_CROSS_CLI SPIRV_CROSS_ENABLE_TESTS
+        SPIRV_CROSS_ENABLE_HLSL SPIRV_CROSS_ENABLE_MSL SPIRV_CROSS_ENABLE_CPP SPIRV_CROSS_ENABLE_REFLECT
+        SPIRV_CROSS_ENABLE_C_API SPIRV_CROSS_ENABLE_UTIL)
+    set(${option} OFF CACHE BOOL "" FORCE)
+endforeach()
+foreach(option ENABLE_SPIRV SPIRV_CROSS_STATIC SPIRV_CROSS_ENABLE_GLSL SPIRV_CROSS_SKIP_INSTALL SPIRV_CROSS_FORCE_PIC)
+    set(${option} ON CACHE BOOL "" FORCE)
+endforeach()
+FetchContent_MakeAvailable(glslang spirv_cross)
+
 # Let's include oboe
 set (OBOE_DIR ${oboe_SOURCE_DIR})
 add_subdirectory (${OBOE_DIR} oboe)
@@ -82,6 +103,10 @@ add_library(libretrodroid SHARED
         input.cpp
         shadermanager.h
         shadermanager.cpp
+        presetchain.h
+        presetchain.cpp
+        glsltranslate.h
+        glsltranslate.cpp
         rumble.h
         rumble.cpp
         rumblestate.h
@@ -124,4 +149,8 @@ target_link_libraries(libretrodroid
                       EGL
                       oboe
                       GLESv3
+                      glslang
+                      glslang-default-resource-limits
+                      spirv-cross-glsl
+                      spirv-cross-core
 )

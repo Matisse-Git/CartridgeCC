@@ -100,13 +100,29 @@ GLuint createProgram(const char* pVertexSource, const char* pFragmentSource) {
 }
 
 void Video::updateProgram() {
-    if (loadedShaderType.has_value() && loadedShaderType.value() == requestedShaderConfig) {
+    ShaderManager::Config requested;
+    {
+        std::lock_guard<std::mutex> lock(shaderConfigMutex);
+        requested = requestedShaderConfig;
+    }
+    if (loadedShaderType.has_value() && loadedShaderType.value() == requested) {
         return;
     }
 
-    loadedShaderType = requestedShaderConfig;
+    loadedShaderType = requested;
 
-    auto shaders = ShaderManager::getShader(requestedShaderConfig);
+    // Cartridge: a preset is built here, on the GL thread; the built-in default chain below stays ready in
+    // case it cannot be, or fails later while drawing.
+    presetChain = nullptr;
+    if (requested.type == ShaderManager::Type::SHADER_PRESET) {
+        try {
+            presetChain = std::make_unique<PresetChain>(requested.preset);
+        } catch (const std::exception& exception) {
+            reportShaderFailure(exception.what());
+        }
+    }
+
+    auto shaders = ShaderManager::getShader(requested);
 
     shadersChain = {};
 
@@ -159,6 +175,23 @@ void Video::renderFrame() {
     }
 
     updateProgram();
+    if (presetChain) {
+        try {
+            PresetSource source {
+                (GLuint) renderer->getTexture(),
+                (unsigned) renderer->lastFrameSize.first,
+                (unsigned) renderer->lastFrameSize.second,
+                bottomLeftOrigin
+            };
+            presetChain->render(source, presetTarget());
+            return;
+        } catch (const std::exception& exception) {
+            reportShaderFailure(exception.what());
+            presetChain = nullptr;
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, videoLayout.getScreenWidth(), videoLayout.getScreenHeight());
+        }
+    }
     for (int i = 0; i < shadersChain.size(); ++i) {
         auto shader = shadersChain[i];
         auto passData = renderer->getPassData(i);
@@ -265,6 +298,7 @@ Video::Video(
     unsigned int viewportAlignment
 ) :
     requestedShaderConfig(std::move(shaderConfig)),
+    bottomLeftOrigin(bottomLeftOrigin),
     skipDuplicateFrames(skipDuplicateFrames),
     immersiveModeEnabled(immersiveModeEnabled),
     immersiveMode(immersiveModeConfig),
@@ -286,7 +320,44 @@ Video::Video(
 }
 
 void Video::updateShaderType(ShaderManager::Config shaderConfig) {
+    std::lock_guard<std::mutex> lock(shaderConfigMutex);
     requestedShaderConfig = std::move(shaderConfig);
+}
+
+std::string Video::takeShaderFailure() {
+    std::string failure;
+    std::swap(failure, shaderFailure);
+    return failure;
+}
+
+void Video::reportShaderFailure(const std::string& reason) {
+    LOGE("Shader preset not used: %s", reason.c_str());
+    shaderFailure = reason.empty() ? "The shader could not be used" : reason;
+}
+
+PresetTarget Video::presetTarget() {
+    const auto& vertices = videoLayout.getForegroundVertices();
+    const auto& coordinates = videoLayout.getTextureCoordinates();
+    // The built-in shaders pair each corner with a texture coordinate; the image's top is t = 0, or t = 1
+    // when the core's frame starts at the bottom.
+    float top = bottomLeftOrigin ? 1.0F : 0.0F;
+    auto corner = [&](float s, float t) -> std::array<float, 2> {
+        for (size_t i = 0; i + 1 < coordinates.size(); i += 2) {
+            if (coordinates[i] == s && coordinates[i + 1] == t) return { vertices[i], vertices[i + 1] };
+        }
+        return { 0.0F, 0.0F };
+    };
+    auto topLeft = corner(0.0F, top);
+    auto topRight = corner(1.0F, top);
+    auto bottomLeft = corner(0.0F, 1.0F - top);
+    PresetTarget target;
+    target.framebuffer = 0;
+    target.width = (unsigned) videoLayout.getScreenWidth();
+    target.height = (unsigned) videoLayout.getScreenHeight();
+    target.origin = topLeft;
+    target.right = { topRight[0] - topLeft[0], topRight[1] - topLeft[1] };
+    target.down = { bottomLeft[0] - topLeft[0], bottomLeft[1] - topLeft[1] };
+    return target;
 }
 
 void Video::initializeRenderer(RenderingOptions renderingOptions) {

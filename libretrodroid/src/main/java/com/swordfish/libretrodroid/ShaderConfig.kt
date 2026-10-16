@@ -62,4 +62,7 @@ sealed interface ShaderConfig {
         val hardEdgesSearchMaxError: Float = 0.25f,
         val hardEdgesSearchMaxDistance: Int = 4,
     ) : ShaderConfig
+
+    /** Cartridge: a RetroArch GLSL preset. If it cannot be built the default shader is drawn instead. */
+    class Preset(val preset: ShaderPreset) : ShaderConfig
 }

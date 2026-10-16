@@ -21,9 +21,13 @@
 #include <GLES2/gl2.h>
 #include <optional>
 #include <array>
+#include <memory>
+#include <mutex>
+#include <string>
 
 #include "renderers/renderer.h"
 #include "shadermanager.h"
+#include "presetchain.h"
 #include "utils/rect.h"
 #include "immersivemode.h"
 #include "videolayout.h"
@@ -87,6 +91,9 @@ public:
         return renderer->rendersInVideoCallback();
     }
 
+    // Cartridge: why the last preset could not be built or drawn, once; empty when nothing failed.
+    std::string takeShaderFailure();
+
 private:
     void updateProgram();
 
@@ -96,11 +103,21 @@ private:
 
     void initializeRenderer(RenderingOptions renderingOptions);
 
+    // Cartridge: where a preset draws, from the same corners the built-in shaders use.
+    PresetTarget presetTarget();
+    void reportShaderFailure(const std::string& reason);
+
 private:
     ShaderManager::Config requestedShaderConfig = ShaderManager::Config {
         ShaderManager::Type::SHADER_DEFAULT
     };
     std::optional<ShaderManager::Config> loadedShaderType = std::nullopt;
+
+    // Cartridge: the shader is chosen on the UI thread and read on the GL thread.
+    std::mutex shaderConfigMutex;
+    std::unique_ptr<PresetChain> presetChain;
+    std::string shaderFailure;
+    bool bottomLeftOrigin = false;
 
     bool isDirty = false;
     bool skipDuplicateFrames = false;

@@ -523,6 +523,10 @@ void LibretroDroid::setShaderConfig(ShaderManager::Config shaderConfig) {
     }
 }
 
+std::string LibretroDroid::takeShaderFailure() {
+    return video ? video->takeShaderFailure() : std::string();
+}
+
 void LibretroDroid::handleVideoRefresh(
     const void *data,
     unsigned int width,

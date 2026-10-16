@@ -19,6 +19,7 @@ import dev.cartridge.domain.SessionMachine
 import dev.cartridge.domain.SessionState
 import dev.cartridge.domain.Snapshots
 import dev.cartridge.environment.GameOptions
+import dev.cartridge.shaders.ShaderLibrary
 import dev.cartridge.storage.SaveStore
 import dev.cartridge.storage.SessionStore
 import kotlinx.coroutines.*
@@ -34,6 +35,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 class LibretroEngine(private val context: Context, private val scope: CoroutineScope,
     private val checkpointIntervalMs: Long = 15_000,
     private val sessionOptions: (GameRequest) -> Map<String, String> = { emptyMap() },
+    /** The shader preset a game is shown with (ADR 0027), a file inside [shaderLibrary], or none. */
+    private val sessionShader: (GameRequest) -> File? = { null },
+    private val shaderLibrary: File = ShaderLibrary.root(context),
     private val sessionStore: SessionStore? = null,
     /** Where a core looks for firmware. Tests give it an empty one so diagnostics never depend on the owner's BIOS. */
     private val systemDirectory: File = File(context.filesDir, "system")) : EmulationEngine {
@@ -54,6 +58,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     private var game: GameRequest? = null
     private var eventJob: Job? = null
     private var errorJob: Job? = null
+    private var shaderJob: Job? = null
     private var checkpointJob: Job? = null
     private var lastWrittenRam: ByteArray? = null
     private var lastWrittenRtc: ByteArray? = null
@@ -95,6 +100,17 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                     startNotice = STATE_NOT_USED
                     null
                 }
+                // A preset is optional too: one that cannot be read gives the normal picture and one notice.
+                var shaderNotice: String? = null
+                val preset = sessionShader(game)?.let { file ->
+                    try {
+                        ShaderConfig.Preset(withContext(Dispatchers.IO) { ShaderLibrary.load(shaderLibrary, file) })
+                    } catch (failure: Exception) {
+                        if (failure is CancellationException) throw failure
+                        shaderNotice = shaderNotUsed(file, failure.message)
+                        null
+                    }
+                }
                 // A core that writes its own files gets a folder per game, so two games never share one.
                 val ownFiles = File(context.filesDir, "saves").let { if (game.system.core.ownFiles) File(it, "${game.id}.files") else it }.apply { mkdirs() }
                 game.system.core.data?.let { (archive, folder) ->
@@ -110,7 +126,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                     savesDirectory = ownFiles.path
                     rumbleEventsEnabled = false
                     enableMicrophone = false
-                    shader = screenEffect(options[GameOptions.SCREEN_EFFECT])
+                    shader = preset ?: screenEffect(options[GameOptions.SCREEN_EFFECT])
                     // Firmware and memory-card ownership are fixed by the save design; user options cannot replace them.
                     variables = ((options - GameOptions.adapterKeys) + game.system.core.fixed).map { Variable(it.key, it.value) }.toTypedArray()
                 }
@@ -129,6 +145,15 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                             coreReady = true
                             ready.complete(Unit)
                         }
+                    }
+                }
+                // A preset that the GPU will not build, or that fails while drawing, is replaced by the default
+                // picture on the GL thread; the player hears about it once.
+                shaderJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                    view.getShaderFailures().collect { reason ->
+                        val notice = shaderNotUsed(sessionShader(game), reason)
+                        if (machine.state in setOf(SessionState.Running, SessionState.Paused)) mutableStatus.value = status.value.copy(notice = notice)
+                        else shaderNotice = notice
                     }
                 }
                 errorJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -203,7 +228,9 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 session.registry.currentState = Lifecycle.State.RESUMED
                 withTimeout(15_000) { ready.await() }
                 transition(SessionState.Running)
-                startNotice?.let { mutableStatus.value = status.value.copy(notice = it) }
+                listOfNotNull(startNotice, shaderNotice).takeIf { it.isNotEmpty() }?.let {
+                    mutableStatus.value = status.value.copy(notice = it.joinToString(" "))
+                }
                 startCheckpoints()
             } catch (failure: Throwable) {
                 releaseNative()
@@ -396,6 +423,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
         checkpointJob?.cancel(); checkpointJob = null
         eventJob?.cancel(); eventJob = null
         errorJob?.cancel(); errorJob = null
+        shaderJob?.cancel(); shaderJob = null
         val view = mutableSurface.value
         owner?.let {
             if (it.registry.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
@@ -432,6 +460,8 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
         /** libretro.h: nothing plugged in, and the standard pad. */
         private const val RETRO_DEVICE_NONE = 0
         private const val RETRO_DEVICE_JOYPAD = 1
+        private fun shaderNotUsed(preset: File?, reason: String?) =
+            "The shader ${preset?.nameWithoutExtension ?: ""} could not be used, so the game is shown without it. ${reason ?: ""}".replace("  ", " ").trim()
         private const val STATE_NOT_USED = "This game's save state could not be loaded, so it started from the beginning. The state was kept."
     }
 }

@@ -105,6 +105,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
     protected open fun presentationPreferences() = getPreferences(MODE_PRIVATE)
     protected open fun createSessionStore() = SessionStore(File(filesDir, "session-checkpoint"))
     protected open fun systemDirectory() = File(filesDir, "system")
+    /** The shader preset a game starts with; settings choose it from step 4 of ADR 0027 on. */
+    protected open fun sessionShader(game: dev.cartridge.emulation.GameRequest): File? = null
     protected open fun createAppSource(): AppSource = InstalledApps(this)
     private val inputFrames = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
@@ -146,7 +148,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         val sessionStore = createSessionStore()
         val preferences = presentationPreferences()
         engine = LibretroEngine(this, lifecycleScope, sessionOptions = { game -> shell.sessionOptions(game.system, game.id) }, sessionStore = sessionStore,
-            systemDirectory = systemDirectory())
+            systemDirectory = systemDirectory(), sessionShader = ::sessionShader)
         labelStore = createLabelStore()
         mediaSound = MediaSound(this)
         val repository = createRepository()

@@ -32,6 +32,10 @@ import java.util.concurrent.TimeUnit
  *
  *   -e class dev.cartridge.RealGameCheck -e game <hash prefix | PS2 | DREAMCAST | GAMECUBE> [-e pick 0]
  *   [-e seconds 30] [-e every 5] [-e keys 12:BUTTON_START,15:BUTTON_A] [-e stacks 20,21] [-e sleep 20]
+ *   [-e shader crt/crt-royale.glslp] [-e check 10:crt/crt-royale.glslp]
+ *
+ * `shader` starts the game with a preset from the installed shader library (ADR 0027); `check` pauses the
+ * game at that second, checks a preset in its own GL context as Settings will, and resumes it.
  *
  * Pictures go to files/diagnostics/<tag>-<second>.png and one line of counters per second to the log. The
  * owner's library, play history and saved sessions are not touched; the game's own memory card is the one it
@@ -81,6 +85,9 @@ class RealGameCheck {
         val stacks = arguments.getString("stacks").orEmpty().split(',').filter { it.isNotBlank() }.map { it.toInt() }.toSet()
         // A second at which the device is really put to sleep and woken five seconds later, as its power button does.
         val sleep = arguments.getString("sleep")?.toInt()
+        val shader = arguments.getString("shader")
+        val checkAt = arguments.getString("check")?.substringBefore(':')?.toInt()
+        val checkPreset = arguments.getString("check")?.substringAfter(':')
         val roms = File(context.filesDir, "roms")
         val system = GameSystem.entries.firstOrNull { it.name.equals(wanted, ignoreCase = true) }
         // Games, not this project's own probes: those are a few hundred kilobytes at most. A game named by its hash
@@ -114,7 +121,8 @@ class RealGameCheck {
             }
         }.apply { isDaemon = true; start() }
         try {
-            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)).use { scenario ->
+            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)
+                .apply { if (shader != null) putExtra("testShader", shader) }).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 scenario.onActivity { it.coordinator.addGame { LibraryGame(id, "Imported game", "content://dev.cartridge.fixture/none", system = console) } }
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.id == id }
@@ -135,6 +143,23 @@ class RealGameCheck {
                         android.util.Log.i(TAG, "$tag t=$second pressed $key")
                     }
                     if (second in stacks) { android.util.Log.i(TAG, "$tag t=$second stacks"); SaveBridge.dumpThreads(); Thread.sleep(300) }
+                    if (second == checkAt && checkPreset != null) {
+                        // What Settings will do when a preset is picked while a game is paused: build it in a context
+                        // of its own on another thread. The paused game must carry on as it was.
+                        var engine: dev.cartridge.emulation.LibretroEngine? = null
+                        scenario.onActivity { engine = it.engine }
+                        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.Main) { engine!!.pause() }
+                        val began = System.nanoTime()
+                        val outcome = java.util.concurrent.Executors.newSingleThreadExecutor().let { thread ->
+                            try { thread.submit<String?> {
+                                val library = dev.cartridge.shaders.ShaderLibrary.root(context)
+                                dev.cartridge.shaders.ShaderLibrary.check(dev.cartridge.shaders.ShaderLibrary.load(library, File(library, checkPreset)))
+                            }.get(60, TimeUnit.SECONDS) } finally { thread.shutdown() }
+                        }
+                        android.util.Log.i(TAG, "$tag t=$second checked $checkPreset while paused in ${(System.nanoTime() - began) / 1_000_000} ms: ${outcome ?: "works"}")
+                        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.Main) { engine!!.resume() }
+                        beat.set(System.nanoTime())
+                    }
                     if (second == sleep) {
                         val before = stats(scenario, core)
                         val shell = InstrumentationRegistry.getInstrumentation().uiAutomation
@@ -171,6 +196,7 @@ class RealGameCheck {
                             android.util.Log.i(TAG, "$tag was restored from its checkpoint after sleep and carried on")
                         }
                     }
+                    scenario.onActivity { activity -> activity.engine.status.value.notice?.let { android.util.Log.i(TAG, "$tag t=$second notice: $it") } }
                     val now = stats(scenario, core)
                     var gone = false
                     scenario.onActivity { gone = it.engine.surface.value == null }

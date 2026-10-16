@@ -16,6 +16,13 @@ tag pins, each by a hash of its complete archive, and are never copied into this
 | google/oboe | `b15f5e39c01a7ada306d959e5129620b145fb8b4` | `eb2a817017a554f664c5b6262ceef55756097a1e0b9536045de0f33b9868ef6e` |
 | libretro/libretro-common | `b0c348ea5543c4d7fb0bc479258aa6988b20c0c9` | `c8deb75ad240745551611843d7c52ae10f553871a798fcd949bfda6e70acfde0` |
 
+Added for shader presets (ADR 0027), fetched the same way and built static with only what translation needs:
+
+| Project | Tag (commit) | Archive SHA-256 (codeload zip) |
+| --- | --- | --- |
+| KhronosGroup/glslang | `vulkan-sdk-1.4.363.0` (`e1b562a8bed273a02f30b59b66a5d499793cede5`) | `1041701e37fbe62ec6e3e80515fdfcb696ee69e5a5731cd8aa0db32bf458fde8` |
+| KhronosGroup/SPIRV-Cross | `vulkan-sdk-1.4.363.0` (`f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7`) | `637ee99192da3cea88bb81c97bcb7177d7b0010f75d2afd6c97f8e7b7d2a0c90` |
+
 ## Changes from the tag
 
 Only what building it with this project's toolchain (NDK 27.2, CMake 3.22.1 from Windows) needs:
@@ -37,3 +44,33 @@ build were compared on 2026-10-16: the same 39 classes with identical public sig
 with NDK r26b's clang 17 at API 21; this one uses NDK 27.2's clang 18 at API 21.
 
 Every later change to this module is the project's own and is described in its commit and ADR.
+
+## Shader presets (ADR 0027, step 2)
+
+- `ShaderConfig.Preset` and `ShaderPreset` (Kotlin), `ShaderManager::Type::SHADER_PRESET` and a
+  `PresetSpec` pointer in `ShaderManager::Config`: a RetroArch GLSL preset already read by the app.
+  `GLRetroShader` carries it to the native side (`JavaUtils::presetFromJava`).
+- `presetchain.{h,cpp}`: `PresetChain` builds and draws a preset following RetroArch 1.22.2's GL driver
+  (pass sizes, FBO formats, filters and wraps, mipmaps, aliases, LUTs, `Orig`/`PassN`/`PassPrevN`/`Prev`
+  frames, feedback, frame counters, parameters). The core's frame is first copied upright into a texture of
+  the chain's own, so one orientation runs through every pass. When RetroArch's way of compiling a pass
+  fails, `link` tries the others listed above `VARIANTS` before refusing the preset with RetroArch's own error.
+  `PresetChain::check` builds a preset and draws two frames in a pbuffer context of its own.
+- `Video` builds the chain on the GL thread when a preset is requested, draws it instead of the built-in
+  passes, and falls back to the default built-in shader when it cannot be built or fails while drawing;
+  `takeShaderFailure` reports that once. The requested shader is guarded by a mutex, since it is set from
+  the UI thread and read on the GL thread.
+- JNI: `LibretroDroid.takeShaderFailure()` (polled after each `step`, emitted on
+  `GLRetroView.getShaderFailures()`) and `LibretroDroid.checkShaderPreset()` (`ShaderPreset.check()`).
+- `consumer-rules.pro` keeps the fields the native side reads by name.
+- Every precision qualifier in a preset's source is read as `highp`, as desktop GL reads them, and float
+  framebuffers are 32-bit where the GPU can draw to and filter them (16-bit otherwise), as RetroArch's GL
+  driver makes them. A pass may carry a second, GLSL ES form of its source (`compatSource`, made by the app's
+  `GlslCompat`), compiled only when its own does not compile.
+- `glsltranslate.{h,cpp}`: a pass's two stages as desktop GLSL 3.30 (RetroArch's defines, line continuations
+  joined), compiled together by glslang for OpenGL and written out by SPIRV-Cross as GLSL ES 3.00 with high
+  precision and no bindings or uniform locations, so names stay as the host looks them up. `link` tries it
+  after the source as written and before the app's rewritten source. The stripped library grows from 1.5 to
+  5.8 MB.
+- A check logs each pass's mean colour after drawing (`PresetChain::describe`), and every refused way of
+  compiling a pass is logged with the compiler's whole message.

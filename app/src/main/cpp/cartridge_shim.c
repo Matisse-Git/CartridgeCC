@@ -253,10 +253,15 @@ static void resized(unsigned width, unsigned height) {
  * memory or samples its texture, and nothing may mask the copy. The host in turn binds the screen,
  * its own program and texture, and may rebuild its framebuffer; an engine that remembers what it
  * bound and skips repeating it (Dolphin does) would go on drawing into the wrong place with nothing
- * selected. So every piece of state the host's copy touches is read first and put back after. */
+ * selected. So every piece of state the host's copy touches is read first and put back after. A shader
+ * preset (ADR 0027) makes the copy read up to sixteen textures and upload its lookup images once, so all
+ * sixteen units and the unpack state are kept as well. */
 static void present(const void* data, unsigned width, unsigned height, size_t pitch) {
     static const GLenum switches[] = { GL_SCISSOR_TEST, GL_BLEND, GL_CULL_FACE, GL_STENCIL_TEST, GL_DEPTH_TEST };
-    enum { SWITCHES = sizeof(switches) / sizeof(*switches), UNITS = 2 };
+    enum { SWITCHES = sizeof(switches) / sizeof(*switches), UNITS = 16 };
+    static const GLenum unpacking[] = { GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH, GL_UNPACK_SKIP_ROWS, GL_UNPACK_SKIP_PIXELS };
+    enum { UNPACKING = sizeof(unpacking) / sizeof(*unpacking) };
+    GLint unpack[UNPACKING], unpack_buffer;
     GLboolean enabled[SWITCHES], mask[4];
     GLfloat clear[4];
     GLint vertex_array, array_buffer, unit, sampler[UNITS], texture[UNITS], program, draw, read, renderbuffer, viewport[4];
@@ -283,6 +288,9 @@ static void present(const void* data, unsigned width, unsigned height, size_t pi
     glActiveTexture(GL_TEXTURE0);
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &array_buffer);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpack_buffer);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    for (int n = 0; n < UNPACKING; ++n) glGetIntegerv(unpacking[n], &unpack[n]);
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vertex_array);
     glBindVertexArray(0);
 
@@ -290,6 +298,8 @@ static void present(const void* data, unsigned width, unsigned height, size_t pi
 
     glBindVertexArray((GLuint)vertex_array);
     glBindBuffer(GL_ARRAY_BUFFER, (GLuint)array_buffer);
+    for (int n = 0; n < UNPACKING; ++n) glPixelStorei(unpacking[n], unpack[n]);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, glIsBuffer((GLuint)unpack_buffer) ? (GLuint)unpack_buffer : 0);
     for (int n = 0; n < UNITS; ++n) {
         glActiveTexture(GL_TEXTURE0 + n);
         /* The host may have replaced its framebuffer, and with it a texture or buffer the core had bound. */

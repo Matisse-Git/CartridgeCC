@@ -131,6 +131,8 @@ public:
     void setAudioEnabled(bool enabled);
 
     void setShaderConfig(ShaderManager::Config shaderConfig);
+    // Cartridge: why the last preset could not be used, once; empty when nothing failed.
+    std::string takeShaderFailure();
 
     void setViewportAlignment(unsigned int viewportAlignment);
 

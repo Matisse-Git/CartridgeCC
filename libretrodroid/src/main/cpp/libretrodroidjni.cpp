@@ -580,6 +580,24 @@ JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setShaderC
     LibretroDroid::getInstance().setShaderConfig(JavaUtils::shaderFromJava(env, shaderConfig));
 }
 
+JNIEXPORT jstring JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_takeShaderFailure(
+    JNIEnv* env,
+    jclass obj
+) {
+    std::string failure = LibretroDroid::getInstance().takeShaderFailure();
+    return failure.empty() ? nullptr : env->NewStringUTF(failure.c_str());
+}
+
+JNIEXPORT jstring JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_checkShaderPreset(
+    JNIEnv* env,
+    jclass obj,
+    jobject shaderConfig
+) {
+    auto config = JavaUtils::shaderFromJava(env, shaderConfig);
+    std::string failure = config.preset != nullptr ? PresetChain::check(*config.preset) : "Not a shader preset";
+    return failure.empty() ? nullptr : env->NewStringUTF(failure.c_str());
+}
+
 JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setViewport(
     JNIEnv* env,
     jclass obj,

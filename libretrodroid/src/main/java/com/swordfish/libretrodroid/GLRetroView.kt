@@ -82,6 +82,9 @@ class GLRetroView(
 
     private val rumbleEventsSubject = MutableSharedFlow<RumbleEvent>()
 
+    // Cartridge: a preset that could not be built, with the reason; the default shader is drawn instead.
+    private val shaderFailuresSubject = MutableSharedFlow<String>(extraBufferCapacity = 4)
+
     private var lifecycle: Lifecycle? = null
 
     init {
@@ -208,6 +211,11 @@ class GLRetroView(
         return rumbleEventsSubject
     }
 
+    // Cartridge: each preset that could not be built, with the reason, as the GL thread finds out.
+    fun getShaderFailures(): Flow<String> {
+        return shaderFailuresSubject
+    }
+
     fun getControllers(): Array<Array<Controller>> {
         return LibretroDroid.getControllers()
     }
@@ -319,6 +327,7 @@ class GLRetroView(
         override fun onDrawFrame(gl: GL10) = catchExceptions {
             if (isEmulationReady) {
                 LibretroDroid.step(this@GLRetroView)
+                LibretroDroid.takeShaderFailure()?.let { shaderFailuresSubject.tryEmit(it) }
                 lifecycle?.coroutineScope?.launch {
                     retroGLEventsSubject.emit(GLRetroEvents.FrameRendered)
                 }
@@ -413,6 +422,7 @@ class GLRetroView(
             is ShaderConfig.CRT -> GLRetroShader(LibretroDroid.SHADER_CRT)
             is ShaderConfig.LCD -> GLRetroShader(LibretroDroid.SHADER_LCD)
             is ShaderConfig.Sharp -> GLRetroShader(LibretroDroid.SHADER_SHARP)
+            is ShaderConfig.Preset -> GLRetroShader(LibretroDroid.SHADER_PRESET, preset = config.preset)
             is ShaderConfig.CUT -> GLRetroShader(
                 LibretroDroid.SHADER_UPSCALE_CUT,
                 buildParams(

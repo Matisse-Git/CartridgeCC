@@ -1529,6 +1529,8 @@ const std::string ShaderManager::cut3UpscalePass2Fragment =
 
 ShaderManager::Chain ShaderManager::getShader(const ShaderManager::Config& config) {
     switch (config.type) {
+    // Cartridge: a preset is drawn by PresetChain; this is what is drawn when it cannot be.
+    case Type::SHADER_PRESET:
     case Type::SHADER_DEFAULT: {
         return { { { defaultShaderVertex, defaultShaderFragment, true, 1.0 } }, true };
     }
