@@ -1,6 +1,6 @@
 # ADR 0027: Downloaded shader presets
 
-Date: 2026-10-16. Status: accepted; steps 1 and 2 of 4 done.
+Date: 2026-10-16. Status: accepted; steps 1 to 3 of 4 done.
 
 ## Context
 
@@ -70,7 +70,15 @@ Each is its own commit, checked on the RP5 before the next starts.
    results are in `docs/TESTING.md`.
 2. `.glslp` loader and drawing, plus the separate check context. Done 2026-10-16: see "What the RP5
    showed" below and `docs/TESTING.md`.
-3. The Update button: download, bounded extraction, atomic swap.
+3. The Update button: download, bounded extraction, atomic swap. Done 2026-10-16:
+   `ShaderLibraryUpdater` with `GitHubShaderSource`. GitHub's API names the newest commit of `master`;
+   if it is installed nothing is downloaded. Otherwise codeload's archive of that commit is read entry by
+   entry: the repository's own top folder is dropped, only `.glsl`, `.glslp` and images by plain paths
+   (letters, digits, `._+ -`, no hidden or `..` segment, at most 16 deep and 240 long) are written, within
+   256 MB downloaded, 512 MB unpacked, 20,000 entries and 32 MB a file. The new library is written beside
+   the old one and renamed into its place only when complete; a process killed mid-swap gets the old one
+   back. The commit, its date and the counts are kept in the library. The button itself, disabled while
+   a game runs, is step 4.
 4. Settings, picker, per-console and per-game rows, the link to Screen effect, backup, docs, and
    the UX tour.
 

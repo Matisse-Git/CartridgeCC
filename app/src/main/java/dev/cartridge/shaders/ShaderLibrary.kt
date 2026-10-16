@@ -48,6 +48,12 @@ object ShaderLibrary {
         return ShaderPreset(passes, textures, read.parameters, read.feedbackPass)
     }
 
+    /** The Update button's worker for the installed library, against GitHub. */
+    fun updater(context: Context) = ShaderLibraryUpdater(File(context.filesDir, "shaders"), GitHubShaderSource(), freeSpace = { folder ->
+        val storage = context.getSystemService(android.os.storage.StorageManager::class.java)
+        storage.getAllocatableBytes(storage.getUuidForPath(folder))
+    })
+
     /** Null when [preset] builds and draws on this GPU, else why not; see [ShaderPreset.check]. */
     fun check(preset: ShaderPreset): String? = preset.check()
 

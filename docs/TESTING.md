@@ -1,5 +1,20 @@
 # Tests and actual results
 
+## Shader presets, step 3: the library download — 2026-10-16 (ADR 0027)
+
+On top of `44e12ef`. Host: `ShaderLibraryUpdaterTest` (7) with made-up archives: install, up to date
+without a download, a newer commit replacing the whole library, failures (an oversized file, a truncated
+archive, two top folders, no presets, an oversized download) and a cancel each leaving the installed library
+and no staging folder, paths that would leave the library never written, a swap cut short undone, and
+which names are kept.
+
+RP5 (same device and firmware as below), `ShaderLibraryUpdateTest` against GitHub on the device's network,
+in a folder of the test's own: **passed**. The newest library, `libretro/glsl-shaders@148ce728` of
+2026-10-11, installed in 4.5 s from a 26,967,623-byte archive: 621 presets, 1,463 files, 34,336,068 bytes.
+crt-royale read from it passed the GPU check. Pressed again, it was up to date and downloaded nothing. A
+download cancelled after 4 MiB and an update from a repository that does not exist ("The shader library
+was not found on GitHub.") each left the installed library as it was; a last update put the newest back.
+
 ## Shader presets, step 2 — 2026-10-16 (ADR 0027)
 
 Working tree on top of `2272768`. Device: Retroid Pocket 5, Android 13,
