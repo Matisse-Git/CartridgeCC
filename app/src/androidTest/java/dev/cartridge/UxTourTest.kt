@@ -81,7 +81,18 @@ class UxTourTest {
         for (extension in listOf("gb", "gbc")) File(context.filesDir, "cartridge-probe.$extension").readBytes().let { bytes ->
             UUID.randomUUID().toString().take(8).toByteArray().copyInto(bytes, 0x134); File(tree, "m5-$extension.$extension").writeBytes(bytes)
         }
-        val intent = Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)
+        // A shader library of the tour's own: names only, as the picker lists them (ADR 0027).
+        val shaderBase = "m1-test-shaders-tour"
+        File(context.filesDir, shaderBase).apply {
+            deleteRecursively()
+            for (preset in listOf("crt/crt-royale.glslp", "crt/crt-geom.glslp", "crt/crt-guest-dr-venom.glslp", "crt/crt-lottes.glslp",
+                    "crt/zfast-crt.glslp", "handheld/lcd-grid-v2.glslp", "handheld/gb-dot-matrix-DMG.glslp", "scanlines/scanline.glslp",
+                    "xbr/xbr-lv2.glslp", "sharpen/adaptive-sharpen.glslp"))
+                File(this, "library/$preset").apply { parentFile!!.mkdirs(); writeText("shaders = 0\n") }
+            File(this, "library/${dev.cartridge.shaders.ShaderLibraryUpdater.VERSION_FILE}")
+                .writeText("commit=148ce728155232a6b63be772c1810bd84728f359\ndate=2026-10-11T23:22:17Z\npresets=621\nfiles=1463\nbytes=34336068\n")
+        }
+        val intent = Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name).putExtra("testShaderBase", shaderBase)
         // Invented apps with drawn icons: what the owner has installed is never in a screenshot.
         DebugCollectionActivity.testApps = FixtureAppSource(FixtureAppSource.TOUR, withoutIcon = setOf("Ledger"))
         try {
@@ -211,6 +222,26 @@ class UxTourTest {
                 // Journey H: a PlayStation video setting, under its own console's heading.
                 key(scenario, KeyEvent.KEYCODE_BUTTON_R1); key(scenario, KeyEvent.KEYCODE_DPAD_DOWN, 5)
                 shot("12-settings-gameplay")
+                // Shaders: the one Update row, every console, then each console; a picker of the library's folders.
+                scenario.onActivity {
+                    it.shell.shaderChoices.set(dev.cartridge.shaders.ShaderTarget.Global, dev.cartridge.shaders.ShaderChoice.Preset("crt/crt-royale.glslp"))
+                    it.shell.shaderChoices.set(dev.cartridge.shaders.ShaderTarget.Console(GameSystem.GBA), dev.cartridge.shaders.ShaderChoice.Preset("handheld/lcd-grid-v2.glslp"))
+                    it.shell.shaderChoices.set(dev.cartridge.shaders.ShaderTarget.Console(GameSystem.PS2), dev.cartridge.shaders.ShaderChoice.Off)
+                }
+                key(scenario, KeyEvent.KEYCODE_BUTTON_R1); key(scenario, KeyEvent.KEYCODE_DPAD_UP, 8)
+                scenario.onActivity { assertEquals(dev.cartridge.shell.SettingsCategory.Shaders, it.shell.category) }
+                shot("12b-settings-shaders")
+                key(scenario, KeyEvent.KEYCODE_DPAD_DOWN); key(scenario, KeyEvent.KEYCODE_BUTTON_A)
+                await(scenario) { (it.shell.top as? Destination.ShaderPicker)?.folder == "" && it.shell.shaderListings[""] != null }
+                shot("12c-shader-picker")
+                key(scenario, KeyEvent.KEYCODE_DPAD_DOWN); key(scenario, KeyEvent.KEYCODE_BUTTON_A)
+                await(scenario) { (it.shell.top as? Destination.ShaderPicker)?.folder == "crt" && it.shell.shaderListings["crt"] != null }
+                shot("12d-shader-picker-crt")
+                key(scenario, KeyEvent.KEYCODE_BUTTON_B, 2)
+                scenario.onActivity {
+                    assertEquals(Destination.Settings, it.shell.top)
+                    it.shell.shaderChoices.resetConsoles()
+                }
                 key(scenario, KeyEvent.KEYCODE_BUTTON_R1); shot("13-settings-controls")
                 key(scenario, KeyEvent.KEYCODE_BUTTON_R1); shot("14-settings-system")
                 key(scenario, KeyEvent.KEYCODE_BUTTON_B, 3)

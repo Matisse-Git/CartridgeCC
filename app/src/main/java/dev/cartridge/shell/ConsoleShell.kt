@@ -35,6 +35,12 @@ import dev.cartridge.scraping.ScrapePage
 import dev.cartridge.session.CollectionCoordinator
 import dev.cartridge.session.CollectionScreen
 import dev.cartridge.session.CollectionState
+import dev.cartridge.shaders.ShaderChoice
+import dev.cartridge.shaders.ShaderChoices
+import dev.cartridge.shaders.ShaderLibrary
+import dev.cartridge.shaders.ShaderLibraryUpdater
+import dev.cartridge.shaders.ShaderResolution
+import dev.cartridge.shaders.ShaderTarget
 import dev.cartridge.storage.*
 import dev.cartridge.ui.Accent
 import dev.cartridge.ui.ClockStyle
@@ -87,6 +93,9 @@ class ConsoleShell(
     private val systemDirectory: File = File(context.filesDir, "system"),
     appSource: AppSource = InstalledApps(context),
     appDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /** Where the shader library is installed and updated (ADR 0027): `library` inside it is what presets come from. */
+    private val shaderBase: File = File(context.filesDir, "shaders"),
+    private val shaderUpdater: ShaderLibraryUpdater = ShaderLibrary.updater(context, shaderBase),
 ) {
     val stack = mutableStateListOf<Destination>()
     val top get() = stack.lastOrNull()
@@ -115,6 +124,16 @@ class ConsoleShell(
     var frameRate by mutableIntStateOf(0)
     var controls by mutableStateOf(ConsolePreferences(preferences).read()); private set
     val options = OptionStore(preferences)
+    val shaderChoices = ShaderChoices(preferences)
+    val shaderRoot get() = File(shaderBase, "library")
+    /** The installed shader library, read when Settings opens and after each update. */
+    var shaderVersion by mutableStateOf<ShaderLibraryUpdater.Version?>(null); private set
+    var shaderUpdate by mutableStateOf<ShaderUpdate?>(null); private set
+    private var shaderJob: Job? = null
+    /** Each picker folder's contents, read off Main when it opens. */
+    val shaderListings = mutableStateMapOf<String, ShaderListing>()
+    /** The preset being checked in its own GL context before it is saved. */
+    var shaderChecking by mutableStateOf<String?>(null); private set
     /** Bumped whenever a stored option changes, so pages built from [options] recompose. */
     var optionsRevision by mutableIntStateOf(0); private set
     var homeEnabled by mutableStateOf(host.homeEnabled); private set
@@ -176,7 +195,8 @@ class ConsoleShell(
         focus.keys.filter { it == destination.key || it.startsWith("${destination.key}:") }.forEach(focus::remove)
         stack.add(destination)
         when (destination) {
-            Destination.Settings -> { pane = 0; category = SettingsCategory.Library; refreshRoots(); refreshStorage(); homeEnabled = host.homeEnabled }
+            Destination.Settings -> { pane = 0; category = SettingsCategory.Library; refreshRoots(); refreshStorage(); homeEnabled = host.homeEnabled; refreshShaderVersion() }
+            is Destination.ShaderPicker -> { refreshShaderVersion(); listShaders(destination.folder) }
             Destination.Details -> state.selectedGame?.let { loadFacts(it.id) }
             Destination.Hidden -> scope.launch { hidden = repository.hiddenGames() }
             Destination.About -> scope.launch { notices = withContext(Dispatchers.IO) { context.assets.list("licenses").orEmpty().sorted() } }
@@ -456,9 +476,99 @@ class ConsoleShell(
     }
     fun sessionOptions(system: GameSystem, gameId: String) = GameOptions.session(options.resolve(system, gameId))
 
+    // ---- Shaders (ADR 0027) -------------------------------------------------------------------------------
+
+    fun resolveShader(system: GameSystem, gameId: String?) = shaderChoices.resolve(system, gameId)
+    /** The preset file a game starts with, or none; whether it can be read is the engine's to find out. */
+    fun sessionShader(system: GameSystem, gameId: String): File? = resolveShader(system, gameId).path?.let { File(shaderRoot, it) }
+    fun shaderTitle(target: ShaderTarget) = when (target) {
+        ShaderTarget.Global -> "Every console"
+        is ShaderTarget.Console -> target.system.title
+        is ShaderTarget.Game -> target.title
+    }
+    private fun refreshShaderVersion() { scope.launch { shaderVersion = runCatching { shaderUpdater.installed() }.getOrNull() } }
+    private fun listShaders(folder: String) {
+        scope.launch {
+            shaderListings[folder] = withContext(Dispatchers.IO) {
+                val directory = File(shaderRoot, folder)
+                val children = directory.listFiles().orEmpty().filter { !it.name.startsWith(".") }
+                ShaderListing(
+                    children.filter { child -> child.isDirectory && child.walkTopDown().any { it.isFile && it.extension == "glslp" } }
+                        .map { it.relativeTo(shaderRoot).invariantSeparatorsPath }.sorted(),
+                    children.filter { it.isFile && it.extension == "glslp" }.map { it.relativeTo(shaderRoot).invariantSeparatorsPath }.sorted())
+            }
+        }
+    }
+
+    /** The one Update button: the newest library, if it is not the one installed. Nothing runs while a game does. */
+    fun updateShaders() {
+        if (shaderJob?.isActive == true) return
+        if (status.state != SessionState.Idle) return coordinator.notify("Return to the library before updating shaders")
+        shaderUpdate = ShaderUpdate.Checking
+        shaderJob = scope.launch {
+            try {
+                when (val outcome = shaderUpdater.update { progress -> scope.launch { if (shaderUpdate != null) shaderUpdate = ShaderUpdate.Downloading(progress.downloaded, progress.total) } }) {
+                    is ShaderLibraryUpdater.Outcome.UpToDate -> coordinator.notify("Shaders are up to date")
+                    is ShaderLibraryUpdater.Outcome.Installed -> {
+                        shaderListings.clear()
+                        coordinator.notify("Shaders updated: ${plural(outcome.version.presets, "preset")}")
+                    }
+                }
+            } catch (failure: CancellationException) {
+                coordinator.notify("Shader update stopped. The shaders you had are kept.")
+            } catch (failure: Exception) {
+                coordinator.notify("Shaders could not be updated: ${plain(failure.message)}")
+            } finally {
+                shaderUpdate = null
+                shaderJob = null
+                shaderVersion = runCatching { shaderUpdater.installed() }.getOrNull()
+                optionsRevision++
+            }
+        }
+    }
+    fun cancelShaderUpdate() { shaderJob?.cancel() }
+
+    fun openShaderPicker(target: ShaderTarget) = push(Destination.ShaderPicker(target, ""))
+    /** Off and "the level above" are saved at once; a preset first builds and draws in a GL context of its own. */
+    fun chooseShader(target: ShaderTarget, choice: ShaderChoice) {
+        if (shaderChecking != null) return
+        if (choice !is ShaderChoice.Preset) return saveShader(target, choice)
+        val name = ShaderResolution.title(choice.path)
+        shaderChecking = choice.path
+        scope.launch {
+            val failure = withContext(Dispatchers.IO) {
+                try { ShaderLibrary.check(ShaderLibrary.load(shaderRoot, File(shaderRoot, choice.path))) }
+                catch (unusable: Exception) { if (unusable is CancellationException) throw unusable; unusable.message ?: "It could not be read" }
+            }
+            shaderChecking = null
+            shaderChoices.markFailed(shaderVersion?.commit, choice.path, failure != null)
+            optionsRevision++
+            if (failure != null) coordinator.notify("$name doesn't work on this device: $failure")
+            else saveShader(target, choice)
+        }
+    }
+    private fun saveShader(target: ShaderTarget, choice: ShaderChoice) {
+        shaderChoices.set(target, choice); optionsRevision++
+        while (top is Destination.ShaderPicker) pop()
+        coordinator.notify(when (choice) {
+            is ShaderChoice.Preset -> "${ShaderResolution.title(choice.path)} is the shader for ${shaderTitle(target).let { if (target is ShaderTarget.Global) it.lowercase() else it }}"
+            ShaderChoice.Off -> "No shader for ${shaderTitle(target).let { if (target is ShaderTarget.Global) it.lowercase() else it }}"
+            ShaderChoice.Inherit -> "${shaderTitle(target)} uses the ${if (target is ShaderTarget.Game) "console's" else "every-console"} shader"
+        })
+        // A paused game shows its new shader when it resumes.
+        if (status.state == SessionState.Paused) state.selectedGame?.let { game ->
+            val affected = when (target) {
+                ShaderTarget.Global -> true
+                is ShaderTarget.Console -> target.system == game.system
+                is ShaderTarget.Game -> target.id == game.id
+            }
+            if (affected) scope.launch { runCatching { engine.reloadShader() } }
+        }
+    }
+
     /** Presentation, controls and gameplay options return to their defaults. The library, folders, saves and HOME role are untouched. */
     fun resetSettings() {
-        changeControls(ConsoleSettings()); options.resetConsoles(); optionsRevision++
+        changeControls(ConsoleSettings()); options.resetConsoles(); shaderChoices.resetConsoles(); optionsRevision++
         setReducedMotion(false); setPauseShortcut(false); changeSound(false); changeAutoScan(true); changeHints(HintMode.Auto)
         changeShowStatus(true); changeShowPercent(true); changeClock(ClockStyle.System); changeAccent(Accent.Sand)
         changeTransition(LaunchTransition.Fade); changeShowFrameRate(false)
@@ -702,7 +812,7 @@ class ConsoleShell(
         }
     }
     private fun closeReview() { backupReview?.close(); backupReview = null }
-    fun close() { closeReview(); apps.close() }
+    fun close() { closeReview(); apps.close(); shaderJob?.cancel() }
 
     companion object {
         const val KEY_COLUMNS = 10

@@ -1,6 +1,6 @@
 # ADR 0027: Downloaded shader presets
 
-Date: 2026-10-16. Status: accepted; steps 1 to 3 of 4 done.
+Date: 2026-10-16. Status: accepted; all four steps done.
 
 ## Context
 
@@ -80,7 +80,9 @@ Each is its own commit, checked on the RP5 before the next starts.
    back. The commit, its date and the counts are kept in the library. The button itself, disabled while
    a game runs, is step 4.
 4. Settings, picker, per-console and per-game rows, the link to Screen effect, backup, docs, and
-   the UX tour.
+   the UX tour. Done 2026-10-16: Settings › Shaders, the picker pages, the Game options row, Screen
+   effect rows that say a shader replaces them, the optional `shaders` backup section, and
+   `LibretroEngine.reloadShader` for a paused game (docs/ux/SETTINGS_STRUCTURE.md).
 
 Done means, on the RP5 with one of the owner's games per console (consoles without one are listed
 as not run): crt-royale on a software-drawn console and on one that draws for itself, an LCD preset

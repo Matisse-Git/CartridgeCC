@@ -6,6 +6,12 @@ their explicit PCSX revision. Automatic session records carry their own system r
 state bytes also include a revision envelope checked before native unserialization. Memory-card bytes
 use the existing bounded 128 KiB SRAM entry. Disc bundles, BIOS and SAF grants remain excluded.
 
+Shader choices (ADR 0027): `settings` may carry a `shaders` object, `{"global": …, "consoles": {"<GameSystem>": …},
+"games": {"<content id>": …}}`, each value `off` or `preset:<path in the shader library>`; known consoles,
+hexadecimal ids and plain preset paths only, at most 10,000 games. It is restored with the other settings when
+*Also restore settings* is chosen. A backup without it, made before shaders, still validates. The shader
+library itself is never in a backup; Update shaders downloads it again.
+
 Console settings → Export backup writes a ZIP through Android's document picker. Restore backup reads and validates it into generated private staging, shows game/image/save counts, and offers Merge missing data, optional settings, or Cancel. Export/restore require the idle collection. Keep backups private; archives are not encrypted.
 
 `backup.json` declares `project-cartridge.backup`, version 1, logical Room game records, canonical order/removal exclusions, selected slot/query, whitelisted settings and checksummed blobs. Images are `images/<SHA-256>.image`, battery/RTC/manual states are `saves/<ROM-SHA-256>.<kind>`, and manual state blobs carry the integration revision, and an optional compatible automatic checkpoint is `session/state.bin`. ROM bytes, BIOS, Android roles/grants, signing material, credentials, caches, folder indexes, pending scrape reviews/packs and enrichment undo are excluded. Accepted image originals and provenance are preserved. Source content URIs are hints; reauthorize folders or Locate same ROM on another device.

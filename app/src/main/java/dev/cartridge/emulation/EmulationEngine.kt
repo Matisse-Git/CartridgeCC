@@ -24,4 +24,6 @@ interface EmulationEngine {
     suspend fun persistSaveRam()
     suspend fun configure(options: Map<String, String>)
     suspend fun checkpointSession() = Unit
+    /** A paused game reads its shader choice again (ADR 0027); the new picture shows when it resumes. */
+    suspend fun reloadShader() = Unit
 }

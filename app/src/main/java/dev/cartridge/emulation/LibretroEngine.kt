@@ -59,6 +59,8 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     private var eventJob: Job? = null
     private var errorJob: Job? = null
     private var shaderJob: Job? = null
+    /** A preset is drawn: the screen effect waits behind it (ADR 0027). */
+    private var presetActive = false
     private var checkpointJob: Job? = null
     private var lastWrittenRam: ByteArray? = null
     private var lastWrittenRtc: ByteArray? = null
@@ -127,6 +129,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                     rumbleEventsEnabled = false
                     enableMicrophone = false
                     shader = preset ?: screenEffect(options[GameOptions.SCREEN_EFFECT])
+                    presetActive = preset != null
                     // Firmware and memory-card ownership are fixed by the save design; user options cannot replace them.
                     variables = ((options - GameOptions.adapterKeys) + game.system.core.fixed).map { Variable(it.key, it.value) }.toTypedArray()
                 }
@@ -410,7 +413,24 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
         }
         // The wrapper stores the shader choice and applies it with the next presented frame.
         val effect = options[GameOptions.SCREEN_EFFECT]
-        if (effect != null) checkNotNull(mutableSurface.value).shader = screenEffect(effect)
+        if (effect != null && !presetActive) checkNotNull(mutableSurface.value).shader = screenEffect(effect)
+    }
+    override suspend fun reloadShader() = pausedOperation {
+        val current = checkNotNull(game)
+        val view = checkNotNull(mutableSurface.value)
+        val file = sessionShader(current)
+        val preset = file?.let {
+            try {
+                ShaderConfig.Preset(withContext(Dispatchers.IO) { ShaderLibrary.load(shaderLibrary, it) })
+            } catch (failure: Exception) {
+                if (failure is CancellationException) throw failure
+                mutableStatus.value = status.value.copy(notice = shaderNotUsed(it, failure.message))
+                null
+            }
+        }
+        // The wrapper keeps the choice and builds it with the next presented frame.
+        view.shader = preset ?: screenEffect(sessionOptions(current)[GameOptions.SCREEN_EFFECT])
+        presetActive = preset != null
     }
     private fun screenEffect(value: String?): ShaderConfig = when (value) {
         "sharp" -> ShaderConfig.Sharp

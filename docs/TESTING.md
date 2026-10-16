@@ -1,5 +1,26 @@
 # Tests and actual results
 
+## Shader presets, step 4: settings, picker and backup — 2026-10-16 (ADR 0027)
+
+On top of `7d3134a`. Host: both APKs build; 114 unit tests pass, among them `ShaderChoicesTest` (3: each
+level winning, Off stopping the levels above it, stored values read back or ignored); lint zero errors,
+the same 25 warnings; 10 asset checks pass.
+
+RP5 (Android 13, `RP5_V1.0.0.189_20251128_174732_user`): **62 of 62** in 702 s, the full suite with the
+new `-Suite Shaders` (`ShaderPresetTest`, `ShaderLibraryUpdateTest`, `ShaderSettingsTest`). In
+`ShaderSettingsTest`, with a fixture library of the test's own and the Super Nintendo probe, choices
+made through the interface were read back from the picture itself: red with no shader; blue once every
+console's shader was chosen in Settings › Shaders; yellow once Super Nintendo's own was chosen over it;
+red again after the game's own *No shader* was chosen in the paused game's Game options, shown when it
+resumed; Game options' Screen effect read *Replaced by shader* while yellow applied; a broken preset was
+refused where it was picked, the page stayed open, the row read *Didn't work on this device* and the
+choice stayed; *Use the console's shader* brought yellow back; and **Update shaders**, pressed in
+Settings, installed `glsl-shaders@148ce728` (621 presets) in place of the fixture library. In
+`BackupDeviceTest`, every console's, a console's and a game's shader choices went through an export and
+an optional settings restore, and a settings object without them still validated. `UxTourTest`: three
+new captures (`12b-settings-shaders`, `12c-shader-picker`, `12d-shader-picker-crt`) and the Shader row in
+`08-game-options` and `22-pause-game-options`, looked at.
+
 ## Shader presets, step 3: the library download — 2026-10-16 (ADR 0027)
 
 On top of `44e12ef`. Host: `ShaderLibraryUpdaterTest` (7) with made-up archives: install, up to date

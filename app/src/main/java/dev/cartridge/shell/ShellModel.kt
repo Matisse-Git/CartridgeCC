@@ -49,7 +49,7 @@ class Page(val key: String, val title: String, val rows: List<MenuRow>, val styl
     val subtitle: String? = null, val body: String? = null)
 
 enum class SettingsCategory(val title: String) {
-    Library("Library"), Appearance("Appearance"), Gameplay("Gameplay"), Controls("Controls"), System("System"), Advanced("Advanced")
+    Library("Library"), Appearance("Appearance"), Gameplay("Gameplay"), Shaders("Shaders"), Controls("Controls"), System("System"), Advanced("Advanced")
 }
 
 class TextSpec(val title: String, val hint: String, val initial: String, val limit: Int, val tag: String,
@@ -77,6 +77,18 @@ sealed class Destination(val key: String, val opaque: Boolean = false) {
     data class Setup(val core: dev.cartridge.domain.Core) : Destination("setup")
     /** The library's sibling, one press of Back away from its root and one press back to it. */
     data object Apps : Destination("apps", true)
+    /** One folder of the shader library, for choosing [target]'s shader (ADR 0027); "" is the library's top. */
+    data class ShaderPicker(val target: dev.cartridge.shaders.ShaderTarget, val folder: String) :
+        Destination("shaders:${target.key}:$folder", true)
+}
+
+/** A folder of the shader library as the picker lists it: folders that hold presets, then its own presets. */
+class ShaderListing(val folders: List<String>, val presets: List<String>)
+
+/** The Update button's progress; null when nothing is running. */
+sealed interface ShaderUpdate {
+    data object Checking : ShaderUpdate
+    data class Downloading(val bytes: Long, val total: Long) : ShaderUpdate
 }
 
 /** An import from the folder picker to its result. Every phase has something to read and one way out. */

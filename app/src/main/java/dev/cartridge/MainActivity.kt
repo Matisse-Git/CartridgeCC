@@ -105,8 +105,10 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
     protected open fun presentationPreferences() = getPreferences(MODE_PRIVATE)
     protected open fun createSessionStore() = SessionStore(File(filesDir, "session-checkpoint"))
     protected open fun systemDirectory() = File(filesDir, "system")
-    /** The shader preset a game starts with; settings choose it from step 4 of ADR 0027 on. */
-    protected open fun sessionShader(game: dev.cartridge.emulation.GameRequest): File? = null
+    /** The shader preset a game starts with: its own choice, its console's, or every console's (ADR 0027). */
+    protected open fun sessionShader(game: dev.cartridge.emulation.GameRequest): File? = shell.sessionShader(game.system, game.id)
+    /** Where the shader library is installed and updated. */
+    protected open fun shaderBase() = File(filesDir, "shaders")
     protected open fun createAppSource(): AppSource = InstalledApps(this)
     private val inputFrames = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
@@ -148,7 +150,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         val sessionStore = createSessionStore()
         val preferences = presentationPreferences()
         engine = LibretroEngine(this, lifecycleScope, sessionOptions = { game -> shell.sessionOptions(game.system, game.id) }, sessionStore = sessionStore,
-            systemDirectory = systemDirectory(), sessionShader = ::sessionShader)
+            systemDirectory = systemDirectory(), sessionShader = ::sessionShader, shaderLibrary = File(shaderBase(), "library"))
         labelStore = createLabelStore()
         mediaSound = MediaSound(this)
         val repository = createRepository()
@@ -173,7 +175,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
             if (coordinator.state.value.allGames.any { it.id == game.id }) coordinator.previewScrapedLabel(game, label)
             else { coordinator.notify("This game is no longer in the collection"); scraper.previewFinished() }
         }
-        shell = ConsoleShell(this, lifecycleScope, this, coordinator, engine, repository, scraper, labelStore, sessionStore, packStore, preferences, systemDirectory(), createAppSource())
+        shell = ConsoleShell(this, lifecycleScope, this, coordinator, engine, repository, scraper, labelStore, sessionStore, packStore, preferences, systemDirectory(),
+            createAppSource(), shaderBase = shaderBase())
         shell.pendingLocate = savedInstanceState?.getString("recoveryId")
         shell.reopenApps = savedInstanceState?.getBoolean("appsOpen") == true
         input = ControllerRouter(navigate = shell::navigate, select = shell::select, back = shell::back, pause = coordinator::pause,

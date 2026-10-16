@@ -18,6 +18,7 @@ so". [CONSOLES](CONSOLES.md) lists the fields and the status of each console.
 | `cpp/cores.cmake`, `cartridge_shim.c` | cores that need only the Libretro ABI, with shared frame and PCM counters |
 | `cpp/flycast.cmake`, `armsx2.cmake`, `dolphin.cmake`, `core_wrap.cmake` | the three engines that draw for themselves (ADR 0023, 0026): one in this CMake tree, two as projects of their own, all given the second build of the shim |
 | `storage/CoreData` | an engine's own packaged data, unpacked into the private system folder once per build of its core |
+| `shaders/ShaderChoices` | every console's, each console's and each game's shader choice, resolved in that order, and presets that failed the check, per library commit (ADR 0027) |
 | `shaders/ShaderLibraryUpdater`, `GitHubShaderSource` | the Update button's work: newest commit, bounded download and unpacking, swap into `files/shaders/library` (ADR 0027) |
 | `shaders/PresetReader`, `GlslCompat`, `ShaderLibrary` | a RetroArch GLSL preset read as RetroArch reads it, a GLSL ES form of each pass for when its own does not compile, and the images decoded for the host (ADR 0027) |
 | `libretrodroid/` (module) | the host: LibretroDroid 0.14.0 built from its source since 2026-10-16 (ADR 0027), GLSurfaceView, final drawing pass, audio and input; its changes from the tag are listed in its `UPSTREAM.md` |

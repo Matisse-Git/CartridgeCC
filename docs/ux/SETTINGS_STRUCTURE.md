@@ -1,6 +1,6 @@
 # Settings structure
 
-One destination: START › Settings. Six sections, grouped by what the player wants to do. Every row
+One destination: START › Settings. Seven sections, grouped by what the player wants to do. Every row
 below is wired to real behaviour; nothing is a placeholder. Row definitions live in
 `shell/ShellPages.kt` (`settingsRows`, `controlRows`).
 
@@ -151,6 +151,35 @@ once per session start and live options again when changed while paused.
 
 Firmware and memory-card variables (`pcsx_rearmed_bios`, `_memcard1`, `_memcard2`) are fixed by the
 save design and cannot be displaced by an option.
+
+## Shaders
+
+RetroArch's GLSL shader presets (ADR 0027), drawn by the host in place of the Screen effect.
+
+| Row | Does | Notes |
+|---|---|---|
+| Update shaders | Asks GitHub for the newest commit of `libretro/glsl-shaders`; downloads it only if it is not installed | value: *Installed* / *Not downloaded* / *Checking…* / *12.3 MB of 26.0 MB*; help line: commit, date and preset count. While it runs the row reads **Stop updating** and cancels. Dimmed while a game runs. A failure or a stop keeps the library that was there |
+| Every console › Shader (›) | Opens the picker for every console | |
+| Consoles › one row per console (›) | Opens the picker for that console | value: what that console's games get; help line: *This console's own*, *From every console* or *No shader is chosen* |
+
+The **picker** is a page: *Use the every-console shader* (or *Use the console's shader* for a
+game), *No shader*, then the library's folders, then a folder's presets. Choosing a preset builds it
+and draws two frames in a GL context of its own first: if that fails, the reason is shown, the page
+stays open, the preset is marked *Didn't work on this device* for this library commit, and the
+previous choice is kept. A preset an update removed shows as *name (missing)*; its games then start
+without it, with one notice.
+
+```
+every console  →  console  →  this game only        (No shader at any level stops there)
+```
+
+A game's own choice is the **Shader** row in Game options. A game in the pause menu picks up a change
+when it resumes. While a shader applies, that game's **Screen effect** row reads *Replaced by
+shader*, and Gameplay's console Screen effect rows say on which consoles a shader replaces them; the
+effect still stores its value for when the shader is off. Stored as `shader.global`,
+`shader.console.<GameSystem>` and `shader.game.<content id>` (`off` or `preset:<path in the
+library>`); Reset settings clears the first two, as with other console options. The library itself
+is in the app's private `files/shaders/library`.
 
 ## Controls
 

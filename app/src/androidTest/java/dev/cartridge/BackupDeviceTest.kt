@@ -62,6 +62,12 @@ class BackupDeviceTest {
             val saves = SaveStore(File(directory, "saves")); saves.write(id, "sram", byteArrayOf(67, 1)); saves.write(id, "rtc", byteArrayOf(35)); saves.write(id, "state", byteArrayOf(1, 2, 3))
             val session = SessionStore(File(directory, "session")); session.write(id, GameSystem.GB, byteArrayOf(4, 5, 6), 456)
             preferences.edit().putBoolean("swapGameButtons", true).putString("layout", "Grid").commit()
+            // Shader choices travel by name; the library itself is not part of a backup (ADR 0027).
+            val shaders = dev.cartridge.shaders.ShaderChoices(preferences)
+            val gameTarget = dev.cartridge.shaders.ShaderTarget.Game(id, GameSystem.GB, "Original probe")
+            shaders.set(dev.cartridge.shaders.ShaderTarget.Global, dev.cartridge.shaders.ShaderChoice.Preset("crt/crt-royale.glslp"))
+            shaders.set(dev.cartridge.shaders.ShaderTarget.Console(GameSystem.GB), dev.cartridge.shaders.ShaderChoice.Off)
+            shaders.set(gameTarget, dev.cartridge.shaders.ShaderChoice.Preset("handheld/gb-dot-matrix-DMG.glslp"))
             val output = ByteArrayOutputStream(); BackupStore(first, firstLabels, saves, session, File(directory, "staging")).export(output, BackupPreferences.capture(preferences))
             val bytes = output.toByteArray(); val entries = unzip(bytes)
             assertEquals(6, entries.size); assertTrue(entries.keys.none { it.endsWith(".gb") || it.endsWith(".gba") || it.endsWith(".gbc") || it.contains("bios") })
@@ -72,9 +78,16 @@ class BackupDeviceTest {
                 assertEquals(2, review.library.games.size); assertEquals(1, review.imageCount); assertEquals(3, review.saveCount)
                 assertTrue(store.merge(review).contains("2 new games"))
                 assertEquals("Grid", review.preferences.getString("layout"))
+                // A backup made before shader choices existed still restores.
+                BackupPreferences.validate(org.json.JSONObject(review.preferences.toString()).apply { remove("shaders") })
                 preferences.edit().putBoolean("swapGameButtons", false).commit()
+                shaders.resetConsoles(); shaders.set(gameTarget, dev.cartridge.shaders.ShaderChoice.Inherit)
                 assertFalse(preferences.getBoolean("swapGameButtons", false)) // Optional preferences are not silently applied.
+                assertEquals(dev.cartridge.shaders.ResolvedShader(null, dev.cartridge.shaders.ShaderLevel.None), shaders.resolve(GameSystem.GB, id))
                 BackupPreferences.restore(preferences, review.preferences); assertTrue(preferences.getBoolean("swapGameButtons", false))
+                assertEquals(dev.cartridge.shaders.ResolvedShader("handheld/gb-dot-matrix-DMG.glslp", dev.cartridge.shaders.ShaderLevel.Game), shaders.resolve(GameSystem.GB, id))
+                assertEquals(dev.cartridge.shaders.ResolvedShader(null, dev.cartridge.shaders.ShaderLevel.Console), shaders.resolve(GameSystem.GB, null))
+                assertEquals(dev.cartridge.shaders.ResolvedShader("crt/crt-royale.glslp", dev.cartridge.shaders.ShaderLevel.Global), shaders.resolve(GameSystem.GBA, null))
             }
             val restored = second.initialize().slots.filterNotNull().single(); assertEquals(id, restored.id); assertEquals(GameSystem.GB, restored.system)
             assertEquals(label, restored.label); assertEquals(accepted, restored.metadata["year"]); assertEquals(42000L, restored.playMs); assertEquals(321L, restored.lastPlayed); assertTrue(restored.favorite)

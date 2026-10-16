@@ -49,7 +49,7 @@ object ShaderLibrary {
     }
 
     /** The Update button's worker for the installed library, against GitHub. */
-    fun updater(context: Context) = ShaderLibraryUpdater(File(context.filesDir, "shaders"), GitHubShaderSource(), freeSpace = { folder ->
+    fun updater(context: Context, base: File = File(context.filesDir, "shaders")) = ShaderLibraryUpdater(base, GitHubShaderSource(), freeSpace = { folder ->
         val storage = context.getSystemService(android.os.storage.StorageManager::class.java)
         storage.getAllocatableBytes(storage.getUuidForPath(folder))
     })

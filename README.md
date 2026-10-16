@@ -199,6 +199,12 @@ last artwork change, remove the label, locate the game file, hide from library. 
 file, saves and artwork; restore from the menu in the same session or from Settings › Library ›
 Hidden games.
 
+**Shaders** (Settings › Shaders, ADR 0027). **Update shaders** downloads RetroArch's GLSL shader library
+(`libretro/glsl-shaders`, about 30 MB) from GitHub, or says it is up to date. Choose a preset for every
+console, for each console, or for one game from its Game options; a game's own choice wins over its
+console's, which wins over every console's. Each preset is checked on the device before it is saved.
+crt-royale, crt-guest-dr-venom and LCD grids run on the RP5; 605 of the library's 621 presets build there.
+
 **In a game.** L3 + R3 pauses (Start + Select is the alternative, Settings › Controls). Android's
 Back and the top-right corner also pause. The pause menu offers Resume, Save State, Load State, Game
 Options and Return to Library. Nothing is drawn over a running game. The first button of a

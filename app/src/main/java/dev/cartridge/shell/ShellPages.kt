@@ -14,6 +14,11 @@ import dev.cartridge.library.LibrarySort
 import dev.cartridge.session.CollectionScreen
 import dev.cartridge.session.CollectionState
 import dev.cartridge.session.LaunchFailure
+import dev.cartridge.shaders.ResolvedShader
+import dev.cartridge.shaders.ShaderChoice
+import dev.cartridge.shaders.ShaderLevel
+import dev.cartridge.shaders.ShaderResolution
+import dev.cartridge.shaders.ShaderTarget
 import dev.cartridge.ui.Accent
 import dev.cartridge.ui.ClockStyle
 
@@ -38,7 +43,7 @@ internal fun ConsoleShell.buildPage(state: CollectionState, status: EngineStatus
             else -> null
         }
         Destination.SystemMenu -> systemMenu(state)
-        Destination.Settings -> Page("settings:${category.name}", "Settings", settingsRows(state, category), PageStyle.Settings)
+        Destination.Settings -> Page("settings:${category.name}", "Settings", settingsRows(state, category, status), PageStyle.Settings)
         Destination.Controls -> Page("controls", "Controls", controlRows(state), PageStyle.Page, "Menus and games keep separate button choices.")
         is Destination.Folder -> folderPage(destination.uri)
         Destination.Hidden -> Page("hidden", "Hidden games", hidden.map { entry ->
@@ -68,6 +73,7 @@ internal fun ConsoleShell.buildPage(state: CollectionState, status: EngineStatus
         Destination.LaunchFailure -> state.launchFailure?.let(::failurePage)
         is Destination.Setup -> setupPage(destination.core)
         Destination.Apps -> Page("apps", "Apps", emptyList(), PageStyle.Apps)
+        is Destination.ShaderPicker -> shaderPickerPage(destination)
     }
 }
 
@@ -152,17 +158,24 @@ private fun ConsoleShell.optionsPage(game: LibraryGame, paused: Boolean): Page {
     val family = game.system.core
     val console = GameOptions.resolve(game.system, options.console(family))
     val overrides = options.game(game.id)
+    val shader = resolveShader(game.system, game.id)
+    val target = ShaderTarget.Game(game.id, game.system, game.title)
     return Page("options", "Game options", buildList {
         console.forEach { (option, consoleValue) ->
             val override = overrides[option.id]?.takeIf { value -> option.choices.any { it.value == value } }
             val cycle: List<String?> = listOf<String?>(null) + option.choices.map { it.value }
-            add(MenuRow("option:${option.id}", option.title, RowKind.Choice, value = option.title(override ?: consoleValue),
+            val replaced = option.key == GameOptions.SCREEN_EFFECT && shader.path != null
+            add(MenuRow("option:${option.id}", option.title, RowKind.Choice, value = if (replaced) "Replaced by shader" else option.title(override ?: consoleValue),
                 note = when {
+                    replaced -> "${ShaderResolution.title(shader.path!!)} is drawn instead. Without a shader: ${option.title(override ?: consoleValue)}"
                     override == null -> "Console setting"
                     paused && !option.live -> "Only this game · from its next start"
                     else -> "Only this game"
                 }, tag = "option-${option.id}", adjust = { delta -> setGameOption(game, option, cycle.step(override, delta)) }))
         }
+        add(MenuRow("shader", "Shader", RowKind.Link, value = shaderValue(shader.path),
+            note = shaderNote(shader, shaderChoices.get(target) != ShaderChoice.Inherit) + if (paused) " · shows when the game resumes" else "",
+            warn = shaderMissing(shader.path), tag = "option-shader") { openShaderPicker(target) })
         add(MenuRow("reset", "Use console settings", enabled = overrides.isNotEmpty(), tag = "option-reset") { clearGameOptions(game) })
         if (paused) add(MenuRow("controls", "Controls", RowKind.Link, tag = "option-controls") { push(Destination.Controls) })
     }, PageStyle.Sheet, "${game.title} · ${family.title}")
@@ -253,7 +266,7 @@ internal fun ConsoleShell.controlRows(state: CollectionState): List<MenuRow> {
         MenuRow("reset", "Reset controls", tag = "controls-reset") { changeControls(controls.copy(swapMenuButtons = false, swapGameButtons = false, swapShoulders = false, deadZone = .35f)); setPauseShortcut(false) })
 }
 
-internal fun ConsoleShell.settingsRows(state: CollectionState, category: SettingsCategory): List<MenuRow> {
+internal fun ConsoleShell.settingsRows(state: CollectionState, category: SettingsCategory, status: EngineStatus): List<MenuRow> {
     optionsRevision
     val ready = state.loaded && !state.busy
     fun header(title: String) = MenuRow("header:$title", title, RowKind.Header)
@@ -262,8 +275,11 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
     // A null family is the options every console shares.
     fun optionRows(family: Core?) = GameOptions.all.filter { it.family == family }.map { option ->
         val value = GameOptions.resolve(GameSystem.entries.first { family == null || it.core == family }, options.console(family ?: Core.Mgba)).getValue(option)
+        val shaded = if (option.key != GameOptions.SCREEN_EFFECT) emptyList()
+            else GameSystem.entries.filter { (family == null || it.core == family) && resolveShader(it, null).path != null }
         MenuRow("option:${option.id}", option.title, RowKind.Choice, value = option.title(value),
-            note = (family?.let { "${it.title}: " } ?: "") + option.help + if (option.live || option.variable == null) "" else " Applies from a game's next start.",
+            note = (family?.let { "${it.title}: " } ?: "") + option.help + (if (option.live || option.variable == null) "" else " Applies from a game's next start.") +
+                if (shaded.isEmpty()) "" else " Replaced by a shader on ${shaded.joinToString { it.title }}.",
             tag = "option-${option.id}", adjust = { delta -> setConsoleOption(option, option.next(value, delta)) })
     }
     return when (category) {
@@ -327,6 +343,7 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
                 add(MenuRow("discard", "Discard saved session", RowKind.Danger, note = "Battery and manual saves are kept", enabled = ready, tag = "settings-discard") { coordinator.discardResume() })
             }
         }
+        SettingsCategory.Shaders -> shaderRows(status)
         SettingsCategory.Controls -> controlRows(state)
         SettingsCategory.System -> listOf(
             toggle("home", "Offer Cartridge as home screen", homeEnabled, note = "Android asks before it changes your home app.") { setHome(it) },
@@ -342,4 +359,98 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
             MenuRow("reset", "Reset settings", RowKind.Danger, note = "Appearance, controls and gameplay return to defaults. Games, saves and folders are not affected.",
                 enabled = !state.busy, tag = "settings-reset") { resetSettings() })
     }
+}
+
+// ---- Shaders (ADR 0027) ---------------------------------------------------------------------------------
+
+private fun megabytes(bytes: Long) = if (bytes < 1L shl 20) "${(bytes shr 10).coerceAtLeast(1)} KB" else "%.1f MB".format(bytes / (1L shl 20).toDouble())
+private fun ConsoleShell.shaderValue(path: String?) = when {
+    path == null -> "None"
+    shaderMissing(path) -> "${ShaderResolution.title(path)} (missing)"
+    else -> ShaderResolution.title(path)
+}
+/** A chosen preset the installed library no longer has; the game is then shown without it. */
+private fun ConsoleShell.shaderMissing(path: String?) = path != null && !java.io.File(shaderRoot, path).isFile
+private fun shaderNote(resolved: ResolvedShader, own: Boolean) = when {
+    own -> "Only this game"
+    resolved.level == ShaderLevel.Console -> "Console setting"
+    resolved.level == ShaderLevel.Global -> "Every console"
+    else -> "No shader is chosen"
+}
+
+private fun ConsoleShell.shaderRows(status: EngineStatus): List<MenuRow> = buildList {
+    val version = shaderVersion
+    val update = shaderUpdate
+    val idle = status.state == SessionState.Idle
+    fun header(title: String) = MenuRow("header:$title", title, RowKind.Header)
+    add(MenuRow("update", if (update == null) "Update shaders" else "Stop updating",
+        value = when (update) {
+            null -> if (version != null) "Installed" else "Not downloaded"
+            ShaderUpdate.Checking -> "Checking…"
+            is ShaderUpdate.Downloading -> if (update.total > 0) "${megabytes(update.bytes)} of ${megabytes(update.total)}" else "${megabytes(update.bytes)} downloaded"
+        },
+        note = when {
+            !idle && update == null -> "Return to the library to update."
+            version != null -> "RetroArch GLSL shaders · ${version.commit.take(7)} of ${version.date.take(10)} · ${plural(version.presets, "preset")}"
+            else -> "Downloads RetroArch's GLSL shader library from GitHub, about 30 MB."
+        }, enabled = update != null || idle, tag = "shaders-update") { if (update != null) cancelShaderUpdate() else updateShaders() })
+    add(header("Every console"))
+    val global = shaderChoices.get(ShaderTarget.Global)
+    val globalPath = (global as? ShaderChoice.Preset)?.path
+    add(MenuRow("global", "Shader", RowKind.Link, value = shaderValue(globalPath), warn = shaderMissing(globalPath),
+        note = "Used by every console without a shader of its own.", tag = "shaders-global") { openShaderPicker(ShaderTarget.Global) })
+    add(header("Consoles"))
+    GameSystem.entries.forEach { system ->
+        val resolved = resolveShader(system, null)
+        add(MenuRow("console:${system.name}", system.title, RowKind.Link, value = shaderValue(resolved.path), warn = shaderMissing(resolved.path),
+            note = when (resolved.level) {
+                ShaderLevel.Console -> if (resolved.path == null) "No shader on this console" else "This console's own"
+                ShaderLevel.Global -> "From every console"
+                else -> "No shader is chosen"
+            }, tag = "shaders-console-${system.name.lowercase()}") { openShaderPicker(ShaderTarget.Console(system)) })
+    }
+    add(MenuRow("scope", "A game can use its own shader", RowKind.Info, note = "Open a game's details or pause menu, then Game options."))
+}
+
+private fun ConsoleShell.shaderPickerPage(destination: Destination.ShaderPicker): Page {
+    optionsRevision // Subscribes the page to saved choices and failed checks.
+    val target = destination.target
+    val chosen = (shaderChoices.get(target) as? ShaderChoice.Preset)?.path
+    val current = shaderChoices.get(target)
+    val listing = shaderListings[destination.folder]
+    val failed = shaderChoices.failed(shaderVersion?.commit)
+    val checking = shaderChecking
+    return Page(destination.key, "Shader for ${shaderTitle(target).let { if (target is ShaderTarget.Global) it.lowercase() else it }}", buildList {
+        if (destination.folder.isEmpty()) {
+            if (target !is ShaderTarget.Global) {
+                val above = when (target) {
+                    is ShaderTarget.Game -> resolveShader(target.system, null)
+                    is ShaderTarget.Console -> ShaderResolution.resolve(ShaderChoice.Inherit, ShaderChoice.Inherit, shaderChoices.get(ShaderTarget.Global))
+                    else -> ResolvedShader(null, ShaderLevel.None)
+                }
+                add(MenuRow("inherit", if (target is ShaderTarget.Game) "Use the console's shader" else "Use the every-console shader",
+                    value = if (current == ShaderChoice.Inherit) "Chosen" else null, note = "Now: ${shaderValue(above.path)}",
+                    enabled = checking == null, tag = "shader-inherit") { chooseShader(target, ShaderChoice.Inherit) })
+            }
+            add(MenuRow("off", "No shader", value = if (current == ShaderChoice.Off || target is ShaderTarget.Global && current == ShaderChoice.Inherit) "Chosen" else null,
+                note = "The picture as its Screen effect draws it", enabled = checking == null, tag = "shader-off") { chooseShader(target, ShaderChoice.Off) })
+            add(MenuRow("header:library", "RetroArch shaders", RowKind.Header))
+        }
+        when {
+            listing == null -> add(MenuRow("reading", "Reading the shader library…", RowKind.Info))
+            listing.folders.isEmpty() && listing.presets.isEmpty() -> add(MenuRow("empty", "No shaders yet", RowKind.Info,
+                note = "Download them under Settings › Shaders, then Update shaders."))
+        }
+        listing?.folders?.forEach { folder ->
+            val name = folder.substringAfterLast('/')
+            add(MenuRow("folder:$folder", name, RowKind.Link, value = if (chosen?.startsWith("$folder/") == true) "Chosen inside" else null,
+                tag = "shader-folder-$name") { push(Destination.ShaderPicker(target, folder)) })
+        }
+        listing?.presets?.forEach { path ->
+            val name = ShaderResolution.title(path)
+            add(MenuRow("preset:$path", name, value = when { checking == path -> "Checking…"; chosen == path -> "Chosen"; else -> null },
+                note = if (path in failed) "Didn't work on this device" else null, warn = path in failed, enabled = checking == null,
+                tag = "shader-preset-$name") { chooseShader(target, ShaderChoice.Preset(path)) })
+        }
+    }, PageStyle.Page, destination.folder.ifEmpty { null } ?: "Choosing a preset checks it on this device first.")
 }
