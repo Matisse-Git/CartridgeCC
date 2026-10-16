@@ -35,7 +35,8 @@ that larger dependency/migration surface. Reconsider SceneView after the surface
 maintenance; direct integration here is about explicit ownership, not a claim SceneView is unstable.
 
 LibretroDroid's tag compiles with SDK 33, min SDK 21, JVM 17 and CMake 3.22.1; its published AAR
-was resolved from JitPack. `GLRetroView` is a GLSurfaceView and initializes the game on its GL thread.
+was resolved from JitPack until 2026-10-16, when the same tag's source became the `libretrodroid`
+module (ADR 0027, `libretrodroid/UPSTREAM.md`). `GLRetroView` is a GLSurfaceView and initializes the game on its GL thread.
 Its private render lifecycle observer is installed after core initialization. The adapter uses a
 per-session LifecycleRegistry, subscribes before initialization, and gates readiness on FrameRendered.
 It avoids the upstream blocking serialization latch by catching failures inside a bounded GL queue.

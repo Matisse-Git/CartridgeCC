@@ -159,3 +159,9 @@
   backgrounding or the session lifecycle with a real sleep (`RealGameCheck -e sleep N`), which the
   device's power button does and `moveToState` only approximates; the USB link drops after one, so
   read the result from the device's log.
+
+- The host is LibretroDroid 0.14.0 built from its source in `libretrodroid/` (ADR 0027). Its
+  submodules are fetched by archive hash, never copied in; every change from the tag is listed in
+  `libretrodroid/UPSTREAM.md` and keeps the host's API unless the change says why. Its native code
+  is optimised in every variant. After a change to it, run the regression and `RealGameCheck` on
+  one of the owner's games per console, and compare presentation with the previous build.

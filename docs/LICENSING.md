@@ -99,7 +99,7 @@ Socket/Slot were references only; no frontend code was copied from them.
 
 | Dependency | Version / source | License and consequences |
 | --- | --- | --- |
-| LibretroDroid | 0.14.0, commit 8835c3098514390a271e36983957f7bb5f40abf1 | GPL-3.0-or-later in source headers; published metadata labels GPL-3.0. A combined frontend distribution needs GPL-compatible licensing and complete corresponding source/build instructions |
+| LibretroDroid | 0.14.0, commit 8835c3098514390a271e36983957f7bb5f40abf1, built from source in `libretrodroid/` since 2026-10-16 (changes listed in its `UPSTREAM.md`) | GPL-3.0-or-later in source headers; published metadata labels GPL-3.0. A combined frontend distribution needs GPL-compatible licensing and complete corresponding source/build instructions |
 | mGBA | 0.10.5, hash-pinned source | MPL-2.0 main code, file-level source obligations and notices; source/build changes must be available as required |
 | blip_buf in mGBA | 1.1.0 in selected source | LGPL-2.1-or-later; compiled into the core, so source and suitable relinking/rebuild materials must be provided, not just the top-level MPL license |
 | inih in mGBA | bundled source | BSD-3-Clause; retain copyright/license/disclaimer |
@@ -114,8 +114,8 @@ Socket/Slot were references only; no frontend code was copied from them.
 | KSP build plugin | 2.1.20-1.0.32 | Apache-2.0 in resolved Maven POM; build-only code generation |
 | Compose UI test / Espresso Intents | BOM 2025.04.01 / 3.6.1 | AndroidX Apache-2.0; instrumentation-only, not production runtime |
 | Gradle wrapper | 8.13 | Apache-2.0; generated wrapper retained, distribution checksum pinned |
-| Oboe in LibretroDroid | b15f5e39c01a7ada306d959e5129620b145fb8b4 | Apache-2.0; corresponding selected source/notice included in a frontend distribution |
-| libretro-common in LibretroDroid | b0c348ea5543c4d7fb0bc479258aa6988b20c0c9 | File-level permissive licenses for the five compiled C files; preserve headers, not a guessed repository-wide license |
+| Oboe in LibretroDroid | b15f5e39c01a7ada306d959e5129620b145fb8b4, fetched by archive hash | Apache-2.0; corresponding selected source/notice included in a frontend distribution |
+| libretro-common in LibretroDroid | b0c348ea5543c4d7fb0bc479258aa6988b20c0c9, fetched by archive hash | File-level permissive licenses for the five compiled C files; preserve headers, not a guessed repository-wide license |
 | Studio IBL, contact WAV, icon/probe | original project generators/source | Original development assets, no adopted third-party art/audio/HDR photographs; project-wide licensing choice remains with the owner |
 | Cartridge, tall cartridge and disc GLB (since 2026-10-10) | three models the owner downloaded from Sketchfab, converted by `tools/import_models.py` | Third-party models. The owner states they are free to use and that this build is for personal use only; the individual licence and author of each download are not recorded here. See "Imported media models" below |
 | NES, Super Famicom, Super Nintendo and Genesis cartridge GLB (since 2026-10-12) | four more models the owner supplied, converted by the same tool | Third-party models, one of them taken from a commercial mobile game. Same statement by the owner; same gap in what is recorded. See "Imported media models" below |
@@ -138,7 +138,9 @@ Inspected sources:
 Preserved texts are in `docs/licenses/`. LibretroDroid's full source/submodule commits and mGBA's
 complete hash-pinned archive can be retrieved from those references. The source-built core disables
 Qt/SDL/FFmpeg/libpng/zlib/libzip/SQLite/Lua/debugger dependencies, and retains GBA emulation and audio.
-JitPack's AAR is version-pinned; retain its source and build provenance for any actual release.
+LibretroDroid is no longer taken from JitPack: its tag's source is in `libretrodroid/` with its
+licence, and its two submodules are fetched by archive hash, so the source of the built library is
+in the repository.
 
 ## Imported media models
 

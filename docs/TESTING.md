@@ -1,5 +1,49 @@
 # Tests and actual results
 
+## LibretroDroid built from source — 2026-10-16 (ADR 0027 step 1, `libretrodroid/UPSTREAM.md`)
+
+Working tree on top of `ef2d9f7`, versionCode 17. Device: Retroid Pocket 5, Android 13,
+`RP5_V1.0.0.189_20251128_174732_user`, Adreno 650, OpenGL ES 3.2. The host library is LibretroDroid
+0.14.0 built from the tag's source in the `libretrodroid` module instead of JitPack's AAR; nothing
+is meant to look or behave differently.
+
+**Host.** Both APKs build (debug APK 54,361,908 bytes, SHA-256 begins `e3793cfe4bd9bb29`). **90 host
+tests pass.** Lint on the app: zero errors, the same 25 warnings. 10 asset checks pass. Against the
+AAR: the same 39 classes with identical `javap -public` output, the same 34 exported JNI functions,
+the same eight system libraries linked; the packaged `liblibretrodroid.so` is the module's own
+(SHA-256 begins `f6aa365a0a30de8b`; the AAR's began `f49335917c7e2a4f`).
+
+**RP5: the regression.** **58 of 58** in 509.2 s (`OK (58 tests)`), including `BrowseStabilityTest`,
+`LibraryPacingTest`, `UxTourTest` and the Dreamcast, PlayStation 2, GameCube and large-disc tests.
+
+**RP5: one of the owner's games per console** (`RealGameCheck`, 30 s each, Start and A pressed at
+fixed seconds). `RealGameCheck` can now start a cartridge game by the start of its hash; it took
+only disc bundles before. Saturn's run uses a copy of the owner's own `sega_101.bin`, put in the
+app's private `files/m1-owner-firmware/` from the owner's library on the device; the library was
+not changed. Every game reached Running and drew its title or menu on this build (pictures looked
+at, not kept). The Dreamcast, GameCube and PlayStation 2 games were also put to sleep for 5 s at
+second 20 with the power key's event: Dreamcast came back from its checkpoint and carried on;
+GameCube and PlayStation 2 stayed loaded and paused and carried on (1316 → 1440 and 1392 → 1518
+core runs).
+
+The same nine games were run again on the source build and on a build of the same tree with the
+AAR, sampling the game's SurfaceView presentation from SurfaceFlinger (`--latency` on its BLAST
+layer, about 380 frames between seconds 12 and 19) and the shim's counters where the core has
+them:
+
+| Console | Presented, source build | Presented, AAR | Shim counters per second (source / AAR) |
+|---|---|---|---|
+| Game Boy, Game Boy Color, Game Boy Advance, PlayStation | 60.0 fps, max 16.85 ms, no late frame | 60.0 fps, max 16.83 ms, no late frame | none (these cores are not wrapped by the shim) |
+| Super Nintendo | 60.0 fps, max 16.79 ms | 60.0 fps, max 16.85 ms | drawn 61.9 / 61.9, audio 33,009 / 33,009 |
+| Saturn | 60.0 fps, max 16.78 ms | 60.0 fps, max 16.82 ms | drawn 61.8 / 61.8, audio 45,549 / 45,549 |
+| Dreamcast | 58.3 fps, 2 late frames, max 150 ms | 58.0 fps, 3 late frames, max 133 ms | core 30.5 / 30.5, audio 45,101 / 45,158 |
+| GameCube | 59.4 fps, 4 late frames, max 33 ms | 57.7 fps, 6 late frames, max 183 ms | core 61.5 / 61.7, repeated 7.5 / 7.6 |
+| PlayStation 2 | 60.0 fps, max 16.82 ms | 60.0 fps, max 16.86 ms | core 61.9 / 61.9, repeated 2.8 / 2.8 |
+
+The late Dreamcast and GameCube frames happen on both builds and come from those games, not from
+the host. **Not run with a real game:** NES, Genesis, Master System and Game Gear; the owner has no
+game for them on the device. Their cores ran only in the regression's probes.
+
 ## PlayStation 2 on the console's BIOS — 2026-10-13 (ADR 0026, [CONSOLES](CONSOLES.md))
 
 Working tree on top of `ef2d9f7`, versionCode 17, nothing committed. Device: Retroid Pocket 5,

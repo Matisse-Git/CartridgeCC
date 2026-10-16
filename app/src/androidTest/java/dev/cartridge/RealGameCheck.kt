@@ -83,14 +83,16 @@ class RealGameCheck {
         val sleep = arguments.getString("sleep")?.toInt()
         val roms = File(context.filesDir, "roms")
         val system = GameSystem.entries.firstOrNull { it.name.equals(wanted, ignoreCase = true) }
-        // Games, not this project's own probes: those are a few hundred kilobytes at most.
-        val bundles = roms.listFiles { file -> file.isDirectory && Regex("[a-f0-9]{64}\\.[a-z0-9]+").matches(file.name) &&
-            (if (system != null) file.name.endsWith(".${system.extension}") else file.name.startsWith(wanted)) &&
-            file.walkTopDown().filter(File::isFile).sumOf(File::length) > 8L * 1024 * 1024 }.orEmpty().sortedBy { it.name }
+        // Games, not this project's own probes: those are a few hundred kilobytes at most. A game named by its hash
+        // may also be a cartridge, the one file the importer copied.
+        val bundles = roms.listFiles { file -> Regex("[a-f0-9]{64}\\.[a-z0-9]+").matches(file.name) &&
+            (if (system != null) file.isDirectory && file.name.endsWith(".${system.extension}") &&
+                file.walkTopDown().filter(File::isFile).sumOf(File::length) > 8L * 1024 * 1024 else file.name.startsWith(wanted)) }
+            .orEmpty().sortedBy { it.name }
         val bundle = bundles.getOrNull(arguments.getString("pick")?.toInt() ?: 0)
         assumeTrue("No imported game matches $wanted", bundle != null)
         val id = bundle!!.name.substringBefore('.')
-        val console = GameSystem.entries.first { it.bundle && it.extension == bundle.name.substringAfter('.') }
+        val console = GameSystem.entries.first { it.bundle == bundle.isDirectory && it.extension == bundle.name.substringAfter('.') }
         val tag = "${console.name.lowercase()}-${id.take(6)}"
         if (console.core.firmwareRequired) assumeTrue("${console.title} needs its owner's BIOS in files/m1-owner-firmware", ownerFirmware(context, console.core))
         val shots = File(context.filesDir, "diagnostics").apply { mkdirs() }

@@ -82,7 +82,7 @@ dependencies {
     implementation("com.google.android.filament:filament-android:1.72.1")
     implementation("com.google.android.filament:gltfio-android:1.72.1")
     implementation("com.google.android.filament:filament-utils-android:1.72.1")
-    implementation("com.github.Swordfish90:LibretroDroid:0.14.0")
+    implementation(project(":libretrodroid"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

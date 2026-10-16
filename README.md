@@ -103,7 +103,7 @@ not a claim about every library/game or long-term battery use.
 - Windows, Linux, or macOS with JDK 17 or 21 (validated here with Microsoft OpenJDK 21.0.8).
 - Android SDK: platform 35, build tools 35.0.0, NDK 27.2.12479018, CMake 3.22.1,
   and platform-tools. Android Studio can install these, or use `sdkmanager` below.
-- First build requires access to Google Maven, Maven Central, JitPack, and GitHub codeload.
+- First build requires access to Google Maven, Maven Central, and GitHub codeload.
   After dependencies and the source archive are cached, the application runs offline.
 - Physical arm64 Android device with OpenGL ES 3.0; RP5's Android 13 is the target.
 - Python 3.10+ is optional for the lighting and sound generators and for structural

@@ -6,10 +6,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://jitpack.io") {
-            content { includeGroup("com.github.Swordfish90") }
-        }
     }
 }
 rootProject.name = "ProjectCartridge"
-include(":app")
+include(":app", ":libretrodroid")
