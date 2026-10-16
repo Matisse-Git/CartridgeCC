@@ -80,7 +80,7 @@ class ScrapeCoordinator(
     fun importPack(import: suspend () -> ScrapePack) = action {
         val pack = import()
         val games = repository.initialize().slots.filterNotNull().distinctBy { it.id }
-        val entries = games.mapNotNull { game -> pack.games[game.id]?.filter { it.platform == game.system.title }?.takeIf { it.isNotEmpty() }?.let { ScrapeEntry(game, game.title, it, searched = true, local = true) } }
+        val entries = games.mapNotNull { game -> pack.games[game.id]?.filter { it.platform == game.system.provider }?.takeIf { it.isNotEmpty() }?.let { ScrapeEntry(game, game.title, it, searched = true, local = true) } }
         require(entries.isNotEmpty()) { "No ROM hashes in this pack match your collection. Import its games first." }
         journal.reset()
         entries.forEach { journal.saveMatches(it.game.id, it.matches) }
@@ -140,7 +140,7 @@ class ScrapeCoordinator(
         require(!entry.local) { "Saved pack candidates are missing. Import the pack again." }
         mutableState.value = state.value.copy(progress = "Searching ${index + 1} / ${state.value.entries.size}: ${entry.game.title}")
         val result = try {
-            val file = withContext(ioDispatcher) { if (entry.corrected || entry.game.system == dev.cartridge.domain.GameSystem.PS1) null else dev.cartridge.storage.GameFiles.resolve(roms, entry.game.id, entry.game.system).takeIf(File::isFile) }
+            val file = withContext(ioDispatcher) { if (entry.corrected || !entry.game.system.fingerprint) null else dev.cartridge.storage.GameFiles.resolve(roms, entry.game.id, entry.game.system).takeIf(File::isFile) }
             val matches = provider.search(entry.query, file, entry.game.system)
             journal.saveMatches(entry.game.id, matches)
             // Other titles' candidates stay on disk, not in a growing batch-wide RAM list.

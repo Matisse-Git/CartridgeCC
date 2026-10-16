@@ -5,7 +5,7 @@ import android.graphics.*
 import android.net.Uri
 import dev.cartridge.library.LabelFit
 import dev.cartridge.library.LabelRef
-import dev.cartridge.domain.GameSystem
+import dev.cartridge.domain.Media
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -67,7 +67,7 @@ class LabelStore(private val directory: File) {
             return LabelRef(id, sourceUri = source)
         } finally { temporary.delete() }
     }
-    fun decode(label: LabelRef, system: GameSystem = GameSystem.GBA): LabelPixels {
+    fun decode(label: LabelRef, media: Media = Media.Cartridge): LabelPixels {
         val file = original(label.assetId)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, bounds)
@@ -76,11 +76,11 @@ class LabelStore(private val directory: File) {
         val turned = label.quarterTurns % 2 != 0
         val wide = if (turned) bounds.outHeight else bounds.outWidth; val tall = if (turned) bounds.outWidth else bounds.outHeight
         var sample = 1
-        while (max(wide, tall) / sample > 2048 || (wide / (sample * 2) >= 768 && tall / (sample * 2) >= system.labelHeight * 3 / 2)) sample *= 2
+        while (max(wide, tall) / sample > 2048 || (wide / (sample * 2) >= 768 && tall / (sample * 2) >= media.labelHeight * 3 / 2)) sample *= 2
         val source = checkNotNull(BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply {
             inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888
         })) { "Cannot decode the label" }
-        val target = Bitmap.createBitmap(512, system.labelHeight, Bitmap.Config.ARGB_8888)
+        val target = Bitmap.createBitmap(512, media.labelHeight, Bitmap.Config.ARGB_8888)
         try {
             val rotatedWidth = if (label.quarterTurns % 2 == 0) source.width else source.height
             val rotatedHeight = if (label.quarterTurns % 2 == 0) source.height else source.width
@@ -97,7 +97,7 @@ class LabelStore(private val directory: File) {
             val bytes = ByteBuffer.allocateDirect(target.byteCount)
             target.copyPixelsToBuffer(bytes)
             bytes.flip()
-            return LabelPixels(label.textureKey(system), target.width, target.height, bytes)
+            return LabelPixels(label.textureKey(media), target.width, target.height, bytes)
         } finally { source.recycle(); target.recycle() }
     }
 }

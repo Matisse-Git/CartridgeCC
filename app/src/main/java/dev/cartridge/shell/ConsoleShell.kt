@@ -11,7 +11,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.edit
 import androidx.core.net.toUri
+import dev.cartridge.apps.AppEntry
+import dev.cartridge.apps.AppLibrary
+import dev.cartridge.apps.AppSource
+import dev.cartridge.apps.InstalledApps
 import dev.cartridge.domain.CollectionLayout
+import dev.cartridge.domain.Core
 import dev.cartridge.domain.GameSystem
 import dev.cartridge.domain.LaunchTransition
 import dev.cartridge.domain.SessionState
@@ -42,7 +47,7 @@ interface ShellHost {
     fun pickFolder()
     fun pickGame()
     fun pickLabel()
-    fun pickBios()
+    fun pickFirmware()
     fun pickBackup()
     fun pickPack()
     fun createBackup()
@@ -80,6 +85,8 @@ class ConsoleShell(
     private val packs: ScrapePackStore,
     internal val preferences: SharedPreferences,
     private val systemDirectory: File = File(context.filesDir, "system"),
+    appSource: AppSource = InstalledApps(context),
+    appDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     val stack = mutableStateListOf<Destination>()
     val top get() = stack.lastOrNull()
@@ -98,6 +105,12 @@ class ConsoleShell(
     var accent by mutableStateOf(Accent.of(preferences.getString("accent", null))); private set
     var transition by mutableStateOf(LaunchTransition.of(preferences.getString("launchTransition", null))); private set
     var showFrameRate by mutableStateOf(preferences.getBoolean("showFrameRate", false)); private set
+    /** Installed Android apps: the library's sibling, reached with Back from its root. Never mixed with games. */
+    val apps = AppLibrary(appSource, scope, preferences.getString("appsFocus", null), appDispatcher)
+    /** Times Apps has been opened, counted only until its hint has been learned. */
+    var appsOpened by mutableIntStateOf(preferences.getInt("appsOpened", 0)); private set
+    /** Android recreated the console while Apps was open: return there once the library is back. */
+    var reopenApps = false
     /** What the library stage drew in its last full second; written by the renderer, shown only when asked for. */
     var frameRate by mutableIntStateOf(0)
     var controls by mutableStateOf(ConsolePreferences(preferences).read()); private set
@@ -105,7 +118,10 @@ class ConsoleShell(
     /** Bumped whenever a stored option changes, so pages built from [options] recompose. */
     var optionsRevision by mutableIntStateOf(0); private set
     var homeEnabled by mutableStateOf(host.homeEnabled); private set
-    var biosReady by mutableStateOf(false); private set
+    /** Private names of the console files the owner has added. */
+    var firmwarePresent by mutableStateOf<Set<String>>(emptySet()); private set
+    /** The console whose file the owner is choosing. Lost with the Activity; the file then identifies itself. */
+    private var firmwareFor: Core? = null
     var roots by mutableStateOf<List<DirectoryRecord>>(emptyList()); private set
     var hidden by mutableStateOf<List<LibraryGame>>(emptyList()); private set
     var storage by mutableStateOf<String?>(null); private set
@@ -137,10 +153,17 @@ class ConsoleShell(
     private var lastBusy = false
 
     init {
-        scope.launch { biosReady = withContext(Dispatchers.IO) { bios().description().contains("Imported") } }
+        refreshFirmware()
         refreshRoots()
     }
-    private fun bios() = Ps1BiosStore(systemDirectory)
+    private fun firmware() = FirmwareStore(systemDirectory)
+    private fun refreshFirmware() {
+        scope.launch { firmwarePresent = withContext(Dispatchers.IO) { Core.entries.flatMap { firmware().present(it) }.map { it.file }.toSet() } }
+    }
+    /** A console can start its games: it needs no file of the owner's, has a built-in stand-in, or has what it needs. */
+    fun firmwareReady(core: Core) = !core.firmwareRequired || core.firmware.any { it.file in firmwarePresent }
+    /** The owner's own file is in place, so nothing about this console is running on a stand-in. */
+    fun firmwareAdded(core: Core) = core.firmware.any { it.file in firmwarePresent }
     private val state get() = coordinator.state.value
     private val status get() = engine.status.value
 
@@ -160,6 +183,10 @@ class ConsoleShell(
             is Destination.Notice -> { readerLine = 0; noticeText = ""; scope.launch {
                 noticeText = withContext(Dispatchers.IO) { context.assets.open("licenses/${destination.name}").bufferedReader().use { it.readText() } } } }
             is Destination.TextEntry -> { text = destination.spec.initial; shift = destination.spec.titleCase && text.isEmpty(); key = KEY_COLUMNS }
+            Destination.Apps -> {
+                apps.open()
+                if (appsOpened < LEARNED_AFTER) { appsOpened++; preferences.edit { putInt("appsOpened", appsOpened) } }
+            }
             else -> Unit
         }
         host.inputChanged()
@@ -169,6 +196,7 @@ class ConsoleShell(
             Destination.BackupReview -> closeReview()
             Destination.LaunchFailure -> coordinator.dismissLaunchFailure()
             Destination.Import -> finishImport()
+            Destination.Apps -> { apps.search(""); rememberApp() }
             else -> Unit
         }
         host.inputChanged()
@@ -226,6 +254,7 @@ class ConsoleShell(
         if (lastBusy && !state.busy && scene == Scene.Game) playingId?.let(::loadFacts)
         lastBusy = state.busy
         if (state.launchFailure != null && top != Destination.LaunchFailure && state.screen == CollectionScreen.Library) replace(Destination.LaunchFailure)
+        if (reopenApps && scene == Scene.Library && state.loaded) { reopenApps = false; if (top == null) push(Destination.Apps) }
         host.inputChanged()
     }
 
@@ -236,6 +265,7 @@ class ConsoleShell(
         when (top) {
             is Destination.TextEntry -> moveKey(0, delta)
             is Destination.Notice -> readerLine = (readerLine + delta).coerceAtLeast(0)
+            Destination.Apps -> apps.move(0, delta)
             Destination.Settings -> if (pane == 0) category = SettingsCategory.entries[(category.ordinal + delta).coerceIn(0, SettingsCategory.entries.lastIndex)]
                 else page()?.let { move(it, delta) }
             else -> page()?.let { move(it, delta) }
@@ -245,6 +275,7 @@ class ConsoleShell(
         if (scraper.state.value.visible) return
         when (top) {
             is Destination.TextEntry -> moveKey(delta, 0)
+            Destination.Apps -> apps.move(delta, 0)
             Destination.Settings -> if (pane == 0) { if (delta > 0) pane = 1 } else {
                 val row = page()?.let(::focused)
                 if (row?.adjust != null && row.enabled) row.adjust.invoke(delta) else if (delta < 0) pane = 0
@@ -256,6 +287,7 @@ class ConsoleShell(
         if (scraper.state.value.visible) return scraper.select()
         when (top) {
             is Destination.TextEntry -> pressKey()
+            Destination.Apps -> if (apps.focused == null && !apps.searching) apps.refresh() else launchApp()
             Destination.Settings -> if (pane == 0) pane = 1 else page()?.let(::activate)
             else -> page()?.let(::activate) ?: confirmLibrary()
         }
@@ -267,18 +299,29 @@ class ConsoleShell(
     }
     private fun confirmLibrary() {
         if (state.screen != CollectionScreen.Library || status.state != SessionState.Idle) return
-        if (state.allGames.isEmpty()) addGames() else coordinator.insert()
+        if (state.allGames.isEmpty()) addGames() else start()
     }
-    fun back() {
+    /** A console that needs its owner's file explains that here, instead of failing once the game has left the shelf. */
+    private fun start() {
+        val core = state.selectedGame?.system?.core
+        if (core != null && !firmwareReady(core)) { home(); push(Destination.Setup(core)) } else coordinator.insert()
+    }
+    /** B. Whatever is open closes first; only the library's own root, with nothing to close, leads to Apps. */
+    fun back() = dismiss(controller = true)
+    /** Android's Back. It closes what B closes, and at the library's root it stays where it is, as it always has. */
+    fun systemBack() = dismiss(controller = false)
+    private fun dismiss(controller: Boolean) {
         if (scraper.state.value.visible) return scraper.back()
         val current = top
         when {
             current == Destination.Settings && pane == 1 -> pane = 0
             current == Destination.Import && import.let { it is ImportFlow.Looking || it is ImportFlow.Adding } -> coordinator.cancelScan()
+            current == Destination.Apps && apps.searching -> apps.search("")
             current != null -> pop()
             state.screen == CollectionScreen.LabelPreview -> coordinator.cancelLabel()
             status.state == SessionState.Paused -> coordinator.menuAction(0)
             state.screen == CollectionScreen.Library && state.searching -> coordinator.query(state.query.copy(search = ""))
+            controller -> openApps()
         }
     }
     /** X. */
@@ -301,6 +344,7 @@ class ConsoleShell(
             scraper.state.value.visible -> Unit
             top is Destination.TextEntry -> type(' ')
             top == Destination.Details -> coordinator.favorite()
+            top == Destination.Apps -> searchApps()
             top == null && inputMode() == InputMode.Library -> coordinator.favorite()
         }
     }
@@ -328,6 +372,28 @@ class ConsoleShell(
     }
     fun openDetails() { if (state.selectedGame != null && state.screen == CollectionScreen.Library && !state.busy) push(Destination.Details) }
     fun openMenu() { if (top == null && inputMode() == InputMode.Library) push(Destination.SystemMenu) }
+
+    // ---- Apps -------------------------------------------------------------------------------------------
+
+    /** Only from the library at rest: not over a sheet, a page, a search, a game, a closed screen or a running operation. */
+    fun openApps() { if (top == null && inputMode() == InputMode.Library && !state.searching) push(Destination.Apps) }
+    val appsOpen get() = Destination.Apps in stack
+    /** The Apps hint follows the hint setting, but retires on its own count: starting games teaches nothing about it. */
+    val appsHintVisible get() = hints == HintMode.Always || hints == HintMode.Auto && appsOpened < LEARNED_AFTER
+    /** The app is started the way a home screen starts it. The console stays as it is behind it. */
+    fun launchApp(entry: AppEntry? = apps.focused) {
+        if (top != Destination.Apps || entry == null) return
+        if (apps.launch(entry, animate = !state.reducedMotion)) rememberApp()
+        else coordinator.notify("${entry.label} couldn't be opened. It may have been removed or turned off.")
+    }
+    fun searchApps() {
+        if (top == Destination.Apps && apps.searchable) push(Destination.TextEntry(TextSpec("Search apps", "App name", apps.query, 40, "apps-search-text") { value -> apps.search(value) }))
+    }
+    private fun rememberApp() { apps.focused?.let { preferences.edit { putString("appsFocus", it.id) } } }
+    /** The console is in front again: another app may have installed, removed or changed something meanwhile. */
+    fun resumed() { if (apps.phase != AppLibrary.Phase.Unread) apps.refresh() }
+    /** Leaving the foreground may be the last this console instance hears: keep the app the player was on. */
+    fun paused() { if (appsOpen) rememberApp() }
 
     // ---- Text entry -------------------------------------------------------------------------------------
 
@@ -472,13 +538,13 @@ class ConsoleShell(
                 val result = checkNotNull(total)
                 lastScan = result; scansFinished++
                 refreshRoots(); refreshStorage()
-                val needsBios = (result.addedSystems[GameSystem.PS1] ?: 0) > 0 && !biosReady
+                val setup = result.addedSystems.filterValues { it > 0 }.keys.map { it.core }.distinct().filter { it.firmware.isNotEmpty() && !firmwareAdded(it) }
                 if (quiet) return@scanDirectory if (result.added > 0) importHeadline(result) else ""
                 // A clean import after the first one is a single line, not a screen to dismiss.
-                if (!first && !needsBios && importNotes(result).isEmpty() && result.added > 0) {
+                if (!first && setup.isEmpty() && importNotes(result).isEmpty() && result.added > 0) {
                     revealAfterScan(result); stack.remove(Destination.Import); import = null; host.inputChanged()
                     importHeadline(result)
-                } else { import = ImportFlow.Done(result, targets.size, needsBios, first); "" }
+                } else { import = ImportFlow.Done(result, targets.size, setup, first); "" }
             } catch (failure: CancellationException) {
                 if (!quiet) { stack.remove(Destination.Import); import = null; host.inputChanged() }
                 refreshRoots(); throw failure
@@ -534,15 +600,17 @@ class ConsoleShell(
         withContext(Dispatchers.IO) { labels.import(context.contentResolver, uri) }
     }
 
-    fun chooseBios() {
+    fun chooseFirmware(core: Core) {
         if (status.state != SessionState.Idle) return coordinator.notify("Return to the library before adding a BIOS file")
-        if (!state.busy) host.pickBios()
+        if (!state.busy) { firmwareFor = core; host.pickFirmware() }
     }
-    fun biosPicked(uri: Uri) {
-        if (top == Destination.Import || top == Destination.LaunchFailure) pop()
+    fun firmwarePicked(uri: Uri) {
+        if (top == Destination.Import || top == Destination.LaunchFailure || top is Destination.Setup) pop()
+        val expected = firmwareFor; firmwareFor = null
         coordinator.libraryOperation {
-            withContext(Dispatchers.IO) { bios().import(context.contentResolver, uri) }
-            biosReady = true; coordinator.notify("PlayStation BIOS added. Games will use it from their next start.")
+            val (core, added) = withContext(Dispatchers.IO) { firmware().import(context.contentResolver, uri, expected) }
+            firmwarePresent = firmwarePresent + added.file
+            coordinator.notify("${core.title} BIOS added. Games will use it from their next start.")
         }
     }
 
@@ -584,7 +652,7 @@ class ConsoleShell(
     fun search() = push(Destination.TextEntry(TextSpec("Search", "Title, developer or genre", state.query.search, 60, "library-search-text") { value ->
         home(); coordinator.query(state.query.copy(search = value))
     }))
-    fun play() { home(); coordinator.insert() }
+    fun play() { home(); start() }
     fun hide() { home(); coordinator.hideSelected() }
 
     // ---- Backup -----------------------------------------------------------------------------------------
@@ -634,7 +702,7 @@ class ConsoleShell(
         }
     }
     private fun closeReview() { backupReview?.close(); backupReview = null }
-    fun close() { closeReview() }
+    fun close() { closeReview(); apps.close() }
 
     companion object {
         const val KEY_COLUMNS = 10

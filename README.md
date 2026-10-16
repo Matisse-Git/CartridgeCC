@@ -1,12 +1,62 @@
 # Project Cartridge
 
-Native Android, controller-first physical-media collection with **embedded** GBA, GB, GBC and PS1 emulation.
+Native Android, controller-first physical-media collection with **embedded** emulation: Game Boy, Game Boy
+Color, Game Boy Advance, PlayStation, Super Nintendo, NES, Genesis, Master System, Game Gear, Dreamcast,
+GameCube and, once you have added the console's BIOS, PlayStation 2; Saturn is implemented and waiting for
+its BIOS. [docs/CONSOLES](docs/CONSOLES.md) says exactly what each one does, what was run on the device and what
+was not.
 This repository now contains the development implementation through M6: shared 3D collection layouts,
 API label/metadata review, internal GBA/GB/GBC/PS1 play, console setup/settings, optional Android HOME,
 completed-session recovery and portable backup/restore. It remains a private development build;
 art direction, broad game/peripheral compatibility and public-release rights/source obligations are open.
-No RetroArch installation, external emulator intents or browser renderer is used. Commercial ROMs,
-BIOS and proprietary artwork are excluded from Git/APK assets.
+No RetroArch installation, external emulator intents or browser renderer is used to play a game.
+Commercial ROMs, BIOS and proprietary artwork are excluded from Git/APK assets.
+
+**PlayStation 2 on the console's own BIOS (2026-10-13, [ADR 0026](docs/decisions/0026-playstation-2-on-the-console-bios.md)):**
+PlayStation 2 now runs on ARMSX2, the open-source PCSX2 for ARM64, built into the app from pinned source in
+place of Play!. It needs the console's BIOS, which only you can supply: add the 4 MiB file once under
+Settings › Gameplay › PlayStation 2 (any region's; the app recognises it by its contents and never
+downloads one). On the RP5, with a BIOS of the owner's, **both of the owner's games now run at full speed
+with whole sound**, the one that had run at 85 % and the one that had never shown a picture, and both
+survive the device sleeping. Still true: no save states on this console (a game saves to its memory card;
+the two cards are shared by all PlayStation 2 games), and nothing but those two games has been tried. The
+same work found that closing the app with a PlayStation 2 or GameCube game still loaded crashed it ten
+seconds later; that is fixed and tested.
+
+**Real games on Dreamcast, PlayStation 2 and GameCube; a cartridge for each console (2026-10-12,
+[ADR 0024](docs/decisions/0024-what-real-games-showed.md), [ADR 0025](docs/decisions/0025-a-cartridge-per-console-and-market.md)):**
+the owner's own games were run on the three engines below and showed what the test programs could not: a
+black screen on PlayStation 2, sound at twice its speed on Dreamcast, a corrupted picture on GameCube. All
+three were this host's doing and are fixed. On the RP5 the GameCube game tried now runs at 60 pictures a
+second with whole sound; three Dreamcast discs run at their own speed with whole sound; one PlayStation 2
+game plays from its opening film into its first scene (at about 85 % speed there) and **a second one never
+shows a picture, which is Play!'s own limit** *(both run since the paragraph above)*. PlayStation 2 lost its
+save states and, with GameCube, now keeps its game loaded and paused while the device sleeps. NES, Super
+Nintendo and Genesis games are shown as their own cartridges, from models the owner supplied; a Super
+Nintendo game named as a North American release has that market's shell.
+
+**Dreamcast, PlayStation 2, GameCube (2026-10-11, [ADR 0023](docs/decisions/0023-cores-that-draw-for-themselves.md)).**
+*Written before any game had run; the paragraph above is what games then showed.*
+Flycast 2.7, Play! and Dolphin are built into the app from pinned source and draw with the device's own
+OpenGL ES. None needs a BIOS to start. Each was run on the RP5 from an original test program (picture; for
+Dreamcast and GameCube also buttons and the stick), and the whole device regression passes with them in.
+**No commercial game has been run on any of the three**, nothing 3D has been drawn and no speed was measured:
+add a game and see. Limits to know: a DVD is copied into the app, so it needs its size again; PlayStation 2
+runs on Play!, which plays part of the library; GameCube has no save states; triggers are buttons; memory
+cards are not in backups yet.
+
+**More consoles (2026-10-11, [ADR 0022](docs/decisions/0022-console-registry-and-shared-core-shim.md)):**
+a console is now one definition in a registry instead of special cases across the app. Five consoles were
+added on it and verified on the RP5 with original test programs: Super Nintendo (Snes9x 1.63), NES (FCEUmm),
+Genesis, Master System and Game Gear (Genesis Plus GX). Saturn (Beetle Saturn) is built in with its BIOS
+workflow; its core was run on the device with an original stand-in image, and a game needs your BIOS. Every new console was shown as a disc
+until its own model existed (NES, Super Nintendo and Genesis have theirs since 2026-10-12). Game Boy, Game Boy Advance and PlayStation behave as before.
+
+**Android apps (2026-10-11, [ADR 0021](docs/decisions/0021-android-apps-library.md)):** pressing B on
+the game library, with nothing else open, opens the apps installed on the device as a grid of their
+own icons; A starts the focused one as a home screen would, and B returns to the same shelf and
+game. Y searches. The list follows installs and removals without being stored. Nothing else about B
+changed: it still closes whatever is open, and in a game it is the game's.
 
 **PS1 increment (v17):** source-built embedded PCSX ReARMed, CUE/BIN folder imports, optional SBI,
 CHD/PBP/ISO files, real 3D discs, per-game memory card, pause/save/load/eject and session recovery.
@@ -14,8 +64,8 @@ Add your BIOS under Settings › Gameplay › PlayStation, then add your CUE/BIN
 Initial PS1 controller is digital; M3U/disc swapping and analog-required games are deferred.
 See [PS1 progress, exact validation and remaining checks](docs/PS1_PROGRESS.md).
 
-**Media models and browsing (2026-10-10):** the cartridge, the tall cartridge and the disc are
-converted from three models the owner downloaded, with the app's own replaceable label in place of
+**Media models and browsing (2026-10-10; four more cartridges 2026-10-12):** the objects games are
+shown as are converted from models the owner downloaded, with the app's own replaceable label in place of
 the game label each download had baked in. A game keeps its 3D object while it is near the screen,
 so browsing a shelf of more than three games no longer re-labels what is in view. See
 [ADR 0019](docs/decisions/0019-imported-media-and-stable-pool.md); results are in
@@ -27,6 +77,12 @@ like 30 frames a second; games start and end behind a closed screen with three t
 from; cartridges no longer use a receiving slot; a shelf opens on its first game; the right stick
 turns the focused object; a focused row is always visibly focused. Settings › Advanced › Show frame
 rate prints the library's real frame rate beside the clock.
+
+**Verified, console increment (2026-10-11):** both APKs, 85 host tests, lint and asset checks pass.
+On the RP5 the full regression passed 49 of 49 in 435 s with Super Nintendo, NES, Genesis, Master
+System and Game Gear each played from an original test program (picture, input, battery memory,
+state, restart). The Saturn test and one later addition to the console test were written after the
+device was disconnected and have not been run; [TESTING](docs/TESTING.md) lists exactly which.
 
 **Verified:** M0 passed on the physical RP5. The owner confirmed physical controller navigation,
 gameplay/audio, pause/eject, save/load, label thumbnails/apply/persistence and imports. Both APKs,
@@ -67,11 +123,15 @@ python tools/test_assets.py
 ```
 
 On macOS/Linux use `./gradlew` in place of `.\gradlew.bat`. The wrapper pins Gradle 8.13
-and verifies its distribution SHA-256. CMake fetches **hash-pinned mGBA 0.10.5 and PCSX ReARMed
-c8816799 source**, builds arm64 Libretro cores and packages `libmgba_libretro.so` and
-`libpcsx_rearmed_libretro.so`. There are no separately downloaded core binaries. Existing exact
-source checkouts can be supplied with `"-PmgbaSource=C:/absolute/path/to/mgba-0.10.5"` and
-`"-PpcsxSource=C:/absolute/path/to/pinned-pcsx"`. See ADR 0017 for the full source pin/hash.
+and verifies its distribution SHA-256. CMake fetches **hash-pinned source** for every core (mGBA
+0.10.5, PCSX ReARMed c8816799, Snes9x 1.63, FCEUmm 7a542dab, Genesis Plus GX 393f70cd, Beetle Saturn
+ec20ea05), builds arm64 Libretro cores and packages one library each. There are no separately
+downloaded core binaries. An existing exact checkout can be supplied instead: `-PmgbaSource=`,
+`-PpcsxSource=`, `-PsnesSource=`, `-PnesSource=`, `-PgenesisSource=`, `-PsaturnSource=` with an
+absolute path. Pins and hashes are in ADR 0017 and ADR 0022.
+
+The first native build is slow: Beetle Saturn's generated 68000 interpreter alone takes about sixteen
+minutes to compile on the development machine. Later builds reuse it.
 
 Output: `app/build/outputs/apk/debug/app-debug.apk`.
 
@@ -113,10 +173,25 @@ and the read grant is persisted; no broad storage permission is requested.
 | Y | Favourite |
 | L1 / R1 | Previous / next shelf: each console with games, then All Games, Favorites, Recently Played. A shelf always opens on its first game |
 | START | Menu: Add Games, Search, Artwork & Info, Refresh Library, Settings |
-| B | Back; from the library it clears a search |
+| B | Back. From the library it clears a search; with nothing to close it opens **Apps** |
 
 Touch works throughout: screen edges browse, the object plays, the title opens details, the mark at
 the top right opens the menu, and every *B Back* hint is itself the back control.
+
+**Apps** (B from the library). The Android apps installed on the device, by name, each with its own
+icon. Android's own Back still does nothing at the library's root, so only the controller's button
+leads here.
+
+| Button | Does |
+|---|---|
+| D-pad / left stick | Move across the grid |
+| A | Open the focused app. Come back with Android's Back or Home; Apps is where you left it |
+| Y | Search by name. B clears the search |
+| B | Back to the library, on the same shelf and game |
+
+Cartridge itself is not listed. An app that has been removed or turned off says so when you try to
+open it, and the list is read again. Cartridge only lists apps that have a launcher entry and asks
+for no broad permission to do it.
 
 **Details** (X): play time, last played and saved, description, then Play, Favorite, Game options
 (this game only) and Manage game — find artwork online, use your own image, edit details, undo the
@@ -136,12 +211,31 @@ can override them from its details or pause menu. See
 
 ### What importing does
 
-Cartridges support `.gba`, `.gb` and `.gbc`. PlayStation supports CUE/BIN folders and single
-CHD, PBP, ISO and PS-X EXE files. BIN tracks belong to their CUE and never become separate
-entries; import a CUE through a folder so its tracks can be read. A disc image in a folder named
-for another console (`ps2`, `saturn`, `dreamcast`, …) is counted and reported, not imported. Files
-for other consoles, `.zip`/`.7z` archives and `.m3u` playlists are counted and explained on the
-result. Multi-disc games are not supported: each disc is its own entry.
+| Console | Files |
+|---|---|
+| Game Boy, Color, Advance | `.gb` `.gbc` `.gba` |
+| Super Nintendo | `.sfc` `.smc` `.swc` `.fig` |
+| NES | `.nes` `.unf` `.unif` |
+| Genesis | `.md` `.gen` `.smd`, and `.bin` inside a folder named for Genesis or Mega Drive |
+| Master System, Game Gear | `.sms`, `.gg` |
+| PlayStation | CUE/BIN folders; single CHD, PBP, ISO and PS-X EXE files |
+| Saturn | CUE/BIN folders; CHD inside a folder named for Saturn |
+| Dreamcast | GDI folders; `.cdi`; GD-ROM `.chd`; CUE/BIN and CHD inside a folder named for Dreamcast |
+| PlayStation 2 | DVD `.iso` and `.chd`; `.iso`, CUE/BIN, `.cso`, `.isz` inside a folder named `ps2` or PlayStation 2 |
+| GameCube | `.iso` `.gcm` `.rvz` `.gcz`; `.ciso` inside a folder named for GameCube |
+
+A file is checked by its first bytes before it is copied, so a text file called `.md` or a Windows
+`.exe` beside your games is passed over quietly. Whatever a CUE or GDI names is that disc's track and
+never a separate entry, `.bin`, `.raw` or `.iso` alike; import a sheet through a folder so its tracks
+can be read. A CUE is identified by
+its own first sector: a Saturn or Dreamcast disc is its console's wherever it sits, and a Sega CD
+disc is refused by name. A GameCube disc carries Nintendo's marker, a DVD-sized `.iso` is PlayStation
+2's, and a `.chd` says whether it holds a DVD or a GD-ROM; a Wii disc is refused by name. Other disc
+images go to the console their folder is named for, and to PlayStation when nothing says otherwise. A
+disc in a folder named for a console Cartridge cannot play (`wii`, `psp`, `segacd`, …) is counted
+and reported, not imported. Files for other consoles,
+`.zip`/`.7z` archives and `.m3u` playlists are counted and explained on the result. Multi-disc games
+are not supported: each disc is its own entry.
 
 Each game gets a bounded, SHA-256-addressed working copy in app-private storage (ADR 0003, 0017);
 the original document is never changed. The interface says so during import, and Settings ›
@@ -159,7 +253,11 @@ folder › Stop using this folder) releases its grant and keeps its games.
 
 PlayStation games without a BIOS use HLE, which runs only some of them. Add your own BIOS under
 Settings › Gameplay › PlayStation › BIOS file; it is also offered on the import result and when a
-PlayStation game fails to start. The controller is digital.
+PlayStation game fails to start. Saturn games cannot start without one: Settings › Gameplay › Saturn
+has a row for the American/European file (`mpr-17933.bin`) and one for the Japanese file
+(`sega_101.bin`), and starting a Saturn game without either explains this instead of failing.
+Cartridge accepts known dumps by content, keeps them private, and never downloads or backs them up.
+Every console's controller is digital.
 
 ### Saves and history
 
@@ -212,6 +310,7 @@ Fade, Iris or Shutter. Settings › Appearance › Motion › Reduced replaces e
 - [API scraping implementation and limits](docs/SCRAPING_REPORT.md)
 - [Folder imports, growing collection and saved scrape batches](docs/LIBRARY_PROGRESS.md)
 - [Socket/Slot and provider research](docs/PROVIDER_RESEARCH.md)
+- [Consoles: what plays, what is defined where, what blocks the rest](docs/CONSOLES.md)
 - [Architecture and lifecycle](docs/ARCHITECTURE.md)
 - [Milestones](docs/ROADMAP.md)
 - [Asset pipeline](docs/ASSET_PIPELINE.md)

@@ -29,10 +29,10 @@ class RetroBaseProvider(private val cache: File) : ArtworkProvider {
                 while (true) { coroutineContext.ensureActive(); val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
             }
             val hash = digest.digest().joinToString("") { "%02x".format(it) }
-            val response = json("$base/lookup?sha1=$hash&size=${rom.length()}&platform=${encode(system.title)}", allowMissing = true)
+            val response = json("$base/lookup?sha1=$hash&size=${rom.length()}&platform=${encode(system.provider)}", allowMissing = true)
             response?.optJSONObject("data")?.optJSONObject("game")?.let { parseGame(it, response.optJSONObject("meta"), true, system) }
         } else null
-        val response = json("$base/games?search=${encode(query.trim())}&platform=${encode(system.title)}&limit=30")
+        val response = json("$base/games?search=${encode(query.trim())}&platform=${encode(system.provider)}&limit=30")
         val array = response?.optJSONArray("data")
         val choices = buildList {
             exact?.let(::add)
@@ -47,7 +47,7 @@ class RetroBaseProvider(private val cache: File) : ArtworkProvider {
 
     internal fun parseGame(game: JSONObject, meta: JSONObject?, exact: Boolean = false, system: dev.cartridge.domain.GameSystem = dev.cartridge.domain.GameSystem.GBA): GameCandidate? {
         val platform = game.optJSONObject("platform")?.optString("name").orEmpty()
-        if (platform != system.title) return null
+        if (platform != system.provider) return null
         val id = game.optString("id")
         if (!id.matches(Regex("[a-f0-9-]{36}"))) return null
         val regional = game.optJSONObject("names")

@@ -106,7 +106,7 @@ internal fun Modifier.tap(tag: String, enabled: Boolean = true, action: () -> Un
     }
 
     when {
-        empty -> Welcome(shell, confirm)
+        empty -> Welcome(shell, confirm, back)
         game == null && state.loaded -> Column(Modifier.align(Alignment.Center).widthIn(max = 420.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Txt("No games match “${state.query.search}”", Type.Title, modifier = Modifier.testTag("selected-title"))
             Txt("Search looks at titles, developers and genres across every console.", Type.Body, Ink.Soft, Modifier.padding(top = Space.S, bottom = Space.L))
@@ -127,17 +127,23 @@ internal fun Modifier.tap(tag: String, enabled: Boolean = true, action: () -> Un
                 if (game.favorite && facts.isNotEmpty()) Txt("·", Type.Label, Ink.Faint)
                 if (facts.isNotEmpty()) Txt(facts.joinToString("  ·  "), Type.Label, Ink.Soft, lines = 1)
             }
-            val hintAlpha by animateFloatAsState(if (shell.hintsVisible && !state.busy) 1f else 0f, motion.fade(), label = "hints")
-            val hints = buildList {
+            // From the library itself, with nothing open, the back button leads to the Android apps. It is said
+            // here, in the hints, and nowhere else; the hint outlives the others until Apps has been opened a few times.
+            val apps = Hint(back, "Apps", "open-apps", shell::openApps).takeIf { shell.appsHintVisible && !state.searching }
+            val hints = if (!shell.hintsVisible) listOfNotNull(apps) else buildList {
                 add(Hint(when (state.layout) { CollectionLayout.Horizontal -> "◀ ▶"; CollectionLayout.Vertical -> "▲ ▼"; CollectionLayout.Grid -> "✥" }, "Browse"))
                 add(Hint(confirm, "Play"))
                 add(Hint("X", "Details"))
                 add(Hint("RS", "Turn"))
                 if (state.searching) add(Hint(back, "Clear search", "back", shell::back)) else if (state.shelves.size > 1) add(Hint("L1 R1", "Console"))
+                if (apps != null) add(apps)
                 add(Hint("START", "Menu"))
             }
+            val hintAlpha by animateFloatAsState(if (hints.isNotEmpty() && !state.busy) 1f else 0f, motion.fade(), label = "hints")
             if (side) Column(Modifier.padding(top = Space.L).alpha(hintAlpha).testTag("library-hints"), verticalArrangement = Arrangement.spacedBy(Space.S)) {
-                hints.forEach { HintBar(listOf(it)) }
+                // A hint that is also a touch control is taller than one that is not. Each line keeps a glyph's height
+                // and lets that extra reach spill into the gaps, so the list stays evenly spaced.
+                hints.forEach { hint -> Box(Modifier.height(18.dp).wrapContentHeight(unbounded = true)) { HintBar(listOf(hint)) } }
             } else HintBar(hints, Modifier.padding(top = Space.M).alpha(hintAlpha).testTag("library-hints"))
             }
         }
@@ -148,7 +154,7 @@ internal fun Modifier.tap(tag: String, enabled: Boolean = true, action: () -> Un
 }
 
 /** The empty library is the welcome: one sentence, one action, beside the real object. */
-@Composable private fun BoxScope.Welcome(shell: ConsoleShell, confirm: String) {
+@Composable private fun BoxScope.Welcome(shell: ConsoleShell, confirm: String, back: String) {
     val accent = LocalAccent.current
     Column(Modifier.align(Alignment.CenterEnd).fillMaxWidth(.5f).windowInsetsPadding(WindowInsets.safeDrawing).padding(end = Space.Edge + Space.L)
         .testTag("welcome")) {
@@ -160,7 +166,11 @@ internal fun Modifier.tap(tag: String, enabled: Boolean = true, action: () -> Un
             Glyph(confirm, Ink.Stage)
             Txt("Add your games", Type.Heading, Ink.Stage)
         }
-        Txt("Game Boy  ·  Game Boy Color  ·  Game Boy Advance  ·  PlayStation", Type.Label, Ink.Faint, Modifier.padding(top = Space.L))
+        // Every console the registry can really play, and nothing else.
+        Txt(dev.cartridge.domain.GameSystem.entries.joinToString("  ·  ") { it.title }, Type.Label, Ink.Faint,
+            Modifier.padding(top = Space.L).widthIn(max = 380.dp).testTag("welcome-consoles"), lines = 4)
+        // An empty library is still the library: the Android apps are one press away from it too.
+        if (shell.appsHintVisible) HintBar(listOf(Hint(back, "Apps", "open-apps", shell::openApps)), Modifier.padding(top = Space.M))
     }
 }
 

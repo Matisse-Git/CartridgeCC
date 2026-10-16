@@ -41,6 +41,8 @@ enum class PageStyle {
     Pause,
     /** The focused game's facts beside its own 3D object. */
     Details,
+    /** Installed Android apps as a grid of their own icons. Its state is `apps/AppLibrary`, not rows. */
+    Apps,
 }
 
 class Page(val key: String, val title: String, val rows: List<MenuRow>, val style: PageStyle,
@@ -71,6 +73,10 @@ sealed class Destination(val key: String, val opaque: Boolean = false) {
     class TextEntry(val spec: TextSpec) : Destination("text", true)
     data object Import : Destination("import")
     data object LaunchFailure : Destination("failure")
+    /** A console that cannot start until its owner adds a file says so before a game is taken off the shelf. */
+    data class Setup(val core: dev.cartridge.domain.Core) : Destination("setup")
+    /** The library's sibling, one press of Back away from its root and one press back to it. */
+    data object Apps : Destination("apps", true)
 }
 
 /** An import from the folder picker to its result. Every phase has something to read and one way out. */
@@ -78,7 +84,8 @@ sealed interface ImportFlow {
     val firstRun: Boolean
     data class Looking(val folder: String?, override val firstRun: Boolean) : ImportFlow
     data class Adding(val discovery: Discovery, val handled: Int, val current: String, override val firstRun: Boolean) : ImportFlow
-    data class Done(val result: ScanResult, val folders: Int, val needsBios: Boolean, override val firstRun: Boolean, val cancelled: Boolean = false) : ImportFlow
+    /** [setup] lists the cores whose newly added games still wait for a file only the owner can supply. */
+    data class Done(val result: ScanResult, val folders: Int, val setup: List<dev.cartridge.domain.Core>, override val firstRun: Boolean, val cancelled: Boolean = false) : ImportFlow
     data class Failed(val reason: String, override val firstRun: Boolean) : ImportFlow
 }
 

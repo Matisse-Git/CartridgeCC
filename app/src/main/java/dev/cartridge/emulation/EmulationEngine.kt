@@ -17,6 +17,8 @@ interface EmulationEngine {
     suspend fun stop()
     fun key(action: Int, androidKeyCode: Int)
     fun motion(x: Float, y: Float)
+    /** A stick of a pad that has them: 0 is the left, 1 the right, each axis -1..1. */
+    fun analog(stick: Int, x: Float, y: Float) = Unit
     suspend fun saveState()
     suspend fun loadState()
     suspend fun persistSaveRam()

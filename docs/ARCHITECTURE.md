@@ -1,5 +1,94 @@
 # Architecture
 
+## Console registry (2026-10-11, ADR 0022)
+
+A console is declared once, in `domain/GameSystem.kt`, and everything else reads that declaration.
+Where an older section below says "PS1" to decide behaviour, read "a console whose definition says
+so". [CONSOLES](CONSOLES.md) lists the fields and the status of each console.
+
+| Piece | Owns |
+|---|---|
+| `domain/GameSystem` | a console: title, maker, media template, core, formats and their content checks, private extension, bundle or file, size bound, folder names, provider name |
+| `domain/Core` | an engine: packaged library, state-binding revision, options heading, firmware, fixed variables, own-files flag |
+| `domain/ConsoleCatalog` | folder hints and name-only classification, derived from the registry; the list of recognised-but-unplayable consoles |
+| `storage/RomImporter` | one file: reads 512 bytes, lets `GameSystem.detect` name the console, then copies within that console's bound |
+| `storage/DiscImporter` | a bundle: launcher under its real extension, tracks under generated names, console from the disc's own first sector, then the folder |
+| `storage/SheetTracks`, `DirectoryScanner` | a folder is listed first; what its CUE and GDI sheets name is skipped as tracks before anything is imported |
+| `storage/FirmwareStore` | the owner's console files: accepted by content, stored under the name the core looks for |
+| `cpp/cores.cmake`, `cartridge_shim.c` | cores that need only the Libretro ABI, with shared frame and PCM counters |
+| `cpp/flycast.cmake`, `armsx2.cmake`, `dolphin.cmake`, `core_wrap.cmake` | the three engines that draw for themselves (ADR 0023, 0026): one in this CMake tree, two as projects of their own, all given the second build of the shim |
+| `storage/CoreData` | an engine's own packaged data, unpacked into the private system folder once per build of its core |
+
+Identity: the enum name is the stored id. GBA, GB, GBC and PS1 keep their names, order and hashes.
+A later console's disc is hashed with its console's name first; PlayStation's is not, so no existing
+entry moves.
+
+Detection order for a file: its own extension; what a shared container proves about itself
+(`Format.proves`: Nintendo's disc marker, a length beyond any CD, the unit a CHD packs); for a CUE
+the first data sector; then the console its folder names; PlayStation when nothing else speaks.
+`.exe` and `.md` are tried without being announced; `.bin`, `.cso`, `.ciso`, `.dol` and
+`.elf` only in their console's folder.
+
+Native readiness: `cartridge_core()` renames a core's video-refresh and audio-batch setters at
+compile time and links `cartridge_shim.c`, which counts produced frames (a non-null buffer, or the
+hardware-frame marker) and non-silent PCM. `SaveBridge.frameCount` reads `cartridge_video_frames`,
+falling back to mGBA's and PCSX's own counters. A core without mGBA's save-data extension is read
+through `retro_get_memory_data` directly; only mGBA needs its clock synchronised.
+
+Sessions: `LibretroEngine` takes the library, the fixed variables and the state envelope from the
+game's core. A core flagged `ownFiles` gets `saves/<content hash>.files/` as its save directory.
+`ManualState` wraps every core's state but mGBA's with the build that wrote it.
+
+Firmware: `ConsoleShell.firmwarePresent` is the set of private file names in place.
+`firmwareReady(core)` is false only for a core that requires a file and has none; then A on a game
+opens `Destination.Setup` instead of inserting, the game's details carry an "Add … BIOS" row, the
+import result lists the core under `ImportFlow.Done.setup`, and Settings › Gameplay marks its rows.
+A launch failure offers the file whenever one of the core's files is absent.
+
+Settings › Gameplay is generated: one heading per `Core`, its firmware rows, then its options.
+
+### Cores that draw for themselves (ADR 0023)
+
+Flycast, ARMSX2 and Dolphin render with OpenGL ES in the context LibretroDroid owns (ARMSX2 on a
+thread of its own, in a second context that shares the host's). The host was
+written for cores that hand it a finished picture, so the second build of `cartridge_shim.c`
+(`CARTRIDGE_HW_FRAMES`) stands between the two at four Libretro entry points:
+
+| Entry point | What the shim adds |
+|---|---|
+| `retro_set_environment` | notes where the host's framebuffer is asked for; replaces a nominal base size with the size the core really draws |
+| `retro_run` | binds the host's framebuffer where the screen is bound, and only there; does not run the core while enough of its sound is still waiting; reports a repeated frame when the core says nothing; hands the host one run's worth of sound |
+| `retro_set_video_refresh` | around the host's copy to the screen, saves and restores every piece of GL state the copy touches |
+| `retro_set_audio_sample_batch` | holds the core's sound for `retro_run` to hand on, and counts it |
+| `retro_unload_game`, and `cartridge_unload` beside it | lets the game be unloaded on the thread it ran on, before the host does it from Main and finds nothing left to do; for ARMSX2 (`CARTRIDGE_UNLOAD_FIRST`) the game before its context, the reverse of the host's order |
+
+What the second and fourth rows are for was learned from the owner's games (ADR 0024): these
+engines emulate until a game shows its next picture and the host never waits for sound, so a game
+is paced here by its own sound; and Dolphin frees the signal stack of whichever thread unloads it.
+A core with `snapshots = Never` is not stopped when the app leaves the foreground: its session
+stays, paused, and `CollectionCoordinator.keptWhileAway` is the one place that decides it. The
+manifest turns native heap pointer tagging off for the process, as ARMSX2's own app does.
+
+Order within a session, on Main unless noted: unpack the core's data (IO); create the GL view with
+the game's canonical path (for a core without `sheets`, the first track of a CUE); after the game
+is loaded and before the first frame, plug the pad into port 1 for a core with `emptyPorts` (GL
+queue); restore saves; run.
+
+The end of a session that the Activity's own end brings (ADR 0026): from Android 10 the lifecycle
+is told of the end before `onDestroy`, Compose disposes of its views there, and the emulator's view
+takes the core's thread with it. `MainActivity.endSession` therefore runs from
+`onActivityPreDestroyed`, registered after the lifecycle's own callbacks so that it is told first,
+and again from `onDestroy` for older Androids, where the view is still attached at that point.
+`LibretroEngine.releaseNative` unloads a core with `draws` on its thread while the view is in a
+window, and from the calling thread when it no longer is.
+
+Input: for a core with `analog`, `ControllerRouter` sends both sticks to the game through the
+host's two stick channels and the D-pad only as the D-pad. There is no channel for trigger travel.
+
+Snapshots: `Core.snapshots` decides whether the running-game checkpoint, the paused checkpoint, Save
+State and *Start from save state* exist for a console. The engine and the pause page both read it;
+neither compares a console to a constant.
+
 ## Console shell (2026-10-10 redesign)
 
 The interface layer was replaced; emulation, rendering ownership, persistence and import mechanics
@@ -13,12 +102,14 @@ coordinator screens, `ConsolePanel` or `LibraryPanels`, this section supersedes 
 | `shell/ConsoleShell` | the destination stack, focus by row id, every controller role, presentation preferences, import flow state, the operations that need a `Context` (scan, import, backup, BIOS) | session or library truth |
 | `shell/ShellPages` | rows for every destination, derived from state on each read | any stored state |
 | `session/CollectionCoordinator` | the serialized operation, the native session, the shelf projection and focus identity | menus, cursors, overlays |
+| `apps/AppLibrary` | which Android apps are installed, the app search, the focused app, decoded icons | what a button means; anything about games |
+| `apps/InstalledApps` | the calls to Android's `LauncherApps` | state |
 | `ui/` | tokens, components, library chrome, overlay rendering | decisions |
 
 Input: `ControllerRouter` still sends each event down exactly one route (Library, Gameplay, Menu,
 Text, Locked) and still polls held directions on a Choreographer callback, but it now reports
-buttons by role — select, back, alternate (X), secondary (Y), shoulder, menu (Start), adjust
-(left/right in a menu) — and `ConsoleShell` assigns the meaning. `ConsoleShell.inputMode()` is the
+buttons by role — select, back, system back (Android's Back and Escape), alternate (X), secondary
+(Y), shoulder, menu (Start), adjust (left/right in a menu) — and `ConsoleShell` assigns the meaning. `ConsoleShell.inputMode()` is the
 single place a mode is chosen. The shell is told about every coordinator and engine change through
 `sync`, where it clears overlays when the scene changes (library, game, label preview), reports a
 finished scraper preview, counts launches and raises the launch-recovery sheet.
@@ -72,6 +163,25 @@ cartridge must keep what was saved last. A missing state is an ordinary start. A
 refused one resets the core, starts from the beginning and reports once through
 `EngineStatus.notice`; the file is not changed.
 
+Android apps (ADR 0021): `Destination.Apps` is an opaque destination on the shell's stack. The back
+role opens it only as the last branch of `ConsoleShell.dismiss`, after everything that can be
+closed has been, and `openApps()` additionally requires an empty stack, `InputMode.Library` and no
+library search. Android's Back arrives as its own role and never opens it. Inside Apps the shell
+maps the existing roles onto `AppLibrary`: up/down and left/right move by rows and columns of the
+grid the page really drew, A starts the focused app, Y opens the console's text entry as a search,
+B clears a search and then pops. The coordinator is not involved, so the shelf, the focused game,
+the viewport generation and the paused Filament surface are exactly as they were when Apps is
+popped. `AppLibrary` reads `AppSource` off the main thread, folds overlapping requests into one
+further read, sorts with the locale's `Collator`, addresses focus and icons by `package/activity`,
+and stores nothing but the focused id (`appsFocus`). `InstalledApps` implements `AppSource` with
+`LauncherApps` on the application context: list (intersected with real MAIN + LAUNCHER activities),
+icon, `startMainActivity`, and a `Callback` that is registered on first use and always removed in
+`ConsoleShell.close()`. `MainActivity.onResume` asks for a re-read once Apps has been shown;
+`onPause` saves the focused app; `onSaveInstanceState` records that Apps was open so a rebuilt
+Activity returns to it after its first library `sync`. Starting an app pauses the Activity like any
+other loss of foreground: with no game running, `CollectionCoordinator.background()` only settles
+the focus write, and nothing is released or reloaded on return.
+
 Screen wake: the window no longer sets `FLAG_KEEP_SCREEN_ON`. The Compose root keeps the screen on
 while a scan or artwork search is running; the emulator's own view keeps it on during play.
 `DebugCollectionActivity` restores the flag because instrumentation injects input without user
@@ -79,7 +189,7 @@ activity.
 
 The PS1 increment adds explicit system-selected cores and immutable scoped disc bundles without
 changing the single-session/surface ownership strategy. See ADR 0017 and PS1_PROGRESS for the source
-pin, CUE track confinement, BIOS ownership, bounded media pool (45 instances since ADR 0019) and per-core save revisions.
+pin, CUE track confinement, BIOS ownership, bounded media pool (45 instances since ADR 0019; 105, fifteen for each of seven templates, since ADR 0025) and per-core save revisions.
 Historical M0–M6 sections below describe their original scope; PS1 details take precedence where noted.
 
 One Android module keeps the feasibility work reviewable. Packages separate pure navigation/session

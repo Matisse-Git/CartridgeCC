@@ -1,5 +1,383 @@
 # Tests and actual results
 
+## PlayStation 2 on the console's BIOS — 2026-10-13 (ADR 0026, [CONSOLES](CONSOLES.md))
+
+Working tree on top of `ef2d9f7`, versionCode 17, nothing committed. Device: Retroid Pocket 5,
+Android 13, `RP5_V1.0.0.189_20251128_174732_user`, Adreno 650, OpenGL ES 3.2. Everything below was
+run on the night of 2026-10-12 into 2026-10-13 on one build: debug APK 54,361,790 bytes, SHA-256
+begins `a2605ffd7f55427a`.
+
+**Host.** Both APKs build. **90 host tests pass** (89 before; one new in `SystemRegistryTest`: a
+PlayStation 2 BIOS is taken by its own file table whatever its region, and nothing else is). Lint:
+zero errors, 25 warnings, the same 25. 10 asset checks pass. The native build was the incremental
+one; the engine's eleven libraries came from a prefix built beforehand with its own recipe, and
+**the in-tree build of those libraries (`armsx2.cmake` without `-Pps2Libraries`) has never been
+run.**
+
+**The BIOS the device tests use.** A PlayStation 2 game cannot be started without one, and none
+can be in the repository. `Ps2CoreTest` and `RealGameCheck` look for it in the app's private
+`files/m1-owner-firmware/pcsx2/bios/ps2-bios.bin` and copy it into the test library's own system
+folder; without it the two tests that start something are skipped (reported as assumption
+failures, not passes). For these runs a v2.00 European console dump of the owner's was put there
+by hand. The owner's own library was not given a BIOS and was not touched.
+
+**RP5: the regression, twice.**
+
+| Run | Result | From the device's log |
+|---|---|---|
+| first | **57 of 58**; `LibraryGrowthTest` failed | `run finished: 58 tests, 1 failed`. After leaving a Game Boy Advance game the focused object's label was not on screen within 8 s (`unlabelled=1 uploads=2`). The runner's own summary was lost when the USB link dropped |
+| second, same APKs | **58 of 58** in 509.7 s | `run finished: 58 tests, 0 failed, 0 ignored`; `OK (58 tests)` |
+
+The `LibraryGrowthTest` failure was not reproduced: it passed three times alone and twice after the
+classes that precede it, between the two runs. The same test failed the same way, and passed when
+repeated, on 2026-10-09 and 2026-10-10, before any of this work. It is an intermittent fault in
+label staging after a game is left, not something this increment explains or fixes; it is open.
+
+58 is the 57 of 2026-10-12 with these changed:
+
+| Test | What it does now | From the log |
+|---|---|---|
+| `Ps2CoreTest`, no BIOS (new) | A disc in a folder named `ps2`, with no BIOS in place: the import result offers **Add PlayStation 2 BIOS**; A on the game opens the setup dialog and the game stays on the shelf; Settings lists the missing file; a 4 MiB file that is not a BIOS is refused in words and nothing is written; an original stand-in with a file table and a version is taken as this console's and stored as `pcsx2/bios/ps2-bios.bin`. The stand-in is deleted again | passed |
+| `Ps2CoreTest`, disc | On the owner's BIOS: the 128 KiB `.iso` is taken as PlayStation 2 by its folder, its `SYSTEM.CNF` is read and the program it names started and seen (red). New: the game is left; started again; **the Activity is closed with it loaded**, and a new Activity starts it once more | `Closed with the game loaded in 696 ms, and started it again` |
+| `Ps2CoreTest`, program | On the owner's BIOS: the bare program draws; the three fixed variables and the default of *Sharper 3D* are read back from the running core; no state is offered or written; the app is left and returned to and the game is still loaded; the two memory cards exist under the system folder and nothing was written to a folder of the game's own; a second start | the core's own folders listed; passed |
+| `GameCubeCoreTest` | New at its end: the Activity is closed with the program loaded | `Closed with the game loaded in 809 ms` |
+
+Before the fix those two closes took ten seconds and then ended the process (ADR 0026, item 6).
+
+**RP5: the owner's games, same build.** Started by `RealGameCheck` from the app's private copies
+in the isolated test library; one game is one observation. A line of the shim's counters is logged
+about once a second; the figures are the median line of each run after its first three seconds,
+because a line that also saves a picture covers a little more than a second. Nominal sound rates
+are 48,000 (PlayStation 2), 32,000 (GameCube) and 44,100 (Dreamcast) frames a second; a line covers
+about 1.02 s.
+
+| Console | Game | Seconds | Core runs /s | New pictures /s | Sound in /s | Sound out /s | Dropped | Outcome |
+|---|---|---|---|---|---|---|---|---|
+| PlayStation 2 | first of two (4.2 GiB DVD image) | 75 | 61 | 61 in the film and in the first scene; 25 to 54 in eight seconds of fades and loads, where the game holds a picture | 48,832 | 48,849 | 0 | logos, opening film, title, new game, first scene with its dialogue; slept at 60 s and carried on; paused and left. Sound came at its full rate in every second but one (44,032, at a change of scene) |
+| PlayStation 2 | second of two (4.3 GiB, a Japanese release) | 110 | 61 | 30 to 31, and as many repeats | 48,832 | 48,849 | 0 | logos, title, new game on the confirm button, the real-time opening with its credits; slept at 85 s and carried on; paused and left |
+| GameCube | the one imported | 45 | 61 | 61 | 32,640 | 32,595 | 0 | as on 2026-10-12; slept at 35 s and carried on |
+| Dreamcast | first disc of a two-disc game | 45 | 31 of 61 host frames | 31 | 45,613 | 44,876 | 0 | as on 2026-10-12; slept at 35 s, restored from its checkpoint and carried on |
+
+Under Play! on 2026-10-12 the first PlayStation 2 game drew 51 to 53 pictures a second in its first
+scene and the second drew two pictures and no more. Pictures saved during these runs were looked
+at: both games are whole, at the console's own 640×448.
+
+**Sleep** in that table is a real one: `input keyevent KEYCODE_SLEEP`, five seconds,
+`KEYCODE_WAKEUP`. Not process death, not a cold Activity start, not a reboot.
+
+**What was not run, and should not be read into the above.**
+
+- Any other PlayStation 2 game, and any PlayStation 2 game as CUE+BIN, `.chd` or `.cso`.
+- A save to a PlayStation 2 memory card, or a load from one. Both cards exist and are unformatted.
+- *Sharper 3D* with a game; the sticks in a game; a second player; a long session.
+- The owner adding the BIOS to their own library through the interface. The dialog, the settings
+  row and the import by content ran with a stand-in; the real file was put in place by hand, for
+  the test library only.
+- The app with heap pointer tagging on. It is off, as it was for Play!.
+- Sound was counted, never heard.
+- Closing the app with a Dreamcast game loaded: that console is stopped and written to a
+  checkpoint when the app is left, so it does not reach the same path.
+- An Android older than 10, where the earlier release of a loaded game is not registered and the
+  old order applies; and an Android older than 9, where this engine would not load.
+
+**Running a PlayStation 2 game of your own through it.** The game must already be imported, and a
+BIOS must be in the test folder (it is not taken from your library):
+
+```bash
+adb push <your BIOS> /data/local/tmp/ps2-bios.bin
+adb shell chmod 644 /data/local/tmp/ps2-bios.bin
+adb shell run-as dev.cartridge mkdir -p files/m1-owner-firmware/pcsx2/bios
+adb shell run-as dev.cartridge cp /data/local/tmp/ps2-bios.bin files/m1-owner-firmware/pcsx2/bios/ps2-bios.bin
+adb shell am instrument -w -r -e class dev.cartridge.RealGameCheck -e game PS2 -e pick 0 \
+  -e seconds 60 -e every 10 -e keys 20:BUTTON_START,26:BUTTON_A -e sleep 40 \
+  dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner
+adb logcat -d -s "CartridgeCheck:*" "TestRunner:*"
+```
+
+The engine's own log of the last start is `files/m1-test-system/pcsx2/logs/emulog.txt` in the
+app's private storage (`files/system/…` for the real library).
+
+## Real games on three engines, four more cartridges — 2026-10-12 (ADR 0024, 0025, [CONSOLES](CONSOLES.md))
+
+*PlayStation 2 in this section is Play!, which the section above replaced the same night.*
+
+Working tree on top of `ef2d9f7`, versionCode 17, nothing committed. Device: Retroid Pocket 5,
+Android 13, `RP5_V1.0.0.189_20251128_174732_user`, Adreno 650, OpenGL ES 3.2.
+
+**Host.** Both APKs build (debug APK 47,922,986 bytes, SHA-256 begins `0ba92539d1d1bf2b`).
+**89 host tests pass** (88 before; one new in `SystemRegistryTest` for cartridge shapes, and the
+ones about states and label keys rewritten). Lint: zero errors, 25 warnings; the one new warning
+says the manifest's pointer-tagging attribute is only read from Android 11, which is where tagging
+exists. 10 asset checks pass over seven GLBs, and the Khronos validator reports zero errors and
+zero warnings on each. `tools/import_models.py` reproduces the three earlier GLBs byte for byte.
+
+**RP5, this build: the regression.** **57 of 57 passed**, read from the device's own log
+(`run finished: 57 tests, 0 failed`), in about 8 min 20 s. The exact time is not recorded: the USB
+link dropped during the run and took the runner's summary with it, and the device's power button
+was pressed once inside the run. The same 57 tests as on 2026-10-11, with these changed:
+
+| Test | What changed | From the log |
+|---|---|---|
+| `Ps2CoreTest`, program | No state is offered any more: the pause menu has no Save State or Load State and none is written. New: the app is left and returned to (`moveToState`), and the game is found paused, still loaded, its count of pictures carrying on | passed |
+| `GameCubeCoreTest` | New: left and returned to in the same way while the program shows green, which only a button press makes it show; green again afterwards, so it is the same loaded program | passed |
+| `UxTourTest` | Seven more fixture games on three more shelves, and four more captures (`04b`, `04c`, `04d`, `17c`) | passed; captures looked at |
+| `BrowseStabilityTest` | unchanged test, seven templates behind it | `none on stage unlabelled` in all three layouts; 7, 7 and 6 label uploads |
+| `LibraryPacingTest` | unchanged test, seven templates behind it | library of 40: 60.0 fps, median 16.66 ms, p99 at most 16.81 ms, no gaps, in all six cases |
+| `ConsoleCoresTest` | checks each game is shown as its console's object | all five consoles verified as before |
+| every test that counted the pool | 105 objects (seven templates of fifteen), where it was 45 | passed |
+
+The stage was ready 145 to 202 ms after it was created, with seven templates loading.
+
+**RP5, this build: the owner's games.** Six games the owner had imported, each started from the
+app's private copy in the isolated test library by `RealGameCheck`, which is not in any suite. One
+line of the shim's counters was logged every second and a picture saved every few seconds; the
+figures are averages over the run. One game is one observation.
+
+| Console | Game | Seconds | Host frames /s | Core runs /s | New pictures /s | Sound in /s | Sound out /s | Dropped | Outcome |
+|---|---|---|---|---|---|---|---|---|---|
+| GameCube | the one imported | 60 | 63.0 | 63.0 | 61.9 | 33,669 | 33,668 | 0 | title, menus, created its save file; paused and left cleanly |
+| Dreamcast | first disc of a two-disc game | 60 | 62.6 | 31.1 | 31.1 | 46,024 | 46,018 | 0 | logos, title |
+| Dreamcast | second disc of it | 45 | 62.8 | 31.4 | 31.3 | 46,092 | 46,092 | 0 | Start opened the title's menu |
+| Dreamcast | another game | 45 | 63.5 | 45.6 | 45.5 | 46,640 | 46,635 | 0 | title, opening film |
+| PlayStation 2 | first of two | 60 | 59.7 | 59.7 | 51.8 | 40,161 | 40,149 | 0 | film, title, new game, first scene; 51 to 53 pictures a second there |
+| PlayStation 2 | second of two | 30 | 65.3 | 65.3 | 0.1 | 32,010 | 32,002 | 0 | **two pictures, then none; never recovers** |
+
+The first second of every run holds more than a second's host frames and sound (the start), which
+is why the averages sit a little above 60 and above each console's nominal rate (32,000 for
+GameCube, 44,100 for the other two). Before the fixes the same counters read: 89,755 frames of
+sound a second from the first Dreamcast disc, at 60 core runs; no picture at all from either
+PlayStation 2 game; and on GameCube a deadlock at the first frame, then an abort on leaving.
+
+**Sleep, with those games.** Evidence of a real screen sleep and nothing more: `input keyevent
+KEYCODE_SLEEP`, five seconds, `KEYCODE_WAKEUP`, on the RP5 with a game running. Not process death,
+not a cold Activity start, not a reboot.
+
+| Console | After waking | Then |
+|---|---|---|
+| GameCube | paused, the same game still loaded | Resume: 1,297 core runs before sleep, 1,420 a second and a half after |
+| PlayStation 2 | paused, the same game still loaded | Resume: 2,711 before, 2,835 after |
+| Dreamcast | restored from its checkpoint, paused | Resume: running |
+
+The first PlayStation 2 attempt closed the app: the pause reached the screen after its surface had
+gone, and copying the picture threw. Fixed (ADR 0024, item 9) and run again, as above.
+
+**What was not run, and should not be read into the above.**
+
+- Any other game on these three consoles. Any game at all on Saturn.
+- Sound was counted, never heard: the counters say it is whole and at the right rate.
+- A game's own save was created once (GameCube) and never loaded back. No long session.
+- *Sharper 3D* with a game. A second player. The sticks, in a PlayStation 2 game.
+- What Android does to a stateless game kept loaded if it needs the memory: not provoked.
+- The four new cartridges were seen on the device in the tour's captures and in the browse and
+  pacing tests; nothing measures how they look beside each other, which is the owner's to judge.
+- The first three engine tests' picture checks still use original programs; they prove a start.
+
+**Running a game of your own through it.** The game must already be in the app (imported the
+ordinary way); nothing about it is written to the repository.
+
+```bash
+adb shell am instrument -w -r -e class dev.cartridge.RealGameCheck -e game GAMECUBE -e pick 0 \
+  -e seconds 60 -e every 10 -e keys 20:BUTTON_START,26:BUTTON_A -e sleep 40 \
+  dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner
+adb logcat -d -s "CartridgeCheck:*" "TestRunner:*"
+```
+
+`game` is a console's name or the start of a content hash; `pick` chooses among several; `keys`
+presses buttons at given seconds; `sleep` puts the device to sleep at one and wakes it; `stacks`
+logs where every engine thread is. Pictures land in `files/diagnostics/` in the app's private
+storage. Read the outcome from the device's log, as above: the USB link drops after a sleep.
+
+## Dreamcast, PlayStation 2, GameCube — 2026-10-11 (ADR 0023, [CONSOLES](CONSOLES.md))
+
+Working tree on top of `ef2d9f7`, versionCode 17, nothing committed. Device: Retroid Pocket 5,
+Android 13, `RP5_V1.0.0.189_20251128_174732_user`, Adreno 650, OpenGL ES 3.2.
+
+**Host.** Both APKs build (debug APK 42.3 MB with nine cores, SHA-256 begins `90ad5b8c61293560`).
+**88 host tests pass** (85 before; three new in `SystemRegistryTest`, and the existing ones
+extended). Lint: zero errors, 24 warnings, none in new files. 10 asset checks pass. The native build
+is CMake 3.31.6 now; a full one took 19 min 42 s on this machine with the three engines' sources
+already present.
+
+**RP5, this build.** The full regression is **57 of 57 in 492.2 s**: the 51 earlier tests
+unchanged, and six new ones.
+
+| Test (suite) | What ran on the device | From the log |
+|---|---|---|
+| `DreamcastCoreTest`, program (`Dreamcast`) | An original SH-4 program on Flycast's built-in BIOS replacement: the picture it writes into video memory reached the screen through OpenGL ES; A switched it; the left stick held right switched it again and released returned; Save State, a change, Load State brought the saved picture back; its memory unit is a file in the game's own folder; a second start; the library intact | state 27,652,536 bytes; own files `game.A1.bin` |
+| `DreamcastCoreTest`, disc (`Dreamcast`) | The same program as a GD-ROM image: a GDI sheet and three tracks in a folder, imported as one game under generated track names; Flycast read the disc's header, found the program it names in the disc's file system and started it from the header's start-up code; picture; A switched it; its memory unit carries the disc's product number | own files `T-00000.A1.bin` |
+| `Ps2CoreTest`, program (`PS2`) | An original MIPS program on Play!'s built-in system software: the sprite it sends the graphics chip each frame reached the screen; Save State and Load State; its memory-card folder is under the game's own folder; a second start; then a second game in the same process, which got a folder of its own | state 41,943,084 bytes; own files `Play Data Files` |
+| `Ps2CoreTest`, disc (`PS2`) | The same program on a 128 KiB `.iso` in a folder named `ps2`: taken as PlayStation 2 by the folder; Play! mounted it, read its `SYSTEM.CNF` and started the program that names; picture | — |
+| `GameCubeCoreTest` (`GameCube`) | An original PowerPC program started directly on Dolphin (arm64 JIT, fastmem, dual core, OpenGL ES): with *Exact video output* on for that game, the picture it paints into the video chip's memory reached the screen; A switched it; the stick switched it and returned; the pause menu offers no state and writes none; its save folder is under the game's own folder; Dolphin's data was unpacked; a second start | own files `User` |
+| `LargeDiscImportTest` (`Discs`) | An empty 2.2 GiB image, longer than a 32-bit count, picked as a single file: recognised as PlayStation 2 by its size, copied and hashed whole, listed, same length; the test removes its copy | imported in about 4.5 s |
+
+The six run one after another in one process in that regression, so each engine also takes the
+screen after another one has had it, and a second Dreamcast game follows a first.
+
+**What those programs are, and are not.** `tools/probe/generate_dreamcast_probe.py`,
+`generate_ps2_probe.py` and `generate_gamecube_probe.py` hand-assemble a few dozen instructions each.
+They prove that the engine is loaded, its processor translator runs, a picture gets from the
+emulated video hardware through the engine's OpenGL ES renderer and Cartridge's shim to the screen,
+that (two of three) Android's A and the left stick reach the emulated pad, and that (two of three) a
+disc image is mounted and started the way a game's is. They draw nothing in 3D, make no sound and
+are not games. **No commercial game has been started on Dreamcast, PlayStation 2 or GameCube,
+nothing was measured for speed, and the PlayStation 2 pad was not exercised** (its program reads
+none). Sharper 3D on the three was not looked at. A GameCube disc image was not started: a real one
+is the only kind there is.
+
+**Checked on the host first.** The SH-4 and PowerPC programs were run by two small interpreters
+written for the purpose (not committed) before the device was blamed for a black screen: both wrote
+the right video and controller registers and the right pixels, and both answered a button and the
+stick. The nine faults then found on the device are listed in ADR 0023. Two were Cartridge's own
+(a sheet's `.iso` tracks listed as games; one controller port named instead of four); the rest were
+in what the host assumes of a core. None was in an engine.
+
+**Measured by the way.** A GameCube state is 90,722,762 bytes (hence none is offered). The app's
+heap limit on the RP5 is 256 MB. Dolphin logged on this device: `Missing OGL Extensions:
+PinnedMemory GSInstancing ClipControl DepthClamp`, and that it could not create a shared context
+for background shader compilation.
+
+**What the tests leave on the device.** The five engine tests and the large-import test remove the
+bundles, saves and session folders they make (`TestGames`; checked: the same number of bundles and
+save files before and after a run of all six). That was added after the regression above, to the
+test APK only; the app APK is the one named. Runs made before it, while the consoles were being
+brought up, left 17 test states of 27 to 40 MiB each (about half a gigabyte) in the app's private
+`files/saves` on the RP5. They belong to no game in any library and can be deleted; nothing here
+deleted them.
+
+**Not exercised.** Fetching Play! and Dolphin from the network into a clean build: on this machine
+their sources were supplied with `-Pps2Source` and `-PgamecubeSource`. A `.cdi`, `.rvz`, `.gcz` or
+`.chd` of a real disc: their recognition is tested on the host from headers, their loading is the
+engines'. Free-space refusal on a full device.
+
+## Consoles — 2026-10-11 (ADR 0022)
+
+Working tree on top of `ef2d9f7` with the Android-apps work, versionCode 17. Two builds are
+described and they are kept apart. Everything this section says was "written and not yet run" has
+since run: `SaturnCoreTest`, the option read-back in `ConsoleCoresTest` and `Ps1DeviceTest` on the
+new disc importer all passed in a 51-of-51 regression (442.4 s) on the build that followed, and
+again in the 57-test regression above.
+
+**Final build (host only).** Both APKs build (debug APK 28.5 MB with six cores, SHA-256 begins
+`532b4a439832b842`); **85 host tests
+pass** (79 before, six new in `SystemRegistryTest`); lint has zero errors and 25 warnings, none in
+new files; 10 asset checks pass. The RP5 was no longer attached when this build was ready, so
+**nothing in it has run on the device**. That covers three things written after the device run
+below: Saturn (`SaturnCoreTest`, two tests), the option read-back block added to
+`ConsoleCoresTest`, and the disc importer that now serves PlayStation and Saturn
+(`DiscImporter`, replacing `Ps1Importer`; PlayStation identities are computed in the same order
+from the same bytes, but `Ps1DeviceTest` has not been repeated on it). Run
+`tools/Test-Device.ps1 -Suite All` (51 tests expected) before relying on any of the three.
+
+**Build before Saturn (host and RP5).** Registry refactor, the shared core shim and the Snes9x,
+FCEUmm and Genesis Plus GX cores: 84 host tests passed. On the connected RP5 (Android 13,
+`RP5_V1.0.0.189_20251128_174732_user`) the full regression was **49 of 49 in 434.8 s**: the 48
+earlier tests unchanged, which exercise Game Boy, Game Boy Color, Game Boy Advance and PlayStation
+through the refactored registry, importer, options, firmware store and save bridge, and the new
+`ConsoleCoresTest`.
+
+- **The registry, on the host.** `SystemRegistryTest`: the four stored console names, their order,
+  media, label sizes, library files and state revisions are what they were; every definition is
+  complete; no folder name, private extension, library file or revision is claimed twice; files are
+  accepted or refused by their first bytes with the named console's own reason (`NES␚`, `SEGA` at
+  0x100 and 0x101, the copier header, `MComprHD`, size floors); `.md` and `.exe` are tried but not
+  announced outside their console's folder and `.bin` is a Genesis game only inside one; a shared
+  container follows the folder and PlayStation otherwise; a disc's first sector names Saturn, and
+  names Dreamcast and Sega CD as unplayable; single-file and bundle paths; every core's state
+  envelope and cross-core refusal; options per core with nothing leaking between cores; firmware by
+  content for PlayStation and both Saturn regions; provider platform names; shelf order.
+- **Five consoles on the RP5.** `ConsoleCoresTest` generates nothing on the device: it takes the
+  programs from `tools/probe/generate_console_probes.py`, gives each a fresh identity, imports it
+  through the production single-file picker path and plays it through the production interface.
+  For each of Super Nintendo, NES, Genesis, Master System and Game Gear it read the presented
+  surface until the program's white-and-red checkerboard was there, sent Android's A, read
+  white-and-green, paused and found `0x43` and the choice in the battery file at the program's
+  offsets, saved a state and found the core's revision in its envelope, toggled back, loaded the
+  state and saw the saved picture, toggled again, returned to the library, started the game again
+  and saw the kept choice in the first picture, changed it, recreated the Activity and saw it again.
+  The mesh pool stayed at 45 objects; the five consoles appeared as five shelves in registry order.
+  From the device log of the passing run:
+
+  | Console | Battery memory read back | Non-silent PCM frames |
+  |---|---|---|
+  | Super Nintendo | 8192 bytes | 0 (the program loads no sound driver) |
+  | NES | 8192 bytes | 19167 |
+  | Genesis | 4 bytes (Genesis Plus GX reports memory up to the last written byte) | 18398 |
+  | Master System | 2 bytes | 19871 |
+  | Game Gear | 2 bytes | 19135 |
+
+- **What that run found.** The first C++ core linked without the C++ runtime: with a space in the
+  project path CMake calls clang by its 8.3 name, which hides the `++` the driver reads its mode
+  from (fixed with `--driver-mode=g++`). Genesis Plus GX keeps cartridge memory out of a state, so
+  after Load State the picture is the saved one and the save is not; the test states that per core
+  instead of expecting one behaviour. Genesis Plus GX gives an unlisted Master System image the
+  Sega mapper, and with it cartridge RAM, only above 48 KiB, so that program is 64 KiB. An exact
+  pixel fingerprint was fragile for the NES picture, whose size settles a frame after start; the
+  test reads the mean colour instead, which is also the stronger claim.
+- **Not covered by any of this.** Commercial games on the new consoles, special cartridge chips,
+  second controllers, the Super Nintendo's sound, long sessions, heat and battery, and everything
+  about Saturn on hardware. Saturn speed on the RP5 is unmeasured.
+
+Android apps, 2026-10-11 (ADR 0021; working tree on top of `ef2d9f7`, versionCode 17, debug APK
+SHA-256 begins `547ab9a8e084a7d5`): both APKs build; 79 host tests pass (the 64 before and 15 new);
+lint has zero errors and 24 warnings, as before and none in the new files; 10 asset checks pass. On the connected
+RP5 (Android 13, `RP5_V1.0.0.189_20251128_174732_user`) the full regression on that build is
+**48 of 48 in 389.5 s**: the 44 earlier tests, unchanged, and four in `AppsLibraryTest`. Two test
+classes were extended after that run (Android's own change report; B from the empty library) and
+run again with `SurfaceHandoffTest` on the same app build: 6 of 6 in 70.3 s.
+
+- **Where B leads, on the host.** `ShellNavigationTest` builds the production `ConsoleShell` over
+  the production `CollectionCoordinator` with a fake engine and repository. B from the library at
+  rest opens Apps and B again returns with the same selection, shelf, focused game and viewport
+  generation. With the system menu, details, a sheet on details, settings two levels deep, a dialog
+  or a library search open, B closes that and Apps is not opened. Android's Back closes the same
+  things and does nothing at the root. With a game running the shell reports `Gameplay` (the router
+  then never asks it) and refuses Apps even when asked directly; paused, B resumes.
+- **The list, on the host.** `AppLibraryTest`: locale order where byte order would differ, one entry
+  per launcher activity, a stable order for apps that share a name, grid movement at every edge,
+  focus restored from the stored id, focus handed to a neighbour when the focused app is removed
+  (from the end and from the middle), search without case or accents that keeps the found app when
+  cleared, a failed read that is reported only when there is nothing to show, overlapping reads
+  folded into one, and a refused or throwing launch that re-reads instead of failing.
+- **On the RP5, with a controller.** `AppsLibraryTest.backOpensAppsFromTheLibraryAtRestAndNowhereElse`
+  sends real key events to the production Activity: START then B, X then B and Android's Back leave
+  it on the library; B opens Apps; the D-pad crosses the grid and stops at its edges; the focused
+  tile is the one drawn selected after scrolling; A and a tap both start it; B returns to the same
+  game at the same position with the same viewport generation. A probe game is then started: two
+  presses of B leave it running with nothing open; paused, B resumes; after Return to Library, B
+  opens Apps again. `theRouterKeepsAndroidBackApartFromTheControllersBackButton` checks the roles
+  with real `KeyEvent`s in every input mode, including the confirm/back swap.
+- **Android itself.** `installedAppsAreListedFromAndroidAndSettingsOpensAndReturnsToAnUntouchedConsole`
+  uses the device's launcher service. It listed 38 entries from 38 packages in 41 ms (first call in
+  the process), equal to the set `PackageManager` returns for MAIN + LAUNCHER, none of them
+  Cartridge, no duplicates, in collator order; `adb shell cmd package query-activities`, which
+  package visibility does not filter, also lists 38, so the `<queries>` declaration hides nothing
+  here. Thirteen icons were drawn at 126 px in 68 ms. Toggling one of this build's own debug-only
+  activities made Android report the package as changed, and the open list was read again; the
+  component was put back and `SurfaceHandoffTest`, which uses it, passed afterwards. A on Settings
+  brought Settings to the front (the console's Activity left RESUMED, the active window's package
+  was Settings', no session was touched). Android's Back returned to the same Activity instance,
+  still on Apps, still focused on Settings and drawn so, with the library's game and viewport
+  generation unchanged and its 3D surface still present.
+- **Apps that change, and a rebuilt console.** `appsThatChangeWhileShownKeepFocusValidAndARebuiltConsoleReturnsToThem`
+  removes the focused app (its neighbour takes focus, the count drops), installs one (it appears in
+  order, focus stays), refuses a launch (the message names the app and no package), searches on Y,
+  clears with B, recreates the Activity (Apps is open again on the same app; an app without an icon
+  still has a tile), then empties the list (*No apps to show*, A reads again, B returns).
+- **Seen.** `UxTourTest` now ends in Apps and saves `25-apps` and `26-apps-search`; they and the
+  eight library and welcome captures that gained the `B Apps` hint are in
+  [ux/screenshots](ux/screenshots). The tour draws invented apps. The grid with the device's real
+  icons was captured once to the device and looked at, not committed: adaptive and legacy icons,
+  two-line names and the focused tile read correctly at 1920×1080. Looking found one defect: in the
+  Vertical layout the new hint had larger gaps than its neighbours, because a hint that is also a
+  touch control is 12 dp taller. The same was already true of *Clear search* there. Fixed in the
+  list, not in the hint, and captured again.
+- **Not covered.** Returning with the Home button while Cartridge is the default HOME app (no test
+  changes the owner's HOME choice). A real install or uninstall of another app: the change report
+  was exercised with Cartridge's own package, and list changes with a fixture. Android reclaiming
+  the process while an app is in front: `recreate()` is a rebuilt Activity, not a killed process.
+  The owner's library was not opened. Analog-stick feel on the grid.
+
+
 Start from save state, 2026-10-10 (the commit after `afcd58e`, merged to `master`;
 versionCode 17, debug APK SHA-256 begins `5b5a105dfb2a6956`): both APKs build; 64 host tests pass;
 lint has zero errors and 24 warnings; 10 asset checks pass. On the connected RP5 (Android 13,

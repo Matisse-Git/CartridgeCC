@@ -13,6 +13,38 @@ import androidx.compose.ui.geometry.Offset
 
 internal fun ComposeTestRule.shown(tag: String) = onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
+/**
+ * What a test of one of the large consoles makes for its own games, removed when it ends: a state of tens of
+ * megabytes per run would otherwise pile up on the device. Only bundles that appeared while the test ran are
+ * touched, each with its saves, and the test's own session and scrape folders.
+ */
+internal class TestGames(private val context: android.content.Context, private val system: dev.cartridge.domain.GameSystem) {
+    private val roms = java.io.File(context.filesDir, "roms")
+    private fun bundles() = roms.list { _, name -> name.endsWith(".${system.extension}") }.orEmpty().toSet()
+    private val before = bundles()
+    fun forget(database: String) {
+        for (bundle in bundles() - before) {
+            val id = bundle.substringBeforeLast('.')
+            if (!id.matches(Regex("[a-f0-9]{64}"))) continue
+            java.io.File(roms, bundle).deleteRecursively()
+            java.io.File(context.filesDir, "saves").listFiles { _, name -> name.startsWith("$id.") }?.forEach { it.deleteRecursively() }
+        }
+        for (folder in listOf("session", "scrape")) java.io.File(context.filesDir, "$database-$folder").deleteRecursively()
+    }
+}
+
+/**
+ * A console file only its owner has, for a test that is nothing without one. The owner (or whoever runs the
+ * tests for them) puts it in the app's private files/m1-owner-firmware, under the name the core gives it;
+ * nothing of it is in the repository, and a test that needs it is skipped where it is missing. Copies what is
+ * there to where the test library's cores look and says whether [core] now has a file it can start on.
+ */
+internal fun ownerFirmware(context: android.content.Context, core: dev.cartridge.domain.Core): Boolean {
+    val held = java.io.File(context.filesDir, "m1-owner-firmware"); val system = java.io.File(context.filesDir, "m1-test-system")
+    for (firmware in core.firmware) java.io.File(held, firmware.file).takeIf { it.isFile }?.copyTo(java.io.File(system, firmware.file), overwrite = true)
+    return core.firmware.any { java.io.File(system, it.file).isFile }
+}
+
 /** Horizontal centre of the focused object's label, as a fraction of the surface: it steps left while a sheet describes it. */
 internal fun MainActivity.labelCentre(): Float =
     if (coordinator.state.value.screen == dev.cartridge.session.CollectionScreen.LabelPreview) STAGED_LABEL_CENTRE else .5f

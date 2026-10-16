@@ -1,5 +1,7 @@
 package dev.cartridge
 
+import dev.cartridge.domain.CollectionLayout
+import dev.cartridge.domain.Media
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
@@ -82,7 +84,7 @@ class Ps1DeviceTest {
         ui.onNodeWithTag("menu-3").performClick();await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.screen==CollectionScreen.Library && it.coordinator.state.value.rendererReady }
     }
     private fun runGame(scenario: ActivityScenario<DebugCollectionActivity>) {
-        var id="";scenario.onActivity { id=it.coordinator.state.value.selectedGame!!.id;assertEquals(GameSystem.PS1,it.coordinator.state.value.selectedGame!!.system);assertEquals(45,it.collectionSurface!!.meshInstanceCount) }
+        var id="";scenario.onActivity { id=it.coordinator.state.value.selectedGame!!.id;assertEquals(GameSystem.PS1,it.coordinator.state.value.selectedGame!!.system);assertEquals(Media.entries.size * CollectionLayout.POOL,it.collectionSurface!!.meshInstanceCount) }
         ui.tool("insert").performClick();await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state==SessionState.Running }
         var before=0
         try { ui.waitUntil(8000) { before=color(scenario);Color.red(before)>Color.blue(before)+40 } }
@@ -203,7 +205,7 @@ class Ps1DeviceTest {
             assertArrayEquals(state,targetSaves.read(id,"state"))
             val bios=File(directory,"bios").apply { mkdirs() };File(bios,"scph5501.bin").writeBytes(byteArrayOf(9,8,7))
             File(context.filesDir,"m1-fixtures/invalid.png").apply { parentFile!!.mkdirs();writeBytes(byteArrayOf(0)) }
-            try { Ps1BiosStore(bios).import(context.contentResolver,Uri.parse("content://dev.cartridge.fixture/invalid.png"));fail("Invalid firmware accepted") } catch (_: IllegalArgumentException) { }
+            try { FirmwareStore(bios).import(context.contentResolver,Uri.parse("content://dev.cartridge.fixture/invalid.png"),dev.cartridge.domain.Core.Pcsx);fail("Invalid firmware accepted") } catch (_: IllegalArgumentException) { }
             assertArrayEquals(byteArrayOf(9,8,7),File(bios,"scph5501.bin").readBytes())
         } finally { firstDb.close();secondDb.close();preferences.edit().clear().commit();directory.deleteRecursively() }
     }

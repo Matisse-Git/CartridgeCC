@@ -11,6 +11,7 @@ import android.text.TextUtils
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.withTranslation
 import dev.cartridge.domain.GameSystem
+import dev.cartridge.domain.Media
 import java.nio.ByteBuffer
 import kotlin.math.max
 
@@ -28,19 +29,23 @@ object TypesetLabel {
     fun key(title: String, system: GameSystem) = "typeset:${system.name}:${title.hashCode()}:${title.length}"
 
     fun render(title: String, system: GameSystem): LabelPixels {
-        val width = 512; val height = system.labelHeight
+        val media = system.media(title)
+        val width = 512; val height = media.labelHeight
         val bitmap = createBitmap(width, height)
         try {
             val canvas = Canvas(bitmap)
             canvas.drawColor(PAPER)
-            val disc = system == GameSystem.PS1
+            // A label is set by its height: a strip has room for two lines, a tall sheet for a paragraph.
+            val disc = media == Media.Disc; val tall = height >= 400; val strip = height < 240
             // A disc is printed around its hole: the title sits in the upper band where the chord is still wide.
             val textWidth = if (disc) 300 else width - 76
-            val top = when { disc -> 66f; system.tallCartridge -> 44f; else -> 26f }
-            val bottom = when { disc -> 190f; system.tallCartridge -> height - 96f; else -> height - 62f }
+            val top = when { disc -> 66f; tall -> 44f; strip -> 18f; else -> 26f }
+            val bottom = when { disc -> 190f; tall -> height - 96f; strip -> height - 56f; else -> height - 62f }
             val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = INK; typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL); letterSpacing = -.01f }
-            val lines = if (system == GameSystem.GBA) 3 else 4
-            val layout = (if (disc) listOf(44f, 38f, 32f, 27f, 23f) else listOf(58f, 50f, 43f, 37f, 31f, 26f)).firstNotNullOfOrNull { size ->
+            val lines = when { disc -> 4; height >= 700 -> 6; tall -> 4; strip -> 2; else -> 3 }
+            // An upright sheet is narrow on its cartridge: the same 512 pixels cover half the width, so its type is larger.
+            val sizes = when { disc -> listOf(44f, 38f, 32f, 27f, 23f); height >= 700 -> listOf(96f, 84f, 72f, 62f, 54f, 46f, 40f); else -> listOf(58f, 50f, 43f, 37f, 31f, 26f) }
+            val layout = sizes.firstNotNullOfOrNull { size ->
                 paint.textSize = size
                 layout(title, paint, textWidth, lines, disc).takeIf { it.height <= bottom - top && it.lineCount <= lines && it.getEllipsisCount(it.lineCount - 1) == 0 }
             } ?: layout(title, paint, textWidth, lines, disc)

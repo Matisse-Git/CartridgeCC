@@ -1,5 +1,7 @@
 package dev.cartridge
 
+import dev.cartridge.domain.CollectionLayout
+import dev.cartridge.domain.Media
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
@@ -92,7 +94,7 @@ class AdditionalSystemsTest {
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 for (system in listOf(GameSystem.GB, GameSystem.GBC)) {
                     choose("probe.${system.extension}"); await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.system == system }
-                    var id = ""; scenario.onActivity { id = it.coordinator.state.value.selectedGame!!.id; assertEquals(45, it.collectionSurface!!.meshInstanceCount) }
+                    var id = ""; scenario.onActivity { id = it.coordinator.state.value.selectedGame!!.id; assertEquals(Media.entries.size * CollectionLayout.POOL, it.collectionSurface!!.meshInstanceCount) }
                     ui.tool("insert").performClick(); await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Running }
                     var before = 0; ui.waitUntil(8000) { before = pixels(scenario); before != 0 }
                     button(scenario); var changed = 0; ui.waitUntil(8000) { changed = pixels(scenario); changed != 0 && changed != before }
@@ -157,7 +159,7 @@ class AdditionalSystemsTest {
             val image = File(context.cacheDir, "m5-original.png")
             image.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
             val label = store.importStream("Original test") { image.inputStream() }
-            assertEquals(448, store.decode(label, GameSystem.GBC).height); assertEquals(256, store.decode(label).height)
+            assertEquals(448, store.decode(label, GameSystem.GBC.media).height); assertEquals(256, store.decode(label).height)
             val provider = RetroBaseProvider(File(context.cacheDir, "m5-provider"))
             val record = JSONObject().put("id", "00000000-0000-0000-0000-000000000001").put("name", "Original fixture").put("platform", JSONObject().put("name", "Game Boy Color"))
             assertNull(provider.parseGame(record, null)); assertEquals("Game Boy Color", provider.parseGame(record, null, system = GameSystem.GBC)!!.platform)

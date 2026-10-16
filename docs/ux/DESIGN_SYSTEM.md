@@ -79,6 +79,10 @@ the mark and tints the title with the accent, without the fill.
 
 Disabled rows stay focusable at 42% opacity, so the help line can say why.
 
+An app tile in Apps (`AppsPage`) uses the same three signals turned to suit a tile: the `Raised`
+fill behind the whole tile, the accent mark as an 18 × 3 dp bar at its lower edge, and the name in
+full `Text` and Medium. Its icon is drawn at 56 dp when focused and nine-tenths of that otherwise.
+
 On the stage, focus is physical: the focused object is centred (or enlarged, in the grid), nearer
 and larger. In menus, focus never leaves the screen: `RowList` scrolls the focused row into view
 with a margin, and reveals the heading above the first row.
@@ -98,8 +102,9 @@ with a margin, and reveals the heading above the first row.
 | `Notice` | Toast or persistent warning |
 | `StatusCluster` | Time, battery level, battery mark with charging bolt |
 | `StageShade` | Edge and band darkening over the 3D stage |
+| `AppsPage` | The Android apps: title and count, status, a grid of real icons that divides its space into whole tiles (at least 124 × 108 dp; six columns and three rows on the RP5), hints and position |
 
-Screens are assembled from these in `LibraryChrome.kt` and `Overlays.kt`; the artwork workflow in
+Screens are assembled from these in `LibraryChrome.kt`, `Overlays.kt` and `AppsPage.kt`; the artwork workflow in
 `scraping/ScrapePanel.kt` uses the same rows.
 
 Rows are data (`MenuRow` in `shell/ShellModel.kt`): id, title, kind, value, note, enabled, action,
@@ -117,7 +122,9 @@ adjust. They are addressed by id, never by position.
 Glyphs are outlined keycaps in the hint colour: 18 dp tall, 1 dp stroke, `Caption` text. They are
 labels, not buttons with their own colour.
 
-Hint order is fixed: movement, confirm, secondary actions, back, menu. At most five hints.
+Hint order is fixed: movement, confirm, secondary actions, back, menu. At most five hints on a page.
+The library carries up to seven (Browse, Play, Details, Turn, Console, Apps, Menu), which fit the
+RP5's width; they retire once learned, and `B Apps` retires on its own count.
 
 ## Icons
 
@@ -133,6 +140,7 @@ marks (4 dp dots; the current one a 14 dp bar in the accent). There is no icon s
 | `enter` | 220 ms, cubic-bezier(.2, 0, 0, 1) | Sheets and pages arriving (fade; sheets also travel 28 dp) |
 | `exit` | 140 ms, same curve | Library chrome leaving |
 | `fade` | 180 ms, same curve | Hints, shelf name cross-fade, notices |
+| `res/anim/app_open` | `enter` as an Android transition: 220 ms, same curve, fade with a 96 % → 100 % scale | An Android app arriving from Apps. A cut under reduced motion. Never the insertion |
 
 On the stage (`CartridgeSurface`, `FocusSpring`, `MediaMotion`):
 

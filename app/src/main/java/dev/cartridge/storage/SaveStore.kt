@@ -52,7 +52,7 @@ class SaveStore(private val directory: File) {
     private fun limit(kind: String): Int = when (kind) {
         "sram" -> 128 * 1024
         "rtc" -> 4096
-        "state" -> 16 * 1024 * 1024
+        "state" -> SessionStore.MAX_STATE
         else -> throw IllegalArgumentException("Invalid save kind")
     }
     companion object { private val locks = ConcurrentHashMap<String, Any>() }

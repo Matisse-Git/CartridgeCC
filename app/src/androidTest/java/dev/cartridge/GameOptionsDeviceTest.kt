@@ -24,7 +24,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.swordfish.libretrodroid.ShaderConfig
 import dev.cartridge.domain.GameSystem
 import dev.cartridge.domain.SessionState
-import dev.cartridge.environment.CoreFamily
+import dev.cartridge.domain.Core
 import dev.cartridge.environment.OptionStore
 import dev.cartridge.library.LibraryDatabase
 import dev.cartridge.library.LibraryGame
@@ -70,9 +70,9 @@ class GameOptionsDeviceTest {
                 row("option-playstation.sharp3d"); row("option-playstation.dither")
                 repeat(3) { row("option-playstation.effect") } // Standard → Sharp pixels → Handheld LCD → Television
                 ui.onNodeWithTag("settings-help").assertIsDisplayed()
-                val console = OptionStore(preferences).console(CoreFamily.PlayStation)
+                val console = OptionStore(preferences).console(Core.Pcsx)
                 assertEquals(mapOf("playstation.sharp3d" to "enabled", "playstation.dither" to "disabled", "playstation.effect" to "crt"), console)
-                assertTrue(OptionStore(preferences).console(CoreFamily.Handheld).isEmpty()) // Another console's choices are untouched.
+                assertTrue(OptionStore(preferences).console(Core.Mgba).isEmpty()) // Another console's choices are untouched.
                 ui.home()
                 Intents.init()
                 try {
@@ -97,7 +97,7 @@ class GameOptionsDeviceTest {
                 row("option-playstation.effect")
                 await(scenario) { !it.coordinator.state.value.busy }
                 assertEquals(mapOf("playstation.effect" to "standard"), OptionStore(preferences).game(id))
-                assertEquals("crt", OptionStore(preferences).console(CoreFamily.PlayStation)["playstation.effect"])
+                assertEquals("crt", OptionStore(preferences).console(Core.Pcsx)["playstation.effect"])
                 scenario.onActivity { assertEquals(ShaderConfig.Default, it.engine.surface.value!!.shader) }
                 // Core options wait for the next start, and say so; the running core keeps what it started with.
                 row("option-playstation.sharp3d")
@@ -173,14 +173,14 @@ class GameOptionsDeviceTest {
                 pause(); assertEquals(0, battery()); leave()
 
                 // Off, as it is until asked for: a game starts from the beginning even though it has a state.
-                assertTrue(OptionStore(preferences).console(CoreFamily.Handheld).isEmpty())
+                assertTrue(OptionStore(preferences).console(Core.Mgba).isEmpty())
                 start(); assertEquals(before, shown()); pause(); leave()
 
                 // On, once, for every console.
                 ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-gameplay").performClick(); row("option-startFromState")
                 ui.onNodeWithTag("settings-help").assertIsDisplayed()
-                assertEquals("enabled", OptionStore(preferences).console(CoreFamily.Handheld)["startFromState"])
-                assertEquals("enabled", OptionStore(preferences).console(CoreFamily.PlayStation)["startFromState"])
+                assertEquals("enabled", OptionStore(preferences).console(Core.Mgba)["startFromState"])
+                assertEquals("enabled", OptionStore(preferences).console(Core.Pcsx)["startFromState"])
                 ui.home()
                 start()
                 // The picture the state was saved on, with nothing said about it.
@@ -193,7 +193,7 @@ class GameOptionsDeviceTest {
                 // Only this game goes back to starting from the beginning; the console keeps its setting.
                 ui.onNodeWithTag("menu-4").performClick(); row("option-startFromState")
                 assertEquals(mapOf("startFromState" to "disabled"), OptionStore(preferences).game(id))
-                assertEquals("enabled", OptionStore(preferences).console(CoreFamily.Handheld)["startFromState"])
+                assertEquals("enabled", OptionStore(preferences).console(Core.Mgba)["startFromState"])
                 ui.onNodeWithTag("back").performClick(); leave()
                 start(); assertEquals(before, shown()); pause()
                 ui.onNodeWithTag("menu-4").performClick(); row("option-reset"); assertTrue(OptionStore(preferences).game(id).isEmpty())

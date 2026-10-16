@@ -82,12 +82,19 @@ class UxTourTest {
             UUID.randomUUID().toString().take(8).toByteArray().copyInto(bytes, 0x134); File(tree, "m5-$extension.$extension").writeBytes(bytes)
         }
         val intent = Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)
+        // Invented apps with drawn icons: what the owner has installed is never in a screenshot.
+        DebugCollectionActivity.testApps = FixtureAppSource(FixtureAppSource.TOUR, withoutIcon = setOf("Ledger"))
         try {
             // Journey A: an empty console, one action, a folder, a summary.
             ActivityScenario.launch<DebugCollectionActivity>(intent).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 ui.onNodeWithTag("welcome").assertIsDisplayed()
                 shot("01-welcome")
+                // An empty library is still the library's root: the Android apps are one press away from it too.
+                ui.onNodeWithTag("open-apps").assertIsDisplayed()
+                key(scenario, KeyEvent.KEYCODE_BUTTON_B); await(scenario) { it.shell.top == Destination.Apps }
+                key(scenario, KeyEvent.KEYCODE_BUTTON_B); scenario.onActivity { assertNull(it.shell.top) }
+                ui.onNodeWithTag("welcome").assertIsDisplayed()
                 Intents.init()
                 try {
                     intending(hasAction(Intent.ACTION_OPEN_DOCUMENT_TREE)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
@@ -133,6 +140,20 @@ class UxTourTest {
                     repository.setMetadata(id, mapOf("year" to value("${1997 + index}"), "developer" to value("Northern Circuit")))
                     if (index == 1) repository.setLabel(id, labels.importStream("tour-disc") { artwork(Color.rgb(226, 222, 212), Color.rgb(196, 70, 60), 512, 512).inputStream() })
                 }
+                // The consoles shown as their own cartridges. A Super Nintendo game named as a North American release
+                // has that market's shell; every other one has the console's own. One of each carries artwork.
+                val cartridges = listOf(
+                    GameSystem.SNES to listOf("Lantern Coast (Japan)", "Lantern Coast (USA)", "Winter Signal (Europe)"),
+                    GameSystem.NES to listOf("Copper Kingdom", "Marble Run"), GameSystem.GENESIS to listOf("Velvet Circuit", "Salt and Ember"))
+                cartridges.forEachIndexed { console, (system, names) ->
+                    names.forEachIndexed { index, title ->
+                        val id = (0xb0 + console * 8 + index).toString(16).padStart(64, '0')
+                        val game = LibraryGame(id, title, "content://fixture/cartridge-$console-$index", system = system)
+                        repository.add(game); repository.setMetadata(id, mapOf("year" to value("${1990 + console + index}"), "developer" to value("Studio Meridian")))
+                        if (index == 1) repository.setLabel(id, labels.importStream("tour-${system.name.lowercase()}") {
+                            artwork(Color.rgb(30 + console * 40, 70, 96 - console * 20), Color.rgb(236, 200, 120), 512, game.shownAs.labelHeight).inputStream() })
+                    }
+                }
                 repository.select(0)
             }
             database.close()
@@ -150,9 +171,20 @@ class UxTourTest {
                 key(scenario, KeyEvent.KEYCODE_DPAD_RIGHT)
                 shot("04-library-playstation")
                 key(scenario, KeyEvent.KEYCODE_BUTTON_R1)
+                await(scenario) { it.coordinator.state.value.shelf == Shelf.Console(GameSystem.SNES) }
+                key(scenario, KeyEvent.KEYCODE_DPAD_RIGHT)
+                shot("04b-library-super-nintendo")
+                key(scenario, KeyEvent.KEYCODE_BUTTON_R1)
+                await(scenario) { it.coordinator.state.value.shelf == Shelf.Console(GameSystem.NES) }
+                shot("04c-library-nes")
+                key(scenario, KeyEvent.KEYCODE_BUTTON_R1)
+                await(scenario) { it.coordinator.state.value.shelf == Shelf.Console(GameSystem.GENESIS) }
+                key(scenario, KeyEvent.KEYCODE_DPAD_RIGHT)
+                shot("04d-library-genesis")
+                key(scenario, KeyEvent.KEYCODE_BUTTON_R1)
                 await(scenario) { it.coordinator.state.value.shelf == Shelf.All }
                 shot("05-library-all-games")
-                key(scenario, KeyEvent.KEYCODE_BUTTON_L1, 4)
+                key(scenario, KeyEvent.KEYCODE_BUTTON_L1, 7)
                 await(scenario) { it.coordinator.state.value.shelf == Shelf.Console(GameSystem.GBA) }
                 scenario.onActivity { it.coordinator.navigate(-9) }
 
@@ -199,6 +231,8 @@ class UxTourTest {
                 shot("17-layout-grid")
                 scenario.onActivity { it.coordinator.chooseShelf(Shelf.All); it.coordinator.navigate(4 - it.coordinator.state.value.selection.index) }
                 shot("17b-layout-grid-all-games")
+                scenario.onActivity { it.coordinator.navigate(13 - it.coordinator.state.value.selection.index) }
+                shot("17c-layout-grid-cartridges")
                 scenario.onActivity { it.coordinator.chooseShelf(Shelf.Console(GameSystem.GBA)) }
                 scenario.onActivity { assertEquals(focused, it.coordinator.state.value.selectedGame!!.id); it.shell.setLayout(CollectionLayout.Vertical) }
                 shot("18-layout-vertical")
@@ -244,7 +278,22 @@ class UxTourTest {
                 shot("24-artwork")
                 key(scenario, KeyEvent.KEYCODE_BUTTON_B)
                 await(scenario) { !it.scraper.state.value.visible }
+
+                // The Android apps: B from the library with nothing open, their own icons, and B back to the same game.
+                var game = ""; scenario.onActivity { game = it.coordinator.state.value.selectedGame!!.id; assertNull(it.shell.top) }
+                key(scenario, KeyEvent.KEYCODE_BUTTON_B)
+                await(scenario) { it.shell.top == Destination.Apps && it.shell.apps.entries.size == FixtureAppSource.TOUR.size }
+                key(scenario, KeyEvent.KEYCODE_DPAD_RIGHT, 2); key(scenario, KeyEvent.KEYCODE_DPAD_DOWN)
+                shot("25-apps")
+                key(scenario, KeyEvent.KEYCODE_BUTTON_Y); scenario.onActivity { assertTrue(it.shell.top is Destination.TextEntry); "er".forEach(it.shell::type) }
+                key(scenario, KeyEvent.KEYCODE_BUTTON_START)
+                scenario.onActivity { assertEquals(Destination.Apps, it.shell.top); assertTrue(it.shell.apps.searching) }
+                shot("26-apps-search")
+                key(scenario, KeyEvent.KEYCODE_BUTTON_B); scenario.onActivity { assertEquals(Destination.Apps, it.shell.top); assertFalse(it.shell.apps.searching) }
+                key(scenario, KeyEvent.KEYCODE_BUTTON_B)
+                await(scenario) { it.shell.top == null && it.coordinator.state.value.rendererReady }
+                scenario.onActivity { assertEquals(game, it.coordinator.state.value.selectedGame!!.id) }
             }
-        } finally { DebugCollectionActivity.closeDatabases(); context.deleteDatabase("$name.db"); tree.listFiles()?.forEach { it.delete() } }
+        } finally { DebugCollectionActivity.testApps = null; DebugCollectionActivity.closeDatabases(); context.deleteDatabase("$name.db"); tree.listFiles()?.forEach { it.delete() } }
     }
 }

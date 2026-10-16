@@ -1,5 +1,59 @@
 # Roadmap and acceptance gates
 
+PlayStation 2 on the console's BIOS (2026-10-13, ADR 0026, [CONSOLES](CONSOLES.md)): the question
+left open below is answered. The owner asked for a BIOS-based engine; ARMSX2 (open-source PCSX2 for
+ARM64) replaced Play!, draws through the same OpenGL ES host, and runs both of the owner's games at
+full speed on the RP5 with a BIOS of theirs. **Left for the owner's hands:** adding the BIOS to
+their own library through Settings (the test library was given it by hand), a first save to a
+memory card and loading it back, and any third game. Next for this console, in the order they are
+likely to matter: save states (the engine can make them; how long one takes with a game has to be
+measured before a pause may wait on it); memory cards in backups; the engine's per-game patches,
+which its build would download and this one therefore leaves out; a CUE+BIN game with music tracks.
+Also open from this increment: the in-tree build of the engine's eleven libraries has never been
+run (a prebuilt set was used), and one library test failed once in two full runs (see TESTING).
+
+Real games and cartridges (2026-10-12, ADR 0024 and 0025, [CONSOLES](CONSOLES.md)): the owner's
+games were run on Dreamcast, PlayStation 2 and GameCube. Dreamcast (three discs) and GameCube (one
+game) play at their own speed with whole sound; PlayStation 2 plays one of two games, under full
+speed in 3D, and the other never draws. NES, Super Nintendo and Genesis games are shown as the
+owner's cartridge models. **Open, and the owner's to decide:** PlayStation 2 on Play! is as good as
+it will get from this side. The engine that would run what Play! does not is PCSX2's line, which
+needs a Vulkan host this app does not have and the console's BIOS from the owner. Next after that,
+in the order games are likely to ask: memory cards in backups; a per-game choice of cartridge shell
+where the file name does not say; models for Master System and Game Gear, and a console for the
+Nintendo 64 model already supplied; playing a DVD where it lies; trigger travel; disc change.
+
+Dreamcast, PlayStation 2, GameCube (2026-10-11, ADR 0023, [CONSOLES](CONSOLES.md)): Flycast, Play!
+and Dolphin are built in from pinned source and draw through the device's OpenGL ES. Each ran an
+original program on the RP5 (picture; buttons and stick on Dreamcast and GameCube; a state on
+Dreamcast and PlayStation 2) and the full device regression passes with them (TESTING). **Left for
+the owner's hands, and it is most of what matters:** a real game on each. Nothing 3D has been drawn,
+no speed measured, no sound heard, and the PlayStation 2 pad is untested.
+
+Next engineering work, in the order the owner's first games are likely to ask for it: whatever those
+games show; playing a DVD where it lies instead of copying it; memory cards in backups; trigger
+travel; a way to hold GameCube states (compressed, or streamed to disk); disc change; and, if Play!
+does not run what the owner wants, a host that can give PCSX2 Vulkan.
+
+More consoles (2026-10-11, ADR 0022, [CONSOLES](CONSOLES.md)): a console is one registry entry.
+Super Nintendo, NES, Genesis, Master System and Game Gear were added on it and each was played from
+an original program on the RP5; the full regression passed 49 of 49. Saturn is implemented with a
+required-BIOS workflow and disc identification but has not been run on the device. Game Boy, Game
+Boy Advance and PlayStation are unchanged; no schema or save-format change. Left for the owner's
+hands: real games on each new console, their sound and button feel, and Saturn end to end with a
+BIOS. Not done and stated as such: multi-disc grouping and disc change, the new consoles' own 3D
+models. (Dreamcast, GameCube and PlayStation 2, analog sticks and the larger state bound followed
+the same day; see above. `-Suite Saturn` and `-Suite Cores` have since run on the RP5.)
+
+Android apps (2026-10-11, ADR 0021): B on the game library with nothing open opens the device's
+installed apps as a grid of their own icons; A starts one as a home screen would; B returns to the
+same shelf and game. Listed through `LauncherApps` with a MAIN + LAUNCHER `<queries>` declaration
+and no broad permission; kept current by its callback and a re-read on return. No change to
+emulation, assets, the database schema or save formats. Host checks and the RP5 regression pass
+(TESTING). Left for the owner's hands: the feel of the grid under the D-pad and stick with the real
+app list, returning with the Home button when Cartridge is the HOME app, and a heavy app that makes
+Android reclaim Cartridge's process. Not offered: managing apps.
+
 Console feel (2026-10-10, ADR 0020): browsing no longer re-reads the library per step (60 fps held
 with 3,000 games on the RP5, where 800 dropped frames before); games start and end behind a closed
 screen with Fade, Iris or Shutter and no loading text; the receiving slot is gone; a shelf opens on

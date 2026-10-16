@@ -16,6 +16,7 @@ Library ─┬─ A        play (insertion → game)
          │                    └─ Manage game ── artwork, edit details, locate, hide
          ├─ L1 / R1  previous / next shelf
          ├─ Y        favourite
+         ├─ B        Apps (only with nothing open; added 2026-10-11, ADR 0021)
          └─ START    System Menu ─┬─ Add Games
                                   ├─ Search
                                   ├─ Artwork & Info
@@ -27,6 +28,11 @@ Game ──── pause      Pause menu ── Resume · Save State · Load Stat
 
 Four destinations: Library, Details, System Menu, Pause. Every common action is at most two
 levels from the library. Nothing appears in two places.
+
+Apps, added on 2026-10-11, is a fifth: the library's sibling rather than something inside it. It is
+a full screen on the same ground with the same title, status and hint positions, and it shows
+Android apps as their own icons, never as media. It is reached by the one button that had no job at
+the library's root, and it adds no button, tab or menu row. See [ADR 0021](../decisions/0021-android-apps-library.md).
 
 | Old (16 destinations) | Now |
 |---|---|

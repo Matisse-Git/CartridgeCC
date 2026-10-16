@@ -39,7 +39,7 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
 /** Draws whatever the shell's stack says is open: the nearest opaque page, then the sheet resting on it. */
 @Composable fun BoxScope.ShellOverlays(shell: ConsoleShell, state: CollectionState, status: EngineStatus, device: DeviceStatus, confirm: String, back: String) {
     val top = shell.top
-    shell.base?.let { destination -> shell.page(state, status, destination)?.let { page -> Entering(destination.key) { OpaquePage(page, shell, state, top == destination, confirm, back) } } }
+    shell.base?.let { destination -> shell.page(state, status, destination)?.let { page -> Entering(destination.key) { OpaquePage(page, shell, state, device, top == destination, confirm, back) } } }
     val floating = if (top == null || !top.opaque) shell.page(state, status, top) else null
     if (floating != null) {
         val focused = shell.focused(floating)
@@ -65,13 +65,14 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
     }
 }
 
-@Composable private fun BoxScope.OpaquePage(page: Page, shell: ConsoleShell, state: CollectionState, active: Boolean, confirm: String, back: String) {
+@Composable private fun BoxScope.OpaquePage(page: Page, shell: ConsoleShell, state: CollectionState, device: DeviceStatus, active: Boolean, confirm: String, back: String) {
     Box(Modifier.fillMaxSize().background(Ink.Stage).testTag(when (page.style) { PageStyle.Settings -> "settings"; else -> "page-${page.key}" })
         .windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Space.Edge, vertical = Space.L)) {
         when (page.style) {
             PageStyle.Settings -> SettingsPage(page, shell, state, confirm, back)
             PageStyle.Keyboard -> Keyboard(page, shell, confirm, back)
             PageStyle.Reader -> Reader(page, shell, back)
+            PageStyle.Apps -> AppsPage(shell, device, confirm, back)
             else -> {
                 val focused = shell.focused(page)
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Space.XL)) {
@@ -263,7 +264,7 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
                 if (known > 0 && flow.result.added > 0) Txt("${plural(known, "game")} from this folder ${if (known == 1) "was" else "were"} already in your library.",
                     Type.Label, Ink.Soft, Modifier.padding(top = Space.S))
                 if (flow.result.added == 0 && known == 0 && flow.result.failed == 0 && flow.result.otherConsoles.isEmpty() && flow.result.archives == 0)
-                    Txt("Cartridge plays Game Boy, Game Boy Color, Game Boy Advance and PlayStation games. Try the folder that holds those files.",
+                    Txt("Cartridge plays ${dev.cartridge.domain.GameSystem.entries.map { it.title }.let { it.dropLast(1).joinToString() + " and " + it.last() }} games. Try the folder that holds those files.",
                         Type.Body, Ink.Soft, Modifier.padding(top = Space.S))
                 importNotes(flow.result).forEach { Txt(it, Type.Label, Ink.Warning, Modifier.padding(top = Space.S).testTag("import-note"), lines = 3) }
                 if (flow.firstRun && flow.result.added > 0) HintBar(buildList {

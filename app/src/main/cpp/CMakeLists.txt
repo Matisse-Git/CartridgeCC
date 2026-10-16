@@ -30,9 +30,15 @@ target_sources(mgba_libretro PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/cartridge_mgba
 set_target_properties(mgba_libretro PROPERTIES PREFIX "lib")
 target_link_options(mgba_libretro PRIVATE "-Wl,-z,max-page-size=16384")
 include(pcsx.cmake)
+include(cores.cmake)
+include(flycast.cmake)
+include(armsx2.cmake)
+include(dolphin.cmake)
 
 add_library(cartridge_saves SHARED save_bridge.c)
 target_compile_features(cartridge_saves PRIVATE c_std_11)
 target_compile_options(cartridge_saves PRIVATE -Wall -Wextra -Werror)
-target_link_libraries(cartridge_saves PRIVATE dl)
+target_link_libraries(cartridge_saves PRIVATE dl log)
 target_link_options(cartridge_saves PRIVATE "-Wl,-z,max-page-size=16384")
+# Gradle builds the libraries it is given by name; the two cores built as projects of their own ride on this one.
+add_dependencies(cartridge_saves ps2_core gc_core)

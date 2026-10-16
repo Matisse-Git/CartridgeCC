@@ -4,7 +4,7 @@ import dev.cartridge.domain.ConsoleCatalog
 import dev.cartridge.domain.FolderHint
 import dev.cartridge.domain.FoundFile
 import dev.cartridge.domain.GameSystem
-import dev.cartridge.environment.CoreFamily
+import dev.cartridge.domain.Core
 import dev.cartridge.environment.GameOptions
 import dev.cartridge.library.LibraryGame
 import dev.cartridge.library.Shelf
@@ -37,7 +37,7 @@ class ConsoleExperienceTest {
     @Test fun folderNamesExcludeAnotherConsolesDiscsButNeverCartridges() {
         assertEquals(FolderHint.Supported(GameSystem.GBA), ConsoleCatalog.folderHint("Game Boy Advance"))
         assertEquals(FolderHint.Supported(GameSystem.PS1), ConsoleCatalog.folderHint("psx"))
-        assertEquals(FolderHint.Other("PlayStation 2"), ConsoleCatalog.folderHint("PS2"))
+        assertEquals(FolderHint.Other("PlayStation Portable"), ConsoleCatalog.folderHint("PSP"))
         assertNull(ConsoleCatalog.folderHint("My Games"))
         // Cartridge formats identify themselves; the folder cannot veto them.
         assertEquals(FoundFile.Game(GameSystem.GBA), ConsoleCatalog.classify("Orbit.GBA", FolderHint.Other("Sega Saturn")))
@@ -45,8 +45,8 @@ class ConsoleExperienceTest {
         // Disc containers are shared by many consoles, so a folder named for another one wins.
         assertEquals(FoundFile.Game(GameSystem.PS1), ConsoleCatalog.classify("orbit.chd"))
         assertEquals(FoundFile.Game(GameSystem.PS1), ConsoleCatalog.classify("orbit.cue", FolderHint.Supported(GameSystem.PS1)))
-        assertEquals(FoundFile.OtherConsole("Dreamcast"), ConsoleCatalog.classify("orbit.chd", FolderHint.Other("Dreamcast")))
-        assertEquals(FoundFile.OtherConsole("Super Nintendo"), ConsoleCatalog.classify("orbit.sfc"))
+        assertEquals(FoundFile.OtherConsole("Wii"), ConsoleCatalog.classify("orbit.chd", FolderHint.Other("Wii")))
+        assertEquals(FoundFile.OtherConsole("Nintendo 64"), ConsoleCatalog.classify("orbit.z64"))
         assertEquals(FoundFile.Archive, ConsoleCatalog.classify("orbit.zip"))
         assertEquals(FoundFile.Playlist, ConsoleCatalog.classify("orbit.m3u"))
         // A BIN is a track of its CUE, never a game of its own.
@@ -56,9 +56,12 @@ class ConsoleExperienceTest {
     @Test fun startFromSaveStateIsOneChoiceForEveryConsoleThatAGameCanOverride() {
         val start = GameOptions.all.single { it.id == "startFromState" }
         assertNull(start.family); assertNull(start.variable); assertFalse(start.live)
-        // Off unless asked for, on every console, under the same stored id.
-        for (system in GameSystem.entries) assertEquals("disabled", GameOptions.resolve(system, emptyMap()).getValue(start))
-        for (family in CoreFamily.entries) assertTrue(start in GameOptions.forFamily(family))
+        // Off unless asked for, under the same stored id, on every console a state can be made for; the one whose
+        // state is too large to hold is offered neither a state nor a start from one.
+        val stateless = Core.entries.filter { it.snapshots == dev.cartridge.domain.Snapshots.Never }
+        assertEquals(listOf(Core.Dolphin, Core.Armsx2), stateless)
+        for (system in GameSystem.entries.filter { it.core !in stateless }) assertEquals("disabled", GameOptions.resolve(system, emptyMap()).getValue(start))
+        for (family in Core.entries) assertEquals(family.name, family !in stateless, start in GameOptions.forFamily(family))
         assertEquals("enabled", GameOptions.resolve(GameSystem.PS1, mapOf(start.id to "enabled")).getValue(start))
         assertEquals("disabled", GameOptions.resolve(GameSystem.GBA, mapOf(start.id to "enabled"), mapOf(start.id to "disabled")).getValue(start))
         // It reaches the adapter under its own reserved key and is never offered to a core or to a paused game.
@@ -70,7 +73,7 @@ class ConsoleExperienceTest {
     @Test fun gameChoicesOverrideConsoleChoicesAndUnknownStoredValuesFallBack() {
         val sharp = GameOptions.all.single { it.id == "playstation.sharp3d" }
         val effect = GameOptions.all.single { it.id == "playstation.effect" }
-        assertEquals(CoreFamily.PlayStation, CoreFamily.of(GameSystem.PS1)); assertEquals(CoreFamily.Handheld, CoreFamily.of(GameSystem.GBC))
+        assertEquals(Core.Pcsx, GameSystem.PS1.core); assertEquals(Core.Mgba, GameSystem.GBC.core)
         val defaults = GameOptions.resolve(GameSystem.PS1, emptyMap())
         assertEquals("disabled", defaults[sharp]); assertEquals("standard", defaults[effect])
         val console = mapOf(sharp.id to "enabled", effect.id to "crt")

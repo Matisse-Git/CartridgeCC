@@ -346,7 +346,7 @@ class CollectionCoordinator(
     fun labelsReady(generation: Int, keys: List<String?>, firstIndex: Int = 0) {
         val current = state.value
         if (generation == current.viewportGeneration && current.labelDraft != null && !current.labelPreviewReady &&
-            keys.getOrNull(current.selection.index - firstIndex) == current.labelDraft.label.textureKey(current.selectedGame?.system ?: GameSystem.GBA)) {
+            keys.getOrNull(current.selection.index - firstIndex) == current.labelDraft.label.textureKey(current.selectedGame?.shownAs ?: dev.cartridge.domain.Media.Cartridge)) {
             mutableState.value = current.copy(labelPreviewReady = true)
         }
     }
@@ -602,6 +602,15 @@ class CollectionCoordinator(
             }
         }
     }
+    /**
+     * A console whose whole machine cannot be captured (its core's `snapshots` is Never) has no checkpoint to come
+     * back from, so leaving the app must not end its game: sleep is how a handheld is put down.
+     */
+    private fun keptWhileAway(): Boolean {
+        val playing = playingId?.let { id -> state.value.allGames.firstOrNull { it.id == id } } ?: return false
+        return playing.system.core.snapshots == dev.cartridge.domain.Snapshots.Never &&
+            engine.status.value.state in setOf(SessionState.Running, SessionState.Paused)
+    }
     fun background() {
         foreground = false
         if (destroyed || backgroundJob?.isActive == true) return
@@ -614,6 +623,11 @@ class CollectionCoordinator(
                 mutableState.value = state.value.copy(busy = true)
                 try {
                     if (sessionStore == null) eject("Session ended when the app left the foreground.", animate = false)
+                    else if (keptWhileAway()) {
+                        // Nothing to bring this game back from: it stays loaded, paused behind its pause menu, for as
+                        // long as Android keeps the app. Its battery save is written by the pause, as at any pause.
+                        if (engine.status.value.state == SessionState.Running) { playJob?.cancel(); savePlay(false); playActive = false; engine.pause() }
+                    }
                     else {
                         var checkpointFailure: Exception? = null
                         try { engine.pause(); engine.checkpointSession() }

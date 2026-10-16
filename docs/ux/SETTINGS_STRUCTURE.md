@@ -84,6 +84,47 @@ A game can override it like any other option (`game.<content id>.startFromState`
 | Sharper 3D | Off · On | next start | `pcsx_rearmed_neon_enhancement_enable` |
 | Colour smoothing | On · Off | next start | `pcsx_rearmed_dithering` |
 
+**Super Nintendo**, **Nintendo Entertainment System**, **Genesis · Master System · Game Gear**,
+**Saturn** (added 2026-10-11; the section is generated from the console registry, one heading per
+core in registry order)
+
+| Heading | Row | Choices | Applies | Core |
+|---|---|---|---|---|
+| Super Nintendo | Screen effect | Standard · Sharp pixels · Handheld LCD · Television | at once | frontend shader |
+| | Reduce sprite flicker | Off · On | at once | `snes9x_reduce_sprite_flicker` |
+| Nintendo Entertainment System | Screen effect | as above | at once | frontend shader |
+| | Reduce sprite flicker | Off · On | at once | `fceumm_nospritelimit` |
+| Genesis · Master System · Game Gear | Screen effect | as above | at once | frontend shader |
+| | Reduce sprite flicker | Off · On | at once | `genesis_plus_gx_no_sprite_limit` |
+| | Audio smoothing | Off · On | at once | `genesis_plus_gx_audio_filter` |
+| Saturn | BIOS file · America and Europe | Added / Not added; select to choose a file | next start | private `system/mpr-17933.bin` |
+| | BIOS file · Japan | Added / Not added; select to choose a file | next start | private `system/sega_101.bin` |
+| | Screen effect | as above | at once | frontend shader |
+
+**Dreamcast**, **PlayStation 2**, **GameCube** (added 2026-10-11, ADR 0023; PlayStation 2's rows since 2026-10-12, ADR 0026)
+
+| Heading | Row | Choices | Applies | Core |
+|---|---|---|---|---|
+| Dreamcast | BIOS file | Added / Not added; select to choose a file. Optional | next start | private `system/dc/dc_boot.bin` |
+| | Screen effect | as above | at once | frontend shader |
+| | Sharper 3D | Off · On | next start | `reicast_internal_resolution` 640x480 / 1280x960 |
+| PlayStation 2 | BIOS file | Added / Not added; select to choose a file. **Required**: a game opens the setup dialog without it | next start | private `system/pcsx2/bios/ps2-bios.bin`; any region's dump, taken by its own file table |
+| | Screen effect | as above | at once | frontend shader |
+| | Sharper 3D | Off · On | next start | `armsx2_upscale` 1x / 2x |
+| GameCube | Screen effect | as above | at once | frontend shader |
+| | Sharper 3D | Off · On | next start | `dolphin_efb_scale` 1 / 2 |
+| | Exact video output | Off · On | next start | `dolphin_xfb_to_texture_enable` enabled / disabled |
+
+*Start from save state* is listed for every console that can make a state; GameCube and
+PlayStation 2 cannot, so it is absent there, in their games' options and in their pause menus. *Exact video output* is read
+back on the device by `GameCubeCoreTest`: with it on, a program that paints the video chip's memory
+is shown, and the variable is `disabled` in the running core. *Sharper 3D* on these three reaches
+the core and the host's picture follows the size the core draws; no 3D picture has been looked at.
+
+A BIOS row of a console that cannot start without it is marked until the file is added. The same
+file can be added from the import result, the game's details and the dialog a Saturn game shows
+when started without one.
+
 Then: *A game can use its own choices* (information), and, when a session is saved, **Discard
 saved session**.
 

@@ -58,7 +58,7 @@ import kotlin.math.max
                 Txt(when (state.page) {
                     ScrapePage.Scope -> if (state.entries.isNotEmpty()) "Pick up the saved batch, or start a new search to replace its progress. Artwork you already applied stays."
                         else "Find labels and details for your games. Nothing is changed until you choose it."
-                    ScrapePage.Artwork -> "Choose a flat label to try on the real ${if (state.current?.game?.system == dev.cartridge.domain.GameSystem.PS1) "disc" else "cartridge"}, or keep other artwork alongside it." +
+                    ScrapePage.Artwork -> "Choose a flat label to try on the real ${state.current?.game?.system?.media?.noun ?: "cartridge"}, or keep other artwork alongside it." +
                         if (state.candidate?.artwork?.none { it.isLabel } == true) " This match has no flat label." else ""
                     ScrapePage.Metadata -> "Tick only the fields you want. X steps through a field's versions."
                     ScrapePage.Targets -> "${state.pickedIds.size} selected. X selects all or clears."

@@ -2,11 +2,11 @@ package dev.cartridge.shell
 
 import android.text.format.DateUtils
 import dev.cartridge.domain.CollectionLayout
+import dev.cartridge.domain.Core
 import dev.cartridge.domain.GameSystem
 import dev.cartridge.domain.LaunchTransition
 import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.EngineStatus
-import dev.cartridge.environment.CoreFamily
 import dev.cartridge.environment.GameOptions
 import dev.cartridge.library.LabelFit
 import dev.cartridge.library.LibraryGame
@@ -66,6 +66,8 @@ internal fun ConsoleShell.buildPage(state: CollectionState, status: EngineStatus
         is Destination.TextEntry -> Page("text", destination.spec.title, emptyList(), PageStyle.Keyboard, destination.spec.hint)
         Destination.Import -> importPage()
         Destination.LaunchFailure -> state.launchFailure?.let(::failurePage)
+        is Destination.Setup -> setupPage(destination.core)
+        Destination.Apps -> Page("apps", "Apps", emptyList(), PageStyle.Apps)
     }
 }
 
@@ -91,11 +93,13 @@ private fun ConsoleShell.pausePage(state: CollectionState): Page {
     val game = state.selectedGame
     val known = facts?.takeIf { it.first == game?.id }?.second
     val ready = !state.busy
-    return Page("pause", game?.title ?: "Paused", listOf(
+    // A console whose state cannot be captured is not offered one; its games keep their own saves.
+    val states = game?.system?.core?.snapshots != dev.cartridge.domain.Snapshots.Never
+    return Page("pause", game?.title ?: "Paused", listOfNotNull(
         MenuRow("resume", "Resume", enabled = ready, tag = "menu-0") { coordinator.menuAction(0) },
-        MenuRow("save", "Save State", enabled = ready, tag = "menu-1") { coordinator.menuAction(1) },
-        MenuRow("load", "Load State", value = known?.stateAt?.takeIf { it > 0 }?.let { "Saved ${whenLabel(it)}" },
-            note = if (known != null && known.stateAt <= 0) "Nothing saved yet" else null, enabled = ready && (known == null || known.stateAt > 0), tag = "menu-2") { coordinator.menuAction(2) },
+        if (states) MenuRow("save", "Save State", enabled = ready, tag = "menu-1") { coordinator.menuAction(1) } else null,
+        if (states) MenuRow("load", "Load State", value = known?.stateAt?.takeIf { it > 0 }?.let { "Saved ${whenLabel(it)}" },
+            note = if (known != null && known.stateAt <= 0) "Nothing saved yet" else null, enabled = ready && (known == null || known.stateAt > 0), tag = "menu-2") { coordinator.menuAction(2) } else null,
         MenuRow("options", "Game Options", RowKind.Link, enabled = ready, tag = "menu-4") { push(Destination.Options) },
         MenuRow("eject", "Return to Library", enabled = ready, tag = "menu-3") { coordinator.menuAction(3) }),
         PageStyle.Pause, game?.system?.title)
@@ -120,6 +124,8 @@ private fun ConsoleShell.detailsPage(game: LibraryGame, state: CollectionState):
     return Page("details", game.title, buildList {
         if (known?.cachedRom == false) add(MenuRow("locate", "Reconnect game file", note = "Cartridge can't find this game's file. Choose the same file again.",
             warn = true, enabled = ready, tag = "details-locate") { locateGame() })
+        if (!firmwareReady(game.system.core)) add(MenuRow("setup", "Add ${game.system.core.title} BIOS", note = "Needed before this game can start",
+            warn = true, enabled = ready, tag = "details-setup") { chooseFirmware(game.system.core) })
         add(MenuRow("play", "Play", enabled = ready && state.rendererReady, tag = "details-play") { play() })
         add(MenuRow("favorite", if (game.favorite) "Remove from Favorites" else "Add to Favorites", enabled = ready, tag = "details-favorite") { coordinator.favorite() })
         add(MenuRow("options", "Game options", RowKind.Link, tag = "details-options") { push(Destination.Options) })
@@ -143,7 +149,7 @@ private fun ConsoleShell.managePage(game: LibraryGame, state: CollectionState): 
 
 private fun ConsoleShell.optionsPage(game: LibraryGame, paused: Boolean): Page {
     optionsRevision // Subscribes this page to stored option changes.
-    val family = CoreFamily.of(game.system)
+    val family = game.system.core
     val console = GameOptions.resolve(game.system, options.console(family))
     val overrides = options.game(game.id)
     return Page("options", "Game options", buildList {
@@ -177,7 +183,7 @@ private fun ConsoleShell.aboutPage(): Page {
     return Page("about", "About Cartridge", notices.mapIndexed { index, name ->
         MenuRow("notice:$name", name.removeSuffix(".txt").replace('-', ' ').replace('_', ' '), RowKind.Link, tag = "notice-$index") { push(Destination.Notice(name)) }
     }.ifEmpty { listOf(MenuRow("none", "Licence notices are unavailable in this build", RowKind.Info)) }, PageStyle.Page, "Version $version",
-        "Games run inside Cartridge with mGBA 0.10.5 and PCSX ReARMed, through LibretroDroid 0.14.0. The collection is drawn with Filament 1.72.1.\n\n" +
+        "Games run inside Cartridge with ${Core.entries.joinToString { it.engine }}, through LibretroDroid 0.14.0. The collection is drawn with Filament 1.72.1.\n\n" +
             "Your game files, saves and artwork stay on this device and under your control.")
 }
 
@@ -186,7 +192,9 @@ private fun ConsoleShell.importPage(): Page {
     return Page("import", "Adding games", when (flow) {
         is ImportFlow.Looking, is ImportFlow.Adding -> listOf(MenuRow("stop", "Stop", note = "Games already added are kept", tag = "cancel-scan") { coordinator.cancelScan() })
         is ImportFlow.Done -> buildList {
-            if (flow.needsBios) add(MenuRow("bios", "Add PlayStation BIOS", note = "Most PlayStation games need it to start", tag = "import-bios") { chooseBios() })
+            flow.setup.forEach { core ->
+                add(MenuRow("bios:${core.name}", "Add ${core.title} BIOS", note = core.firmwareHelp, tag = if (core == Core.Pcsx) "import-bios" else "import-bios-${core.name.lowercase()}") { chooseFirmware(core) })
+            }
             if (flow.result.added == 0 && flow.result.duplicates == 0) add(MenuRow("again", "Choose another folder", tag = "import-again") { addGames() })
             add(MenuRow("done", if (flow.result.added > 0) "See my games" else "Done", tag = "import-done") { pop() })
         }
@@ -195,21 +203,38 @@ private fun ConsoleShell.importPage(): Page {
     }, PageStyle.Dialog)
 }
 
+/** What a console still needs from its owner, with the one thing that supplies it. */
+private fun ConsoleShell.setupPage(core: Core): Page = Page("setup", "${core.title} needs its BIOS", buildList {
+    core.firmware.filter { it.file !in firmwarePresent }.forEach { firmware ->
+        add(MenuRow("bios:${firmware.file}", "Add ${firmware.title}", tag = "setup-${firmware.file.substringAfterLast('/').substringBefore('.')}") { chooseFirmware(core) })
+    }
+    add(MenuRow("close", "Not now", tag = "setup-close") { pop() })
+}, PageStyle.Dialog, "Your games are in the library and ready for it.",
+    "${core.firmwareHelp}\n\nCartridge never downloads console files. Choose the one you own; it stays on this device and is left out of backups.")
+
 private fun ConsoleShell.failurePage(failure: LaunchFailure): Page {
     val reason = failure.reason
+    val core = failure.system.core
+    // One of the console's own files is missing: it cannot start at all, it has the file for another region only,
+    // or it is running on a stand-in that fails some games.
+    val unconfigured = core.firmware.any { it.file !in firmwarePresent }
     val missing = listOf("missing", "changed", "Permission", "unavailable", "ENOENT", "No such file", "Choose the same", "No content provider", "FileNotFound", "open failed", "content://").any { it in reason }
     val body = when {
         missing -> "Cartridge can't reach this game's file. If it is on an SD card, check the card is inserted, or choose the file again."
         "code" in reason || "did not finish loading" in reason || "did not start" in reason ->
             "The game did not start. Its file may be damaged or not a ${failure.system.title} game." +
-                if (failure.system == GameSystem.PS1 && !biosReady) " PlayStation games also often need a BIOS file." else ""
+                when {
+                    !unconfigured -> ""
+                    firmwareAdded(core) -> " It may also need the ${failure.system.title} BIOS file for another region."
+                    else -> " ${failure.system.title} games also ${if (core.firmwareRequired) "need" else "often need"} a BIOS file."
+                }
         else -> ConsoleShell.plain(reason)
     }
     return Page("failure", "${failure.title} didn't start", buildList {
         add(MenuRow("retry", "Try again", tag = "failure-retry") { pop(); coordinator.insert() })
         // Offer the repair that fits the cause: a file that cannot be reached is not a firmware problem.
         if (missing) add(MenuRow("locate", "Locate game file", tag = "failure-locate") { pop(); locateGame() })
-        else if (failure.system == GameSystem.PS1 && !biosReady) add(MenuRow("bios", "Add PlayStation BIOS", tag = "failure-bios") { chooseBios() })
+        else if (unconfigured) add(MenuRow("bios", "Add ${core.title} BIOS", tag = "failure-bios") { chooseFirmware(core) })
         add(MenuRow("close", "Back to library", tag = "failure-close") { pop() })
     }, PageStyle.Dialog, "Your saves and artwork are safe.", body)
 }
@@ -235,8 +260,8 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
     fun toggle(id: String, title: String, checked: Boolean, note: String? = null, enabled: Boolean = true, tag: String = "settings-$id", set: (Boolean) -> Unit) =
         MenuRow(id, title, RowKind.Toggle, note = note, checked = checked, enabled = enabled, tag = tag, adjust = { set(!checked) })
     // A null family is the options every console shares.
-    fun optionRows(family: CoreFamily?) = GameOptions.all.filter { it.family == family }.map { option ->
-        val value = GameOptions.resolve(if (family == CoreFamily.PlayStation) GameSystem.PS1 else GameSystem.GBA, options.console(family ?: CoreFamily.Handheld)).getValue(option)
+    fun optionRows(family: Core?) = GameOptions.all.filter { it.family == family }.map { option ->
+        val value = GameOptions.resolve(GameSystem.entries.first { family == null || it.core == family }, options.console(family ?: Core.Mgba)).getValue(option)
         MenuRow("option:${option.id}", option.title, RowKind.Choice, value = option.title(value),
             note = (family?.let { "${it.title}: " } ?: "") + option.help + if (option.live || option.variable == null) "" else " Applies from a game's next start.",
             tag = "option-${option.id}", adjust = { delta -> setConsoleOption(option, option.next(value, delta)) })
@@ -285,12 +310,17 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
         SettingsCategory.Gameplay -> buildList {
             add(header("Every console"))
             addAll(optionRows(null))
-            add(header(CoreFamily.Handheld.title))
-            addAll(optionRows(CoreFamily.Handheld))
-            add(header(CoreFamily.PlayStation.title))
-            add(MenuRow("bios", "BIOS file", value = if (biosReady) "Added" else "Not added", enabled = ready, tag = "settings-bios",
-                note = if (biosReady) "Choose again to replace it." else "Most games need the console's own BIOS. Without it only some will start.") { chooseBios() })
-            addAll(optionRows(CoreFamily.PlayStation))
+            // One heading per core, in the registry's order: the file it needs from the owner, then its options.
+            for (core in Core.entries) {
+                add(header(core.title))
+                core.firmware.forEach { firmware ->
+                    val added = firmware.file in firmwarePresent
+                    add(MenuRow("bios:${firmware.file}", firmware.title, value = if (added) "Added" else "Not added", enabled = ready, warn = !added && core.firmwareRequired,
+                        tag = if (core == Core.Pcsx) "settings-bios" else "settings-bios-${firmware.file.substringAfterLast('/').substringBefore('.')}",
+                        note = if (added) "Choose again to replace it." else core.firmwareHelp) { chooseFirmware(core) })
+                }
+                addAll(optionRows(core))
+            }
             add(MenuRow("scope", "A game can use its own choices", RowKind.Info, note = "Open a game's details or pause menu, then Game options."))
             if (state.resumeSession != null) {
                 add(header("Saved session"))

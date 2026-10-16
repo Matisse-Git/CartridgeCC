@@ -1,20 +1,26 @@
 # Cartridge asset pipeline
 
-## Current media: imported models (2026-10-10, ADR 0019)
+## Current media: imported models (2026-10-10, ADR 0019; four more on 2026-10-12, ADR 0025)
 
-The three objects a game is shown as are converted from models the owner downloaded from Sketchfab.
-They replace the generated cartridge, tall cartridge and disc. The receiving slot and its generator
-were removed with ADR 0020: every object now leaves through the bottom of the screen.
+The seven objects a game is shown as are converted from models the owner downloaded.
+The first three replaced the generated cartridge, tall cartridge and disc. The receiving slot and
+its generator were removed with ADR 0020: every object now leaves through the bottom of the screen.
 
 | Runtime file | Source under `assets/models` | Result |
 | --- | --- | --- |
 | `gba_cartridge.glb` | `gb/source/GBA_SP_Cartridge.zip` (FBX and AO map inside), `gb/textures` | 2,294,124 bytes, 5,802 triangles, 60.00 × 34.33 × 6.87 mm, label 43.26 × 22.54 mm |
 | `gb_cartridge.glb` | `gba/source/Gameboy_Cartridge.fbx`, `gba/textures` | 2,463,136 bytes, 536 triangles, 57.52 × 65.00 × 9.12 mm, label 44.54 × 39.15 mm |
 | `ps1_disc.glb` | `cd/source/compact-disc_001.fbx`, `cd/textures` | 805,128 bytes, 6,144 triangles, 120.00 × 120.00 × 1.83 mm, label ring 19.5–59.6 mm |
+| `nes_cartridge.glb` | `nes/source/NES_CartEXP.fbx`, `nes/textures` | 1,663,452 bytes, 552 triangles, 120.00 × 134.29 × 10.06 mm, label 53.89 × 90.28 mm |
+| `snes_cartridge.glb` (Super Famicom and PAL shell) | `snes-paljp/source/carte_step.fbx`, `snes-paljp/textures` | 2,381,804 bytes, 13,999 triangles (from 33,839), 128.00 × 76.87 × 19.76 mm, label 98.70 × 35.29 mm following a 2.62 mm bulge |
+| `snes_us_cartridge.glb` (North American shell) | `snes-us/source/Super Mario World Game Cartridge.zip` (OBJ inside), `snes-us/textures` | 647,984 bytes, 13,926 triangles (from 86,038), 136.02 × 88.04 × 20.15 mm, label 82.04 × 36.30 mm |
+| `genesis_cartridge.glb` | `segagenesis/source/Mobile - Sonic Dash - Sega Genesis Cartridges.zip` (`cartridge_3.obj` inside), `segagenesis/textures` | 31,108 bytes, 106 triangles, 107.00 × 73.33 × 20.33 mm, label 69.14 × 41.24 mm |
 
-The source folder names do not match their contents: `gb` holds the wide Game Boy Advance cartridge
+Two source folder names do not match their contents: `gb` holds the wide Game Boy Advance cartridge
 and `gba` the tall Game Boy one. The tool maps them by shape and leaves the folders as they are.
-The sources are about 68 MB, their textures still carry the commercial game labels, and an ordinary
+`assets/models/n64` is not converted: no console in the app is shown as it yet. Master System and
+Game Gear have no model and stay discs.
+The sources are about 120 MB, their textures still carry commercial game labels, and an ordinary
 build does not need them, so `assets/models` is ignored by Git and stays on the owner's machine.
 
 ```powershell
@@ -53,7 +59,50 @@ What `tools/import_models.py` does to each source:
 Checks: 10 structural tests (frame, size, unit normals and winding, one named label facing the
 viewer, UV contract, placeholder aspect, opaque PBR with tangents, texture and triangle budgets,
 disc annulus, studio lighting) and the Khronos validator with zero errors and zero warnings on all
-three GLBs.
+seven GLBs. Re-running the tool reproduces the first three byte for byte.
+
+### The four cartridges added on 2026-10-12
+
+The same frame, label contract, texture conventions and budgets as above; what differs is how each
+download gives up its label, because no two of them hold it the same way.
+
+- **NES.** The label recess is modelled, so its floor (6 triangles) becomes the label, flat and
+  0.5 mm below the front. The base colour is one plastic grey and the print: everything that is not
+  that grey is filled, which also takes the strip of the same label that folds over the top edge
+  (19 % of the texture was print). The download has no roughness or metal map; the shell gets a
+  constant one. Its normal map is kept.
+- **Super Famicom / PAL.** A CAD conversion with an automatic unwrap, so the label cannot be found
+  in UV space: the faces of the front that show the black card are found by what the texture has
+  under them, and the 70 that tile that rectangle are cut out of the shell and become the label.
+  They keep the shell's curve; the label UVs are a flat projection across it. The shell is then
+  reduced from 33,839 to under 14,000 triangles with the cut and the ring of faces around it left
+  exactly as they were, which the tool asserts, so no light shows between label and shell. The
+  card (it carries the name of the site the model came from) is filled in the texture.
+- **North American Super Nintendo.** A photographic scan lying on its back, in millimetres. The
+  tool finds the printed side by colour, turns it to the viewer with the label's end up, and
+  measures the print's rectangle from the faces that are not plastic. A scan has no faces of its
+  own for a label, so a rounded sheet is laid at the level of the scanned label and the surface
+  under it is pressed 0.1 mm below. Every texel those faces showed is filled, the worn edge that
+  folds over the top with them, and every texel no face shows (a scan's atlas is padded with
+  stretched copies of its edges, print included). The surface is smoothed before it is reduced from
+  86,038 triangles: collapsing a scan's noise leaves ripples, which showed in the first render.
+  It has neither a normal nor a surface map; both are constant.
+- **Genesis.** A 104-triangle game asset whose 256 px atlas is shared with three other cartridges,
+  each with a game's artwork. Its front panel is one flat face showing artwork above the moulded
+  name plate. A sheet is laid over the artwork; in the atlas everything the mesh does not show is
+  filled, then every colourful texel it does, then the artwork's remains in the top rows of the
+  plate. What is left is grey. The texture stays at 256 px: there is nothing more in it.
+
+**Normal maps are measured, not assumed.** A height field's slopes have equal cross derivatives;
+with the green channel turned over they are opposite. `green_points_down` computes that correlation
+(−0.75 and −0.26 for the two maps already known to be −Y, +0.75 for the disc's +Y one) and found
+both new maps to be −Y (−0.58, −0.67).
+
+**Looking at them.** The tool's assertions say the print is gone and the frame is right; they do
+not say an object looks right. Each GLB was rendered from the front, the back and a quarter with a
+label that shows which way up it is (red at the top left, blue at the bottom right) before it went
+to the device. That render script is not part of the repository; the UX tour's screenshots are the
+kept record (`04b` to `04d`).
 
 The sections below describe the generated assets these replaced. Their generators
 (`generate_cartridge.py`, `generate_gb_cartridge.py`, `generate_disc.py`) were removed because they

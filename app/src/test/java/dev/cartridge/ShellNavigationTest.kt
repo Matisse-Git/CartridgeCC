@@ -1,0 +1,340 @@
+package dev.cartridge
+
+import android.content.ContextWrapper
+import android.content.SharedPreferences
+import android.net.Uri
+import dev.cartridge.apps.AppLibrary
+import dev.cartridge.domain.GameSystem
+import dev.cartridge.domain.SessionState
+import dev.cartridge.emulation.EmulationEngine
+import dev.cartridge.emulation.EngineStatus
+import dev.cartridge.emulation.GameRequest
+import dev.cartridge.input.InputMode
+import dev.cartridge.library.*
+import dev.cartridge.scraping.ArtworkCandidate
+import dev.cartridge.scraping.ArtworkProvider
+import dev.cartridge.scraping.GameCandidate
+import dev.cartridge.scraping.ScrapeCoordinator
+import dev.cartridge.scraping.ScrapePackStore
+import dev.cartridge.session.CollectionCoordinator
+import dev.cartridge.session.CollectionScreen
+import dev.cartridge.session.RendererHandoff
+import dev.cartridge.shell.ConsoleShell
+import dev.cartridge.shell.Destination
+import dev.cartridge.shell.HintMode
+import dev.cartridge.shell.ShellHost
+import dev.cartridge.storage.LabelStore
+import dev.cartridge.storage.SessionStore
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.File
+
+/**
+ * What the back button means, decided by the real console shell over the real coordinator. The Android
+ * apps are reached from the library at rest and from nowhere else; everything that was open closes first,
+ * and a game keeps its own B.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class ShellNavigationTest {
+    @get:Rule val files = TemporaryFolder()
+
+    private class Preferences : SharedPreferences {
+        val values = mutableMapOf<String, Any?>()
+        override fun getAll(): MutableMap<String, *> = values.toMutableMap()
+        override fun getString(key: String, default: String?) = values[key] as? String ?: default
+        @Suppress("UNCHECKED_CAST") override fun getStringSet(key: String, default: MutableSet<String>?) = values[key] as? MutableSet<String> ?: default
+        override fun getInt(key: String, default: Int) = values[key] as? Int ?: default
+        override fun getLong(key: String, default: Long) = values[key] as? Long ?: default
+        override fun getFloat(key: String, default: Float) = values[key] as? Float ?: default
+        override fun getBoolean(key: String, default: Boolean) = values[key] as? Boolean ?: default
+        override fun contains(key: String) = key in values
+        override fun registerOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) = Unit
+        override fun unregisterOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) = Unit
+        override fun edit(): SharedPreferences.Editor = object : SharedPreferences.Editor {
+            private val pending = mutableListOf<() -> Unit>()
+            private fun put(key: String, value: Any?): SharedPreferences.Editor { pending += { values[key] = value }; return this }
+            override fun putString(key: String, value: String?) = put(key, value)
+            override fun putStringSet(key: String, value: MutableSet<String>?) = put(key, value)
+            override fun putInt(key: String, value: Int) = put(key, value)
+            override fun putLong(key: String, value: Long) = put(key, value)
+            override fun putFloat(key: String, value: Float) = put(key, value)
+            override fun putBoolean(key: String, value: Boolean) = put(key, value)
+            override fun remove(key: String): SharedPreferences.Editor { pending += { values.remove(key) }; return this }
+            override fun clear(): SharedPreferences.Editor { pending += { values.clear() }; return this }
+            override fun commit(): Boolean { apply(); return true }
+            override fun apply() { pending.forEach { it() }; pending.clear() }
+        }
+    }
+    private class Host : ShellHost {
+        var modeChanges = 0
+        override fun pickFolder() = Unit
+        override fun pickGame() = Unit
+        override fun pickLabel() = Unit
+        override fun pickFirmware() = Unit
+        override fun pickBackup() = Unit
+        override fun pickPack() = Unit
+        override fun createBackup() = Unit
+        override fun openAndroidSettings() = Unit
+        override val homeEnabled = false
+        override fun setHome(enabled: Boolean) = Unit
+        override fun chooseDefaultHome() = Unit
+        override fun persistFolder(uri: Uri) = Unit
+        override fun releaseFolder(uri: Uri) = Unit
+        override fun stageArrive(direction: Int) = Unit
+        override fun inputChanged() { modeChanges++ }
+    }
+    private class Library : CollectionRepository {
+        val games = listOf("First", "Second", "Third").mapIndexed { index, title -> LibraryGame("${'a' + index}".repeat(64), title, "content://$index") }
+        override val snapshots = MutableStateFlow(LibrarySnapshot(games, 1))
+        override suspend fun initialize() = snapshots.value
+        override suspend fun assign(slot: Int, game: LibraryGame) = Unit
+        override suspend fun add(game: LibraryGame, restoreRemoved: Boolean) = false
+        override suspend fun remove(gameId: String) = Unit
+        override suspend fun restore(gameId: String, position: Int) = Unit
+        override suspend fun select(slot: Int) { snapshots.value = snapshots.value.copy(selectedSlot = slot) }
+        override suspend fun setLabel(gameId: String, label: LabelRef?) = Unit
+        override suspend fun setMetadata(gameId: String, values: Map<String, MetadataValue>) = Unit
+        override suspend fun fillMissingMetadata(gameId: String, values: Map<String, MetadataValue>) = 0
+        override suspend fun setMedia(gameId: String, media: MediaSelection) = Unit
+        override suspend fun undoEnrichment(gameId: String) = false
+        override suspend fun setFavorite(gameId: String, favorite: Boolean) = Unit
+        override suspend fun setQuery(query: LibraryQuery) { snapshots.value = snapshots.value.copy(query = query) }
+        override suspend fun recordPlay(gameId: String, elapsedMs: Long, startedAt: Long?) = Unit
+        override suspend fun facts(gameId: String) = LibraryFacts(true, "Fixture", 0, 0)
+        override suspend fun gameRequest(game: LibraryGame) = GameRequest(File("${game.id}.gba"), game.id)
+    }
+    private class Engine : EmulationEngine {
+        override val status = MutableStateFlow(EngineStatus())
+        val keys = mutableListOf<Int>()
+        override suspend fun prepare(game: GameRequest) { status.value = EngineStatus(SessionState.Running) }
+        override suspend fun pause() { if (status.value.state == SessionState.Running) status.value = EngineStatus(SessionState.Paused) }
+        override suspend fun resume() { status.value = EngineStatus(SessionState.Running) }
+        override suspend fun stop() { status.value = EngineStatus() }
+        override fun key(action: Int, androidKeyCode: Int) { keys += androidKeyCode }
+        override fun motion(x: Float, y: Float) = Unit
+        override suspend fun saveState() = Unit
+        override suspend fun loadState() = Unit
+        override suspend fun persistSaveRam() = Unit
+        override suspend fun configure(options: Map<String, String>) = Unit
+    }
+    private object NoArtwork : ArtworkProvider {
+        override val name = "Original fixture"
+        override suspend fun search(query: String, rom: File?, system: GameSystem): List<GameCandidate> = emptyList()
+        override suspend fun image(candidate: ArtworkCandidate) = error("No images in navigation tests")
+    }
+
+    /** The production shell and coordinator, loaded and at rest in the library, told about every change as the Activity tells them. */
+    private inner class Console(scope: TestScope, val preferences: Preferences = Preferences(), val source: FixtureApps = FixtureApps("Tide Clock", "Field Notes", "Atlas", "Harbor Mail")) {
+        val engine = Engine()
+        val library = Library()
+        val host = Host()
+        val coordinator = CollectionCoordinator(engine, library, object : RendererHandoff {
+            override fun releaseLibrary() = Unit
+            override fun releaseEmulator() = Unit
+        }, scope.backgroundScope, reducedMotion = true)
+        private val labels = LabelStore(files.newFolder())
+        private val scraper = ScrapeCoordinator(NoArtwork, library, labels, files.newFolder(), scope.backgroundScope) { _, _ -> }
+        val shell = ConsoleShell(object : ContextWrapper(null) {}, scope.backgroundScope, host, coordinator, engine, library, scraper, labels,
+            SessionStore(files.newFolder()), ScrapePackStore(files.newFolder()), preferences, files.newFolder(), source, StandardTestDispatcher(scope.testScheduler))
+        val state get() = coordinator.state.value
+        init {
+            scope.backgroundScope.launch { combine(coordinator.state, engine.status, scraper.state) { state, status, _ -> state to status }.collect { (state, status) -> shell.sync(state, status) } }
+            scope.runCurrent(); coordinator.rendererReady(0); scope.runCurrent()
+            check(state.loaded && !state.busy && shell.inputMode() == InputMode.Library) { "The fixture library is not at rest" }
+        }
+    }
+
+    @Test fun backFromTheLibraryAtRestOpensAppsAndBackAgainReturnsToTheSameGame() = runTest {
+        val console = Console(this); val shell = console.shell
+        console.coordinator.navigate(1); runCurrent()
+        val before = console.state
+        assertEquals("Third", before.selectedGame!!.title); assertNull(shell.top); assertFalse(shell.appsOpen)
+        shell.back()
+        assertEquals(Destination.Apps, shell.top); assertTrue(shell.appsOpen)
+        // An opaque page over the library: its buttons are the page's, and the stage waits beneath it.
+        assertEquals(InputMode.Menu, shell.inputMode()); assertEquals(Destination.Apps, shell.base)
+        runCurrent()
+        assertEquals(listOf("Atlas", "Field Notes", "Harbor Mail", "Tide Clock"), shell.apps.entries.map { it.label })
+        shell.back()
+        assertNull(shell.top); assertEquals(InputMode.Library, shell.inputMode())
+        // Nothing about the collection moved: same shelf, same game, same stage, nothing reloaded.
+        val after = console.state
+        assertEquals(before.selection, after.selection); assertEquals(before.shelf, after.shelf); assertEquals(before.selectedGame, after.selectedGame)
+        assertEquals(before.viewportGeneration, after.viewportGeneration); assertTrue(after.rendererReady); assertEquals(CollectionScreen.Library, after.screen)
+        // Opening it again is not a second copy of it, however fast the button is pressed.
+        shell.back(); shell.openApps(); shell.openApps()
+        assertEquals(listOf<Destination>(Destination.Apps), shell.stack.toList())
+        console.coordinator.destroy()
+    }
+
+    @Test fun whateverIsOpenClosesBeforeBackEverMeansApps() = runTest {
+        val console = Console(this); val shell = console.shell
+        // The system menu.
+        shell.menu(); assertEquals(Destination.SystemMenu, shell.top)
+        shell.back(); assertNull(shell.top)
+        // Game details, and a sheet opened from them.
+        shell.alternate(); assertEquals(Destination.Details, shell.top)
+        shell.push(Destination.Manage); shell.back(); assertEquals(Destination.Details, shell.top)
+        shell.back(); assertNull(shell.top)
+        // Settings two levels deep: rows, then sections, then the menu it came from.
+        shell.menu(); shell.push(Destination.Settings); shell.select(); assertEquals(1, shell.pane)
+        shell.back(); assertEquals(0, shell.pane); assertEquals(Destination.Settings, shell.top)
+        shell.back(); assertEquals(Destination.SystemMenu, shell.top)
+        shell.back(); assertNull(shell.top)
+        // A dialog.
+        shell.push(Destination.Folder("content://tree")); shell.back(); assertNull(shell.top)
+        // A library search is cleared by the first press, as before; only the next one leaves for Apps.
+        console.coordinator.query(console.state.query.copy(search = "second")); runCurrent()
+        assertTrue(console.state.searching); assertEquals("Second", console.state.selectedGame!!.title)
+        shell.openApps(); assertNull("Nothing reaches Apps past a search that is still showing", shell.top)
+        shell.back(); runCurrent()
+        assertFalse(console.state.searching); assertNull(shell.top)
+        shell.back(); assertEquals(Destination.Apps, shell.top)
+        console.coordinator.destroy()
+    }
+
+    @Test fun androidBackKeepsItsMeaningAndNeverOpensApps() = runTest {
+        val console = Console(this); val shell = console.shell
+        // At the library's root it has nowhere to go, exactly as before this feature.
+        shell.systemBack(); assertNull(shell.top)
+        // Everywhere else it closes what the controller's button closes, Apps included.
+        shell.menu(); shell.systemBack(); assertNull(shell.top)
+        shell.back(); assertEquals(Destination.Apps, shell.top)
+        shell.systemBack(); assertNull(shell.top)
+        console.coordinator.query(console.state.query.copy(search = "third")); runCurrent()
+        shell.systemBack(); runCurrent(); assertFalse(console.state.searching); assertNull(shell.top)
+        console.coordinator.destroy()
+    }
+
+    @Test fun aGameKeepsItsOwnBackButtonRunningAndPaused() = runTest {
+        val console = Console(this); val shell = console.shell
+        console.coordinator.insert(); runCurrent()
+        assertEquals(SessionState.Running, console.engine.status.value.state)
+        // In this mode the router hands B to the game and never asks the shell what it means.
+        assertEquals(InputMode.Gameplay, shell.inputMode())
+        // Even asked directly, the shell has no Apps to offer over a running game.
+        shell.back(); shell.openApps()
+        assertNull(shell.top); assertEquals(SessionState.Running, console.engine.status.value.state); assertEquals(CollectionScreen.Emulator, console.state.screen)
+        // Paused, B resumes, as it always has.
+        console.coordinator.pause(); runCurrent()
+        assertEquals(SessionState.Paused, console.engine.status.value.state); assertEquals(InputMode.Menu, shell.inputMode())
+        shell.openApps(); assertNull(shell.top)
+        shell.back(); runCurrent()
+        assertEquals(SessionState.Running, console.engine.status.value.state); assertNull(shell.top)
+        console.coordinator.destroy()
+    }
+
+    @Test fun appsAreBrowsedSearchedAndStartedThroughTheShellsOwnRoles() = runTest {
+        val console = Console(this); val shell = console.shell; val apps = shell.apps
+        shell.back(); runCurrent()
+        apps.columns = 2 // Atlas, Field Notes / Harbor Mail, Tide Clock
+        assertEquals("Atlas", apps.focused!!.label)
+        shell.adjust(1); assertEquals("Field Notes", apps.focused!!.label)
+        shell.navigate(1); assertEquals("Tide Clock", apps.focused!!.label)
+        shell.adjust(-1); shell.navigate(-1); assertEquals("Atlas", apps.focused!!.label)
+        // Buttons that belong to the library do nothing here.
+        shell.menu(); shell.alternate(); shell.shoulder(1)
+        assertEquals(Destination.Apps, shell.top); assertEquals("Atlas", apps.focused!!.label)
+        // A starts the focused app as a home screen would, and the console stays where it is behind it.
+        shell.navigate(1); shell.select()
+        assertEquals(listOf("example.app3/Main" to false), console.source.launched) // Reduced motion: no transition asked for.
+        assertEquals(Destination.Apps, shell.top); assertEquals("Harbor Mail", apps.focused!!.label)
+        assertEquals("example.app3/Main", console.preferences.getString("appsFocus", null))
+        // Y searches with the console's own keyboard; B then clears the search before it leaves.
+        shell.secondary(); assertTrue(shell.top is Destination.TextEntry)
+        "tide".forEach(shell::type); shell.finishText()
+        assertEquals(Destination.Apps, shell.top); assertEquals(listOf("Tide Clock"), apps.entries.map { it.label })
+        shell.back(); assertEquals(Destination.Apps, shell.top); assertFalse(apps.searching); assertEquals(4, apps.entries.size)
+        assertEquals("Tide Clock", apps.focused!!.label)
+        // A cancelled search changes nothing.
+        shell.secondary(); "zzz".forEach(shell::type); shell.back()
+        assertEquals(Destination.Apps, shell.top); assertFalse(apps.searching)
+        shell.back(); assertNull(shell.top)
+        // The app left focused is the app found focused next time, in this session and the next.
+        assertEquals("example.app0/Main", console.preferences.getString("appsFocus", null))
+        shell.back(); runCurrent(); assertEquals("Tide Clock", apps.focused!!.label)
+        val reopened = Console(this, console.preferences)
+        reopened.shell.back(); runCurrent(); assertEquals("Tide Clock", reopened.shell.apps.focused!!.label)
+        console.coordinator.destroy(); reopened.coordinator.destroy()
+    }
+
+    @Test fun anAppThatCannotBeStartedIsExplainedAndTheListIsReadAgain() = runTest {
+        val console = Console(this); val shell = console.shell; val apps = shell.apps
+        shell.back(); runCurrent(); shell.navigate(1); shell.adjust(1)
+        val focused = apps.focused!!; val reads = console.source.reads
+        // Uninstalled by another app while its icon was still on screen.
+        console.source.installed.remove(focused)
+        shell.select(); runCurrent()
+        assertTrue(console.source.launched.isEmpty())
+        val message = console.state.message!!
+        assertTrue(message.startsWith(focused.label)); assertTrue(message.contains("couldn't be opened"))
+        // Said in the player's words: no package, no class, no exception.
+        assertFalse(message.contains("example.")); assertFalse(message.contains("Exception"))
+        assertEquals(reads + 1, console.source.reads); assertFalse(apps.entries.contains(focused))
+        // Focus has a valid neighbour and Apps is still open and usable.
+        assertNotNull(apps.focused); assertEquals(Destination.Apps, shell.top)
+        shell.select(); assertEquals(1, console.source.launched.size)
+        // Nothing installed at all, then a failed read: A asks again instead of doing nothing.
+        console.source.installed.clear(); console.source.report!!(null); runCurrent()
+        assertTrue(apps.entries.isEmpty()); val before = console.source.reads
+        shell.select(); runCurrent(); assertEquals(before + 1, console.source.reads)
+        shell.secondary(); assertEquals(Destination.Apps, shell.top)
+        shell.back(); assertNull(shell.top)
+        console.coordinator.destroy()
+    }
+
+    @Test fun returningToTheConsoleReadsTheAppsAgainOnlyOnceTheyHaveBeenShown() = runTest {
+        val console = Console(this); val shell = console.shell
+        // Never opened: coming back to the foreground costs nothing.
+        shell.resumed(); runCurrent(); assertEquals(0, console.source.reads); assertEquals(AppLibrary.Phase.Unread, shell.apps.phase)
+        shell.back(); runCurrent(); assertEquals(1, console.source.reads); assertTrue(console.source.watching)
+        // Another app installed something while the console was behind it.
+        console.source.installed += dev.cartridge.apps.AppEntry("example.new", "Main", "Beacon")
+        shell.resumed(); runCurrent()
+        assertEquals(2, console.source.reads); assertTrue(shell.apps.entries.any { it.label == "Beacon" })
+        assertEquals(Destination.Apps, shell.top) // Still where the player left it.
+        shell.close(); assertFalse(console.source.watching)
+        console.coordinator.destroy()
+    }
+
+    @Test fun aRecreatedConsoleReturnsToAppsAndTheHintRetiresOnItsOwnCount() = runTest {
+        val preferences = Preferences()
+        val console = Console(this, preferences)
+        assertTrue(console.shell.appsHintVisible)
+        repeat(ConsoleShell.LEARNED_AFTER) { console.shell.back(); console.shell.back() }
+        assertNull(console.shell.top); assertFalse(console.shell.appsHintVisible)
+        assertEquals(ConsoleShell.LEARNED_AFTER, preferences.getInt("appsOpened", 0))
+        console.shell.changeHints(HintMode.Always); assertTrue(console.shell.appsHintVisible)
+        console.shell.changeHints(HintMode.Hidden); assertFalse(console.shell.appsHintVisible)
+        console.coordinator.destroy()
+        // Android destroyed the Activity while Apps was open and brought it back with its saved state.
+        val engine = Engine(); val library = Library(); val host = Host(); val source = FixtureApps("Atlas", "Beacon")
+        val coordinator = CollectionCoordinator(engine, library, object : RendererHandoff {
+            override fun releaseLibrary() = Unit
+            override fun releaseEmulator() = Unit
+        }, backgroundScope, reducedMotion = true)
+        val labels = LabelStore(files.newFolder())
+        val scraper = ScrapeCoordinator(NoArtwork, library, labels, files.newFolder(), backgroundScope) { _, _ -> }
+        val shell = ConsoleShell(object : ContextWrapper(null) {}, backgroundScope, host, coordinator, engine, library, scraper, labels,
+            SessionStore(files.newFolder()), ScrapePackStore(files.newFolder()), preferences, files.newFolder(), source, StandardTestDispatcher(testScheduler))
+        shell.reopenApps = true
+        backgroundScope.launch { combine(coordinator.state, engine.status, scraper.state) { state, status, _ -> state to status }.collect { (state, status) -> shell.sync(state, status) } }
+        runCurrent()
+        assertEquals(Destination.Apps, shell.top); assertFalse(shell.reopenApps)
+        runCurrent(); assertEquals(2, shell.apps.entries.size)
+        // Once only: leaving Apps afterwards is not undone by the next library change.
+        shell.back(); coordinator.rendererReady(0); coordinator.navigate(1); runCurrent()
+        assertNull(shell.top)
+        coordinator.destroy()
+    }
+}

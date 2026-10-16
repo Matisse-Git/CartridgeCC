@@ -2,7 +2,7 @@ param(
     [string]$Sdk = (Join-Path $PSScriptRoot '../.tools/sdk'),
     [string]$Serial,
     [ValidateRange(1, 50)][int]$Cycles = 3,
-    [ValidateSet('Surface', 'Collection', 'Scrape', 'Library', 'Battery', 'Render', 'Manage', 'Review', 'Pack', 'Layout', 'Systems', 'PS1', 'Environment', 'Recovery', 'Backup', 'Live', 'Options', 'Tour', 'Browse', 'Launch', 'Pacing', 'All')][string]$Suite = 'Surface'
+    [ValidateSet('Surface', 'Collection', 'Scrape', 'Library', 'Battery', 'Render', 'Manage', 'Review', 'Pack', 'Layout', 'Systems', 'PS1', 'Environment', 'Recovery', 'Backup', 'Live', 'Options', 'Tour', 'Browse', 'Launch', 'Pacing', 'Apps', 'Cores', 'Saturn', 'Dreamcast', 'PS2', 'GameCube', 'Discs', 'All')][string]$Suite = 'Surface'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -43,6 +43,46 @@ try {
             Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', "/data/local/tmp/cartridge-probe.$extension", "files/cartridge-probe.$extension")
         }
     }
+    if ($Suite -in @('Cores', 'All')) {
+        python (Join-Path $PSScriptRoot 'probe/generate_console_probes.py')
+        if ($LASTEXITCODE -ne 0) { throw 'Console probe generation failed' }
+        foreach ($extension in @('sfc', 'nes', 'md', 'sms', 'gg')) {
+            Invoke-DeviceAdb -Arguments @('push', ".tools/probe/cartridge-probe.$extension", "/data/local/tmp/cartridge-probe.$extension")
+            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', "/data/local/tmp/cartridge-probe.$extension", "files/cartridge-probe.$extension")
+        }
+    }
+    if ($Suite -in @('Saturn', 'All')) {
+        python (Join-Path $PSScriptRoot 'probe/generate_saturn_probe.py')
+        if ($LASTEXITCODE -ne 0) { throw 'Saturn probe generation failed' }
+        foreach ($file in @(@('boot.bin', 'cartridge-probe-saturn-boot.bin'), @('saturn.cue', 'cartridge-probe-saturn.cue'), @('saturn.bin', 'cartridge-probe-saturn.bin'))) {
+            Invoke-DeviceAdb -Arguments @('push', ".tools/probe/saturn/$($file[0])", "/data/local/tmp/$($file[1])")
+            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', "/data/local/tmp/$($file[1])", "files/$($file[1])")
+        }
+    }
+    # The three consoles whose cores draw for themselves: one original program each.
+    foreach ($probe in @(@('Dreamcast', 'generate_dreamcast_probe.py', 'cartridge-probe.elf'), @('PS2', 'generate_ps2_probe.py', 'cartridge-probe-ps2.elf'),
+            @('GameCube', 'generate_gamecube_probe.py', 'cartridge-probe.dol'))) {
+        if ($Suite -in @($probe[0], 'All')) {
+            python (Join-Path $PSScriptRoot "probe/$($probe[1])")
+            if ($LASTEXITCODE -ne 0) { throw "$($probe[0]) probe generation failed" }
+            Invoke-DeviceAdb -Arguments @('push', ".tools/probe/$($probe[2])", "/data/local/tmp/$($probe[2])")
+            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', "/data/local/tmp/$($probe[2])", "files/$($probe[2])")
+        }
+    }
+    if ($Suite -in @('Dreamcast', 'All')) {
+        # The same program as a GD-ROM image: a sheet and its three tracks.
+        foreach ($file in @('disc.gdi', 'track01.iso', 'track02.raw', 'track03.iso')) {
+            Invoke-DeviceAdb -Arguments @('push', ".tools/probe/dreamcast/$file", "/data/local/tmp/cartridge-probe-dreamcast-$file")
+            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', "/data/local/tmp/cartridge-probe-dreamcast-$file", "files/cartridge-probe-dreamcast-$file")
+        }
+    }
+    if ($Suite -in @('PS2', 'All')) {
+        # The same program on a small disc image, started the way a game is. Two of this console's three tests need
+        # its BIOS, which is the owner's: they read it from files/m1-owner-firmware/pcsx2/bios/ps2-bios.bin in the
+        # app's private storage and are skipped where it is missing (docs/TESTING).
+        Invoke-DeviceAdb -Arguments @('push', '.tools/probe/cartridge-probe-ps2.iso', '/data/local/tmp/cartridge-probe-ps2.iso')
+        Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', '/data/local/tmp/cartridge-probe-ps2.iso', 'files/cartridge-probe-ps2.iso')
+    }
     Invoke-DeviceAdb -Arguments @('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
     if ($Suite -in @('PS1', 'Options', 'All')) {
         python (Join-Path $PSScriptRoot 'probe/generate_ps1_probe.py')
@@ -78,9 +118,21 @@ try {
         'Launch' { 'dev.cartridge.LaunchExperienceTest' }
         # The production library with decoded labels and a held D-pad. For a large library add: -e games 3000
         'Pacing' { 'dev.cartridge.LibraryPacingTest' }
-        'All' { 'dev.cartridge.SurfaceHandoffTest,dev.cartridge.CollectionUiTest,dev.cartridge.ProviderContractTest,dev.cartridge.ScrapeUiTest,dev.cartridge.LibraryGrowthTest,dev.cartridge.ScrapeResumeTest,dev.cartridge.BatterySaveTest,dev.cartridge.RenderRefinementTest,dev.cartridge.RenderPacingTest,dev.cartridge.LibraryManagementTest,dev.cartridge.ScrapeReviewTest,dev.cartridge.ScrapePackTest,dev.cartridge.CollectionLayoutDeviceTest,dev.cartridge.AdditionalSystemsTest,dev.cartridge.ConsoleEnvironmentTest,dev.cartridge.SessionRecoveryTest,dev.cartridge.BackupDeviceTest,dev.cartridge.Ps1DeviceTest,dev.cartridge.GameOptionsDeviceTest,dev.cartridge.UxTourTest,dev.cartridge.BrowseStabilityTest,dev.cartridge.LaunchExperienceTest,dev.cartridge.LibraryPacingTest' }
+        # The Android apps beside the library: where B leads, the device's real launcher list, Settings opened and returned from.
+        'Apps' { 'dev.cartridge.AppsLibraryTest' }
+        # Super Nintendo, NES, Genesis, Master System and Game Gear: each core run for real with an original program.
+        'Cores' { 'dev.cartridge.ConsoleCoresTest' }
+        # Saturn without Sega's BIOS: disc identification, the no-BIOS explanation, and the core run on an original stand-in image.
+        'Saturn' { 'dev.cartridge.SaturnCoreTest' }
+        # Dreamcast, PlayStation 2 and GameCube: each core drawing through the device's OpenGL ES with an original program.
+        'Dreamcast' { 'dev.cartridge.DreamcastCoreTest' }
+        'PS2' { 'dev.cartridge.Ps2CoreTest' }
+        'GameCube' { 'dev.cartridge.GameCubeCoreTest' }
+        # An empty 2.2 GiB image told apart by its size, copied whole and listed; the test removes its own copy.
+        'Discs' { 'dev.cartridge.LargeDiscImportTest' }
+        'All' { 'dev.cartridge.SurfaceHandoffTest,dev.cartridge.CollectionUiTest,dev.cartridge.ProviderContractTest,dev.cartridge.ScrapeUiTest,dev.cartridge.LibraryGrowthTest,dev.cartridge.ScrapeResumeTest,dev.cartridge.BatterySaveTest,dev.cartridge.RenderRefinementTest,dev.cartridge.RenderPacingTest,dev.cartridge.LibraryManagementTest,dev.cartridge.ScrapeReviewTest,dev.cartridge.ScrapePackTest,dev.cartridge.CollectionLayoutDeviceTest,dev.cartridge.AdditionalSystemsTest,dev.cartridge.ConsoleEnvironmentTest,dev.cartridge.SessionRecoveryTest,dev.cartridge.BackupDeviceTest,dev.cartridge.Ps1DeviceTest,dev.cartridge.GameOptionsDeviceTest,dev.cartridge.UxTourTest,dev.cartridge.BrowseStabilityTest,dev.cartridge.LaunchExperienceTest,dev.cartridge.LibraryPacingTest,dev.cartridge.AppsLibraryTest,dev.cartridge.ConsoleCoresTest,dev.cartridge.SaturnCoreTest,dev.cartridge.DreamcastCoreTest,dev.cartridge.Ps2CoreTest,dev.cartridge.GameCubeCoreTest,dev.cartridge.LargeDiscImportTest' }
     }
-    $expectedTests = switch ($Suite) { 'Surface' { 1 }; 'Collection' { 2 }; 'Scrape' { 5 }; 'Library' { 4 }; 'Battery' { 2 }; 'Render' { 2 }; 'Manage' { 2 }; 'Review' { 4 }; 'Pack' { 2 }; 'Layout' { 2 }; 'Systems' { 2 }; 'PS1' { 3 }; 'Environment' { 3 }; 'Recovery' { 1 }; 'Backup' { 3 }; 'Live' { 1 }; 'Options' { 2 }; 'Tour' { 1 }; 'Browse' { 1 }; 'Launch' { 4 }; 'Pacing' { 1 }; 'All' { 44 } }
+    $expectedTests = switch ($Suite) { 'Surface' { 1 }; 'Collection' { 2 }; 'Scrape' { 5 }; 'Library' { 4 }; 'Battery' { 2 }; 'Render' { 2 }; 'Manage' { 2 }; 'Review' { 4 }; 'Pack' { 2 }; 'Layout' { 2 }; 'Systems' { 2 }; 'PS1' { 3 }; 'Environment' { 3 }; 'Recovery' { 1 }; 'Backup' { 3 }; 'Live' { 1 }; 'Options' { 2 }; 'Tour' { 1 }; 'Browse' { 1 }; 'Launch' { 4 }; 'Pacing' { 1 }; 'Apps' { 4 }; 'Cores' { 1 }; 'Saturn' { 2 }; 'Dreamcast' { 2 }; 'PS2' { 3 }; 'GameCube' { 1 }; 'Discs' { 1 }; 'All' { 58 } }
     $result = Invoke-DeviceAdb -Arguments @('shell', 'am', 'instrument', '-w', '-r', '-e', 'cycles', "$Cycles", '-e', 'liveProvider', "$($Suite -eq 'Live')".ToLowerInvariant(), '-e', 'class',
         $testClass, 'dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner')
     $result | Set-Content -LiteralPath '.tools/device-test.log'

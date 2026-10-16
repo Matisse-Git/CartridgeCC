@@ -1,5 +1,19 @@
 # Implementation status
 
+**Addendum, 2026-10-13.** PlayStation 2 now needs the console's BIOS (ADR 0026), so it is the
+second console, after Saturn, whose games open the setup dialog instead of starting until the file
+is added: one row, **Add BIOS file**, on the import result, the game's details, the dialog and
+Settings › Gameplay › PlayStation 2. No new component or destination; `Ps2CoreTest` checks the
+first, third and fourth of those on the RP5 ([TESTING](../TESTING.md)), not the details row;
+journey J in [USER_FLOWS](USER_FLOWS.md) describes it, and no screenshot was added. Closing the app with a game still loaded now releases the game before the
+interface is taken down, which nothing on screen shows.
+
+**Addendum, 2026-10-11.** The Android apps library (ADR 0021) was added after this status was
+written: B from the library opens Apps, a fifth destination. Its verification is the first entry of
+[TESTING](../TESTING.md); its flow is journey I in [USER_FLOWS](USER_FLOWS.md); screenshots 25 and 26
+were added and the library and welcome captures were taken again for the `B Apps` hint. Everything
+below describes the redesign as it stood on 2026-10-10.
+
 Branch `redesign/console-experience`, on top of `d53f5fe`. Session date 2026-10-10. Changes are in
 the working tree and **not committed**. The earlier, unfinished attempt at this redesign is kept in
 `git stash` ("redesign WIP superseded by from-scratch redo 2026-10-10") and is not used.
@@ -60,9 +74,13 @@ before the redesign. It measures the 3D stage, not the Compose layer above it.
 Screenshots in [screenshots/](screenshots) are the device's own display capture, 3D surface
 included, from `UxTourTest` on the final build, reduced to 960×540. They were captured again on
 2026-10-10 after the media models changed (ADR 0019), so the cartridges and discs shown are the
-imported ones; the interface is as it was. Every title, label and game in
+imported ones; the interface is as it was. On 2026-10-12 four were added and two captured again
+for the cartridges of ADR 0025: `04b` (Super Nintendo: both shells side by side, the North American
+one for the game named `(USA)`), `04c` (NES), `04d` (Genesis), `17c` (all of them in the grid),
+and `05` and `17b` because the fixture library grew. Every title, label and game in
 them is an original fixture in an isolated database. Three rounds of defects were found by looking
-at them and fixed:
+at them and fixed (a fourth, on the new cartridges, is in ASSET_PIPELINE: it was found in renders
+before the device):
 
 1. The object was cut by the screen edge beside its sheet; discs overlapped the title; menu focus
    was remembered across openings; the current settings section was unmarked.

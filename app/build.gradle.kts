@@ -27,11 +27,23 @@ android {
                 providers.gradleProperty("pcsxSource").orNull?.let {
                     arguments += "-DFETCHCONTENT_SOURCE_DIR_PCSX=$it"
                 }
-                targets += listOf("mgba_libretro", "pcsx_rearmed_libretro", "cartridge_saves")
+                // -PsnesSource=..., -PnesSource=..., -PgenesisSource=..., -PsaturnSource=..., -PdreamcastSource=..., -Pps2Source=...,
+                // -PgamecubeSource=...: an existing exact checkout of a pinned core.
+                for ((property, content) in listOf("snesSource" to "SNES9X", "nesSource" to "FCEUMM", "genesisSource" to "GPGX", "saturnSource" to "SATURN",
+                    "dreamcastSource" to "FLYCAST", "ps2Source" to "ARMSX2", "gamecubeSource" to "DOLPHIN")) {
+                    providers.gradleProperty(property).orNull?.let { arguments += "-DFETCHCONTENT_SOURCE_DIR_$content=$it" }
+                }
+                // -Pps2Libraries=...: a prefix the PlayStation 2 engine's own dependency recipe has already built.
+                providers.gradleProperty("ps2Libraries").orNull?.let { arguments += "-DCARTRIDGE_PS2_LIBRARIES=$it" }
+                // Data files a core reads at run time are packed by the native build into this asset folder.
+                arguments += "-DCARTRIDGE_ASSETS=${layout.buildDirectory.dir("generated/core-assets").get().asFile.invariantSeparatorsPath}"
+                targets += listOf("mgba_libretro", "pcsx_rearmed_libretro", "snes9x_libretro", "fceumm_libretro",
+                    "genesis_plus_gx_libretro", "mednafen_saturn_libretro", "flycast_libretro", "cartridge_saves")
             }
         }
     }
-    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
+    // Dolphin's build files need CMake 3.25 or later.
+    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.31.6" } }
     buildFeatures { compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -50,6 +62,11 @@ val syncLicenseNotices by tasks.registering(Sync::class) {
 }
 android.sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/license-assets"))
 tasks.named("preBuild") { dependsOn(syncLicenseNotices) }
+// The native build writes a core's data files; everything that reads the app's assets waits for it.
+android.sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/core-assets"))
+for ((assets, native) in listOf("mergeDebugAssets" to "buildCMakeDebug", "mergeReleaseAssets" to "buildCMakeRelWithDebInfo")) {
+    tasks.matching { it.name == assets }.configureEach { dependsOn(tasks.matching { it.name.startsWith(native) }) }
+}
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.04.01"))

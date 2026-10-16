@@ -64,7 +64,8 @@ class SessionStore(private val directory: File) {
     }
     companion object {
         const val CORE = "mgba-0.10.5-cartridge-memory-2"
-        const val MAX_STATE = 16 * 1024 * 1024
+        /** The largest state any packaged core writes fits well inside this; Dreamcast's is about 27 MiB. */
+        const val MAX_STATE = 64 * 1024 * 1024
         private val HASH = Regex("[a-f0-9]{64}")
         private val UUID_NAME = Regex("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")
         private val STATE_NAME = Regex("${UUID_NAME.pattern}\\.state")

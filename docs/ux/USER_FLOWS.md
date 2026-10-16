@@ -88,6 +88,16 @@ and every suite that starts a game with the library's own touch target.
 Return to Library is the last row, set apart. Load State is unavailable until a state exists.
 Saving writes through the same serialized path as before; the battery save is checkpointed too.
 
+A GameCube or PlayStation 2 game's pause menu has no Save State or Load State (one GameCube state
+is 87 MiB, and the PlayStation 2 engine names 68 MiB for one; ADR 0023, 0026): Resume, Game Options
+and Return to Library. Its own saves go to its memory card as on the console.
+
+**Putting the device down.** Pressing the power button during any game pauses it. On waking, the
+game is at its pause menu and Resume carries on: a console with save states was written to a
+checkpoint and started from it again; GameCube and PlayStation 2 were kept loaded, because there
+is nothing to start them from. Seen on the RP5 with a game on each of Dreamcast, PlayStation 2 and
+GameCube (TESTING, 2026-10-12).
+
 Verified by `CollectionUiTest`, `AdditionalSystemsTest`, `BatterySaveTest`, `Ps1DeviceTest` and
 `UxTourTest`.
 
@@ -146,10 +156,61 @@ Verified by `GameOptionsDeviceTest`: the values are read back from the running P
 a per-game override changes the paused picture at once and leaves the console value alone; the
 memory-card and BIOS variables cannot be displaced.
 
+## I — Open an Android app (added 2026-10-11, ADR 0021)
+
+| Step | Player | Sees |
+|---|---|---|
+| 1 | B, on the library with nothing open | **Apps**: the installed apps by name, each with its own icon; the count; the same clock and battery; focus on the app used last time |
+| 2 | ✥ | Focus moves across and down the grid; the grid scrolls by whole rows |
+| 3 | A | The app, arriving with the console's enter motion. Cartridge stays as it was behind it |
+| 4 | Android's Back or Home, from the app | Apps again, on the same app |
+| 5 | B | The library: the same shelf and the same game, without reloading |
+
+Two presses from the library to a running app. With a long list: Y, type part of the name, START;
+B clears the search and B again leaves.
+
+B means Apps only at step 1. With the menu, details, a sheet, settings, a dialog, the artwork
+workflow or a library search open, B closes that first, as it always has. In a game B is the game's
+button, and in the pause menu it resumes. Android's own Back never opens Apps.
+
+If the app was removed or turned off while its icon was still on screen: "*Name* couldn't be
+opened. It may have been removed or turned off.", and the list is read again with focus on its
+neighbour. If nothing can be listed: *No apps to show* or *Apps couldn't be listed*, with A to try
+again and B to go back.
+
+Verified by `ShellNavigationTest` and `AppLibraryTest` on the host, and on the RP5 by
+`AppsLibraryTest` (B from the root and from every other state, a real game started and paused, the
+device's real launcher list, Android Settings opened and returned from, apps removed and installed
+while shown, a rebuilt Activity) and `UxTourTest` (screenshots 25 and 26).
+
+## J — Start a console that needs its own BIOS (added 2026-10-11, ADR 0022)
+
+Saturn is the first console here that cannot start without a file only its owner has.
+
+| Step | Player | Console |
+|---|---|---|
+| 1 | Adds a folder with Saturn discs | The result counts them under Saturn and lists **Add Saturn BIOS** above *See my games*, with why |
+| 2 | Skips it, focuses a Saturn game, A | The disc stays on the shelf. A dialog says "Saturn needs its BIOS", what the two regional files are, that nothing is downloaded, and offers **Add BIOS file · America and Europe**, **Add BIOS file · Japan**, **Not now** |
+| 3 | Chooses a row, picks the file in Android's picker | A known dump is accepted and named for the core; anything else is refused in words and nothing is stored |
+| 4 | A on the game again | It starts |
+
+The same row is on the game's details (X) and in Settings › Gameplay › Saturn, where a missing file
+is marked. With one region's file added, a game from the other region fails to start and the failure
+sheet offers the file that is missing. PlayStation keeps its optional BIOS and never shows the dialog.
+Built from `Destination.Setup`; device evidence is `SaturnCoreTest` and, for the second console of
+this kind, `Ps2CoreTest` (TESTING).
+
+PlayStation 2 is that second console (since 2026-10-12, ADR 0026), with one file instead of two:
+the result of adding its games lists **Add PlayStation 2 BIOS**, A on a game without one opens the
+same dialog with **Add BIOS file**, and Settings › Gameplay › PlayStation 2 has the row. Any
+region's BIOS is taken and starts any region's games; a file that is not one is refused in words
+("Choose a PlayStation 2 BIOS dump (a 4 MiB file from the console)").
+
 ## Other paths
 
 | Goal | Path | Presses |
 |---|---|---|
+| Open an Android app | B, then A on the app | 2 |
 | Favourite the focused game | Y | 1 |
 | Find a game | START ▼ A, type, START | 3 + typing |
 | Hide a game | X › Manage game › Hide from library | 4 |

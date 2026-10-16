@@ -17,6 +17,7 @@ import com.swordfish.libretrodroid.ShaderConfig
 import com.swordfish.libretrodroid.Variable
 import dev.cartridge.domain.SessionMachine
 import dev.cartridge.domain.SessionState
+import dev.cartridge.domain.Snapshots
 import dev.cartridge.environment.GameOptions
 import dev.cartridge.storage.SaveStore
 import dev.cartridge.storage.SessionStore
@@ -94,18 +95,24 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                     startNotice = STATE_NOT_USED
                     null
                 }
+                // A core that writes its own files gets a folder per game, so two games never share one.
+                val ownFiles = File(context.filesDir, "saves").let { if (game.system.core.ownFiles) File(it, "${game.id}.files") else it }.apply { mkdirs() }
+                game.system.core.data?.let { (archive, folder) ->
+                    withContext(Dispatchers.IO) { dev.cartridge.storage.CoreData.unpack(context.assets, archive, File(systemDirectory, folder), game.system.core.revision) }
+                }
                 val data = GLRetroViewData(context).apply {
                     coreFilePath = core.absolutePath
-                    gameFilePath = game.rom.absolutePath
+                    // An engine that takes a disc as one image is started from the sheet's first track, which holds the game.
+                    // The path with no link in it: an engine that works out a program's folder for itself resolves
+                    // links on the way, and then no longer recognises the path it was given as the same file.
+                    gameFilePath = (if (!game.system.core.sheets && game.rom.extension == "cue") File(game.rom.parentFile, "track-00.bin") else game.rom).canonicalPath
                     systemDirectory = this@LibretroEngine.systemDirectory.apply { mkdirs() }.path
-                    savesDirectory = File(context.filesDir, "saves").apply { mkdirs() }.path
+                    savesDirectory = ownFiles.path
                     rumbleEventsEnabled = false
                     enableMicrophone = false
                     shader = screenEffect(options[GameOptions.SCREEN_EFFECT])
                     // Firmware and memory-card ownership are fixed by the save design; user options cannot replace them.
-                    variables = ((options - GameOptions.adapterKeys) + if (game.system == dev.cartridge.domain.GameSystem.PS1) mapOf(
-                        "pcsx_rearmed_bios" to "auto", "pcsx_rearmed_memcard1" to "libretro", "pcsx_rearmed_memcard2" to "disabled")
-                        else emptyMap()).map { Variable(it.key, it.value) }.toTypedArray()
+                    variables = ((options - GameOptions.adapterKeys) + game.system.core.fixed).map { Variable(it.key, it.value) }.toTypedArray()
                 }
                 val view = GLRetroView(context, data).apply { isFocusable = false }
                 val session = SessionOwner()
@@ -156,6 +163,13 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                         "The embedded core did not finish loading the game. The battery save was kept."))
                 }
                 withTimeout(15_000) { setupConfirmed.await() }
+                // What every Libretro frontend does after loading a game: say what is in each port. One pad, and the
+                // other three named as empty, because an engine may wait to hear about all of them before it fits
+                // the first with its memory unit (Flycast does).
+                if (game.system.core.emptyPorts) onGl {
+                    setControllerType(0, RETRO_DEVICE_JOYPAD)
+                    for (port in 1..3) setControllerType(port, RETRO_DEVICE_NONE)
+                }
                 suspend fun restoreBattery() {
                     if (savedRam != null && savedRam.isNotEmpty()) {
                         check(onGl {
@@ -219,8 +233,13 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
             while (true) {
                 val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
                 val copied = CompletableDeferred<Int>()
-                PixelCopy.request(view, Rect(0, 0, view.width, view.height), bitmap,
-                    { copied.complete(it) }, Handler(Looper.getMainLooper()))
+                // The screen going to sleep takes the surface away, sometimes before this pause is reached, and a
+                // surface that is gone cannot be asked for a copy. The pause goes on without a picture: it is what
+                // writes the save, and failing here ended the game unsaved.
+                try {
+                    PixelCopy.request(view, Rect(0, 0, view.width, view.height), bitmap,
+                        { copied.complete(it) }, Handler(Looper.getMainLooper()))
+                } catch (gone: IllegalArgumentException) { bitmap.recycle(); return@withTimeoutOrNull null }
                 if (copied.await() == PixelCopy.SUCCESS) return@withTimeoutOrNull bitmap
                 bitmap.recycle(); delay(16)
             }
@@ -260,10 +279,16 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     override fun motion(x: Float, y: Float) {
         if (machine.state == SessionState.Running) mutableSurface.value?.sendMotionEvent(GLRetroView.MOTION_SOURCE_DPAD, x, y, 0)
     }
+    override fun analog(stick: Int, x: Float, y: Float) {
+        if (machine.state == SessionState.Running) mutableSurface.value?.sendMotionEvent(
+            if (stick == 0) GLRetroView.MOTION_SOURCE_ANALOG_LEFT else GLRetroView.MOTION_SOURCE_ANALOG_RIGHT, x, y, 0)
+    }
     private fun releaseInput() {
         mutableSurface.value?.let { view ->
             pressed.forEach { view.sendKeyEvent(KeyEvent.ACTION_UP, it, 0) }
             view.sendMotionEvent(GLRetroView.MOTION_SOURCE_DPAD, 0f, 0f, 0)
+            view.sendMotionEvent(GLRetroView.MOTION_SOURCE_ANALOG_LEFT, 0f, 0f, 0)
+            view.sendMotionEvent(GLRetroView.MOTION_SOURCE_ANALOG_RIGHT, 0f, 0f, 0)
         }
         pressed.clear()
     }
@@ -286,6 +311,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     }
     override suspend fun saveState() = pausedOperation {
         val current = checkNotNull(game)
+        check(current.system.core.snapshots != Snapshots.Never) { "${current.system.title} games cannot save a state" }
         val bytes = onGl { SaveBridge.captureState(corePath) }
         withContext(NonCancellable + Dispatchers.IO) { saves.write(current.id, "state", dev.cartridge.storage.ManualState.encode(current.system, bytes)) }
         checkpointWithWarning()
@@ -305,6 +331,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     private suspend fun writeSession() {
         val store = sessionStore ?: return
         val current = checkNotNull(game)
+        if (current.system.core.snapshots == Snapshots.Never) return
         val bytes = onGl { SaveBridge.captureState(corePath) }
         withContext(NonCancellable + Dispatchers.IO) { store.write(current.id, current.system, bytes) }
     }
@@ -322,8 +349,9 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
         }
         mutableStatus.value = status.value.copy(saveWarning = null)
     }
-    private suspend fun checkpointWithWarning() {
-        try { writeBatterySave(); writeSession() }
+    /** [playing] is the periodic checkpoint of a running game, which a core with large states sits out. */
+    private suspend fun checkpointWithWarning(playing: Boolean = false) {
+        try { writeBatterySave(); if (!playing || game?.system?.core?.snapshots == Snapshots.Always) writeSession() }
         catch (failure: TimeoutCancellationException) { throw failure }
         catch (failure: CancellationException) { throw failure }
         catch (failure: Exception) {
@@ -336,7 +364,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 delay(checkpointIntervalMs.coerceAtLeast(100))
                 mutex.withLock {
                     if (machine.state == SessionState.Running) {
-                        try { checkpointWithWarning() }
+                        try { checkpointWithWarning(playing = true) }
                         catch (failure: TimeoutCancellationException) {
                             releaseNative()
                             transition(SessionState.Error, "Battery save capture timed out. The session was released.")
@@ -375,6 +403,18 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
             }
             // Stop even an aborted preparation with no RenderLifecycleObserver installed.
             view?.onPause()
+            // The frames have stopped and the thread that ran them still takes work. An engine that draws for itself
+            // is unloaded there, as it expects, before the host unloads it from this thread. A view that has left its
+            // window has no such thread any more: the engine is then unloaded from here, which is still its own order
+            // of letting go rather than the host's.
+            if (view != null && game?.system?.core?.draws == true && !view.isAttachedToWindow) {
+                try { SaveBridge.unload(corePath) } catch (failure: Throwable) { }
+            } else if (view != null && game?.system?.core?.draws == true) {
+                val path = corePath
+                val unloaded = java.util.concurrent.CountDownLatch(1)
+                view.queueEvent { try { SaveBridge.unload(path) } catch (failure: Throwable) { } finally { unloaded.countDown() } }
+                unloaded.await(10, java.util.concurrent.TimeUnit.SECONDS)
+            }
             it.registry.currentState = Lifecycle.State.DESTROYED
         }
         mutableSurface.value = null
@@ -389,6 +429,9 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     fun releaseOnDestroy() { releaseNative() }
     companion object {
         private val nativeClaim = AtomicBoolean(false)
+        /** libretro.h: nothing plugged in, and the standard pad. */
+        private const val RETRO_DEVICE_NONE = 0
+        private const val RETRO_DEVICE_JOYPAD = 1
         private const val STATE_NOT_USED = "This game's save state could not be loaded, so it started from the beginning. The state was kept."
     }
 }

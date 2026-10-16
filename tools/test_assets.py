@@ -75,10 +75,15 @@ class Glb:
 
 
 TEMPLATES = {
-    # name: (width, height, depth) in metres, label artwork aspect, label (width, height) in metres
-    'gba_cartridge.glb': ((.0600, .0343, .0069), 512 / 256, (.0433, .0225)),
-    'gb_cartridge.glb': ((.0575, .0650, .0091), 512 / 448, (.0445, .0392)),
-    'ps1_disc.glb': ((.1200, .1200, .0018), 512 / 512, (.1193, .1193)),
+    # name: (width, height, depth) in metres, label artwork aspect, label (width, height, depth) in metres
+    'gba_cartridge.glb': ((.0600, .0343, .0069), 512 / 256, (.0433, .0225, 0)),
+    'gb_cartridge.glb': ((.0575, .0650, .0091), 512 / 448, (.0445, .0392, 0)),
+    'ps1_disc.glb': ((.1200, .1200, .0018), 512 / 512, (.1193, .1193, 0)),
+    'nes_cartridge.glb': ((.1200, .1343, .0101), 512 / 856, (.0539, .0903, 0)),
+    # The Super Famicom shell bulges, and its label with it.
+    'snes_cartridge.glb': ((.1280, .0769, .0198), 512 / 184, (.0987, .0353, .0026)),
+    'snes_us_cartridge.glb': ((.1360, .0880, .0202), 512 / 228, (.0820, .0363, 0)),
+    'genesis_cartridge.glb': ((.1070, .0733, .0203), 512 / 304, (.0691, .0412, 0)),
 }
 
 
@@ -134,11 +139,12 @@ class MediaTemplateTest(unittest.TestCase):
             material = glb.material(label)
             self.assertIn('baseColorTexture', material['pbrMetallicRoughness'])
             self.assertEqual(0, material['pbrMetallicRoughness']['metallicFactor'])
-            self.assertTrue(all(normal[2] > .99 for normal in glb.attribute(label, 'NORMAL')))
+            self.assertTrue(all(normal[2] > .98 for normal in glb.attribute(label, 'NORMAL')))
             width, height, depth = glb.size([label])
             self.assertAlmostEqual(label_size[0], width, delta=.0002)
             self.assertAlmostEqual(label_size[1], height, delta=.0002)
-            self.assertLess(depth, .00001)
+            # Flat, or following a shell that is not.
+            self.assertAlmostEqual(label_size[2], depth, delta=.0001 if label_size[2] else .00001)
             # On the printed side of the object, not buried in it.
             self.assertGreater(glb.bounds([label])[0][2], 0)
 

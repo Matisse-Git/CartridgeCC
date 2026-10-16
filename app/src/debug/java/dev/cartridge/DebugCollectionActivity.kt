@@ -31,6 +31,8 @@ class DebugCollectionActivity : MainActivity() {
     }
     override fun createLabelStore() = LabelStore(File(filesDir, "m1-test-labels"))
     override fun createArtworkProvider() = testProvider ?: super.createArtworkProvider()
+    // The tour draws invented apps, so no screenshot shows what the owner has installed. Tests of Android itself leave this unset.
+    override fun createAppSource() = testApps ?: super.createAppSource()
     override fun createScrapeJournal() = FileScrapeJournal(File(filesDir, "${intent.getStringExtra("testDatabase")}-scrape"))
     override fun presentationPreferences() = getSharedPreferences("${intent.getStringExtra("testDatabase")}-presentation", MODE_PRIVATE)
     override fun createPackStore() = dev.cartridge.scraping.ScrapePackStore(File(filesDir, "${intent.getStringExtra("testDatabase")}-packs"))
@@ -41,6 +43,7 @@ class DebugCollectionActivity : MainActivity() {
     }
     companion object {
         var testProvider: ArtworkProvider? = null
+        var testApps: dev.cartridge.apps.AppSource? = null
         private val databases = mutableMapOf<String, LibraryDatabase>()
         fun closeDatabases() = synchronized(databases) { databases.values.forEach { it.close() }; databases.clear() }
     }

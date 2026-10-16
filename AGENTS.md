@@ -75,10 +75,15 @@
   raw BIN tracks as games. Keep per-system core revisions in states, checkpoints and backups; retain
   existing mGBA state compatibility. BIOS import is explicit, verified and excluded from archives.
 
-- The cartridge, tall cartridge and disc are converted from the owner's downloads by
-  `tools/import_models.py` (ADR 0019, ASSET_PIPELINE); never hand-edit those GLBs or bring back a
-  generator that writes them. Keep one named label primitive, its UV contract, the template sizes and
-  the removal of baked game labels. A game keeps its pooled object while it is in the window
+- Every object a game is shown as is converted from the owner's downloads by
+  `tools/import_models.py` (ADR 0019 and 0025, ASSET_PIPELINE); never hand-edit those GLBs or bring
+  back a generator that writes them. Keep one named label primitive, its UV contract, the template
+  sizes and the removal of baked game labels: a download is not converted until the tool asserts its
+  print is gone, and each new GLB is rendered and looked at before it reaches the device. A template
+  is one `Media` entry (file, label height, on-screen scale); the renderer names no object, and no
+  two shapes share a label height. A console's object is `GameSystem.media`, or `media(title)` where
+  its cartridges differed by market; that choice is presentation only and nothing else may ask for
+  it. A game keeps its pooled object while it is in the window
   (`CollectionLayout.slot`): stage labels by key and owner, never by window position, and never draw
   an object with another game's label or the template's. Re-run `BrowseStabilityTest`
   (`-Suite Browse`) after any renderer, window or label change.
@@ -91,7 +96,66 @@
   is `AXIS_Z`/`AXIS_RZ` on the RP5 and belongs to the interface outside gameplay only. A focused row
   must look focused whatever is behind it and whether or not it can be used.
 
+- The Android apps (ADR 0021) are the library's sibling, never part of it: no Room rows, console
+  records, labels or 3D objects for an app, and games are still run only by the embedded cores. B
+  opens Apps only as the last branch of `ConsoleShell.dismiss`, with nothing left to close; do not
+  add a button, tab or menu row for it, and keep Android's Back (`systemBack`) from opening it.
+  Reach Android only through `AppSource`/`LauncherApps` with the MAIN + LAUNCHER `<queries>`; never
+  request `QUERY_ALL_PACKAGES`, build a launch intent by hand, or store the app list. Address apps
+  by `package/activity`, read them off Main, and unregister the callback in `ConsoleShell.close()`.
+  Interface tests and screenshots use `FixtureAppSource`; nothing committed may show what the owner
+  has installed. Re-run `AppsLibraryTest` (`-Suite Apps`) after any change to back handling.
+
 - Starting from a save state (SAVE_RELIABILITY) is optional and can never stop a game from starting:
   a missing, unreadable or refused manual state means a start from the beginning and one notice, and
   the file is left alone. Restore the battery save again after a state is loaded at a start. An
-  option with no core family belongs to every console; keep adapter-only keys out of core variables.
+  option with no core family belongs to every console that can make a state; keep adapter-only keys
+  out of core variables.
+
+- A console is one entry in `domain/GameSystem` and an engine one entry in `domain/Core` (ADR 0022,
+  docs/CONSOLES). Never decide behaviour by comparing a system or core to a constant elsewhere: add a
+  field. Enum names are stored ids: append, never rename or reorder. `media` is presentation only;
+  `bundle` says how a game is stored. A new core goes through `cartridge_core()` with a pinned archive
+  hash, its licence text in docs/licenses, an original probe in tools/probe and a device test; a
+  console that has not run on the device is described as implemented, not playable. Firmware is the
+  owner's: accept it by content in `FirmwareStore`, never bundle, download or back it up. Identify a
+  file by its first bytes before copying it; keep PlayStation identities computed as they were. Keep
+  docs/CONSOLES current, including what is blocked and why. Re-run `SystemRegistryTest`, `-Suite Cores`
+  and `-Suite Saturn` after any registry, importer, core or shim change.
+
+- Flycast, ARMSX2 and Dolphin draw for themselves (ADR 0023, 0024, 0026). Never edit an engine's
+  source: what the host assumes is kept by `cartridge_shim.c` (GL state saved and restored around
+  the host's copy, the host's framebuffer bound only where the screen is bound, silence reported as
+  a repeated frame, the base size the core really draws, the core paced by its own sound with
+  nothing held thrown away, and the order a game and its context are let go in) and by `Core`
+  fields (`analog`, `emptyPorts`, `data`, `snapshots`, `draws`, `sheets`). Do not bind, pace or
+  unload around the shim elsewhere. An engine with `draws` is unloaded on the thread it ran on, and
+  Compose takes that thread away before `onDestroy` is reached: a loaded game is released from
+  `MainActivity.endSession`, never later. Dolphin runs on one thread (`dolphin_main_cpu_thread`).
+  ARMSX2 is unloaded before its context is destroyed (`CARTRIDGE_UNLOAD_FIRST`), has no states, is
+  given a game by its canonical path, and has `allowNativeHeapPointerTagging="false"` in the
+  manifest as its own app does: none of these is undone without a game run that shows why it is
+  safe. A black screen or dead pad on one of them is the host's until a host-side run of the probe
+  says otherwise. Keep ARMSX2 and Dolphin as builds of their own (`cartridge_external_core`); their
+  target names collide in one tree. PlayStation 2 cannot start without the owner's BIOS and has no
+  replacement: take one by what its own file table says (`Firmware.proves`), never from a list of
+  dumps; its device tests are skipped where `files/m1-owner-firmware` holds none, and neither a
+  BIOS nor where the owner keeps theirs goes in the repository. Offer a state only where
+  `snapshots` allows, and never capture one during play unless it is `Always`. A disc proves its
+  console by its bytes and length before its folder is asked. Whatever a CUE or GDI names is that
+  disc's track, whatever its extension (`SheetTracks`). Name all four controller ports for a core
+  with `emptyPorts`. An original test program proves a start, not a game: every fault the owner's
+  games showed was invisible to one. After any shim, host, adapter or engine change re-run
+  `-Suite Dreamcast`, `-Suite PS2`, `-Suite GameCube` and `-Suite Discs`, then `RealGameCheck` with
+  an imported game on each of the three (docs/TESTING), and say which games were not run. Write a
+  game's result as that game's, never as the console's, and keep the owner's games out of the
+  repository, their names included.
+
+- Sleep is how a handheld is put down, and it must never cost a game its place. Leaving the app
+  writes a checkpoint and stops the engine only where the core can be captured; a core with
+  `snapshots = Never` stays loaded and paused (`CollectionCoordinator.keptWhileAway`, the only
+  place that decides it). A pause must complete whatever the screen is doing: it is what writes the
+  save, so nothing optional in it (the copied picture) may throw. Check a change to pausing,
+  backgrounding or the session lifecycle with a real sleep (`RealGameCheck -e sleep N`), which the
+  device's power button does and `moveToState` only approximates; the USB link drops after one, so
+  read the result from the device's log.

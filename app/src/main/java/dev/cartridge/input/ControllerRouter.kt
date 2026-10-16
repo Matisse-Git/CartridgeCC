@@ -34,6 +34,10 @@ class ControllerRouter(
     private val navigateLibrary: ((Int, Int) -> Unit)? = null,
     /** Right stick outside a game, -1..1 per axis with the dead zone removed. Zero when it rests or input is reset. */
     private val inspect: (Float, Float) -> Unit = { _, _ -> },
+    /** Android's own Back and Escape, outside a game. The controller's back button is [back]. */
+    private val systemBack: () -> Unit = back,
+    /** A stick of a game whose console has them: 0 left, 1 right, -1..1 per axis with a small dead zone removed. */
+    private val gameAnalog: (Int, Float, Float) -> Unit = { _, _, _ -> },
 ) {
     var mode = InputMode.Library
         set(value) { if (field != value) reset(); field = value }
@@ -41,6 +45,9 @@ class ControllerRouter(
     var swapMenuButtons = false
     var swapGameButtons = false
     var swapShoulders = false
+    /** The running game reads the sticks themselves. Otherwise the left stick is its D-pad, as on a console without one. */
+    var analogGameplay = false
+        set(value) { if (field != value) reset(); field = value }
     var deadZone = .35f
         set(value) { require(value in .15f.. .65f); reset(); field = value }
     private val held = mutableSetOf<Int>()
@@ -102,7 +109,8 @@ class ControllerRouter(
         }
         if (down && event.repeatCount == 0) when (code) {
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_ENTER -> select()
-            KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> back()
+            KeyEvent.KEYCODE_BUTTON_B -> back()
+            KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> systemBack()
             KeyEvent.KEYCODE_BUTTON_X -> alternate()
             KeyEvent.KEYCODE_BUTTON_Y -> secondary()
             KeyEvent.KEYCODE_BUTTON_START -> menu()
@@ -119,7 +127,16 @@ class ControllerRouter(
         val hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
         if (mode == InputMode.Gameplay) {
             fun digital(value: Float) = if (abs(value) < deadZone) 0f else if (value > 0) 1f else -1f
-            gameMotion(digital(if (hatX != 0f) hatX else x), digital(if (hatY != 0f) hatY else y))
+            if (analogGameplay) {
+                // The D-pad stays a D-pad; each stick goes through whole, less the slack every stick has at rest.
+                fun stick(index: Int, sx: Float, sy: Float) {
+                    val reach = kotlin.math.hypot(sx, sy)
+                    if (reach < GAME_STICK_REST) gameAnalog(index, 0f, 0f)
+                    else ((reach - GAME_STICK_REST) / (1f - GAME_STICK_REST)).coerceAtMost(1f).let { travel -> gameAnalog(index, sx / reach * travel, sy / reach * travel) }
+                }
+                gameMotion(digital(hatX), digital(hatY))
+                stick(0, x, y); stick(1, event.getAxisValue(MotionEvent.AXIS_Z), event.getAxisValue(MotionEvent.AXIS_RZ))
+            } else gameMotion(digital(if (hatX != 0f) hatX else x), digital(if (hatY != 0f) hatY else y))
         } else {
             // The right stick is AXIS_Z / AXIS_RZ on the Retroid Pocket 5 and on standard Android gamepads.
             // AXIS_RX / AXIS_RY are not read: some pads report their triggers there.
@@ -154,5 +171,9 @@ class ControllerRouter(
             if (navigateLibrary != null) navigateLibrary.invoke(dx, dy) else if (dx != 0) navigate(dx)
         }
     }
-    fun reset() { held.clear(); axisX = 0f; axisY = 0f; horizontalRepeat.reset(); verticalRepeat.reset(); shortcutLatched = false; inspect(0f, 0f) }
+    fun reset() {
+        held.clear(); axisX = 0f; axisY = 0f; horizontalRepeat.reset(); verticalRepeat.reset(); shortcutLatched = false; inspect(0f, 0f)
+        gameAnalog(0, 0f, 0f); gameAnalog(1, 0f, 0f)
+    }
+    private companion object { const val GAME_STICK_REST = .12f }
 }

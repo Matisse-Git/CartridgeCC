@@ -30,6 +30,16 @@ shown for any console. A shelf reached with L1/R1 opens on its first game. The r
 the focused object. Browsing a large library no longer stutters. Statements below about a receiving
 slot, a loading title, or a shelf remembering its own game describe earlier behaviour.
 
+**2026-10-11 — Android apps (ADR 0021).** Cartridge is the front of the handheld, so the other apps
+on it are one press away: B on the game library, with nothing else open, opens **Apps**; A starts
+the focused app the way a home screen does; B returns to the same shelf and game. Games are physical
+media; apps are their own icons. They are never mixed: an app is not a library entry, has no console
+and no 3D object, and nothing about it is stored except which one was focused. There is no Apps
+button, tab or menu row — one hint, `B Apps`, which retires once it has been used a few times.
+Scope is finding and starting. Managing apps (uninstalling, hiding, pinning, folders) is not offered.
+Games are still run only by the embedded cores; an emulator the owner starts from Apps is just an
+Android app they started.
+
 Project Cartridge is one native, offline-first console experience: physical media collection →
 insertion → internal gameplay → app-owned pause/save/load → ejection → collection. The cartridge
 is the centerpiece. Warm charcoal, quiet lighting, restrained text and controller-first navigation
@@ -216,3 +226,27 @@ An empty first collection has skippable setup; existing owners go straight to th
 Sleep/wake restores the game paused, with an actual frozen gameplay frame. Cold opening still enters the collection and offers Resume session. Save state and the automatic session are independent. Ejection clears the automatic session after successful save/stop; Discard keeps battery/manual saves. A failed or incompatible checkpoint reports a concise error and returns to the collection. Sudden termination can lose progress since the last completed checkpoint.
 
 Console settings offers Export backup / Restore backup. Review counts and opt into settings when needed; existing collection choices/saves win. ROMs are excluded, so folder permissions must be reauthorized after a device transfer. See BACKUP_FORMAT.
+
+## Consoles (2026-10-11)
+
+*Since then: games have been run on Dreamcast, PlayStation 2 and GameCube (ADR 0024), and
+PlayStation 2 moved to an engine that runs the console's own BIOS, which the owner adds once
+(ADR 0026). [CONSOLES](CONSOLES.md) is the current statement; the paragraph below is the day's.*
+
+Nine consoles are playable inside Cartridge. Four more are implemented and wait for something only
+the owner has: Saturn for its BIOS; Dreamcast, PlayStation 2 and GameCube for a first real game
+(their engines start, draw and take input on the device from original test programs; no game has
+been run). Each console with games is its own shelf, in a fixed order: Game Boy Advance, Game Boy,
+Game Boy Color, PlayStation, Super Nintendo, Nintendo Entertainment System, Genesis, Master System,
+Game Gear, Saturn, Dreamcast, PlayStation 2, GameCube. A console without games takes no space
+anywhere but Settings › Gameplay.
+
+Promises the interface keeps: a console that cannot be played is never shown as one, only counted
+on the import result; a console that needs a file from its owner says so before a game is started,
+names the file and offers the picker; an option is shown only if the packaged core honours it; a
+new console looks like the rest of the app, because it is drawn by the same shelf, object pool,
+details, pause menu and settings rows. A console's games are shown as its own cartridge where the
+owner has supplied a model (Game Boy, Game Boy Advance, NES, Super Nintendo in both its shells,
+Genesis) and as a disc otherwise. Putting the device to sleep never costs a game its place: a
+console with save states comes back from a checkpoint, one without stays loaded, and both return
+at the pause menu. Status, formats and limits are kept in [CONSOLES](CONSOLES.md).

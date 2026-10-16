@@ -13,7 +13,7 @@ import com.google.android.filament.utils.KTX1Loader
 import com.google.android.filament.utils.Utils
 import dev.cartridge.domain.FocusSpring
 import dev.cartridge.domain.CollectionLayout
-import dev.cartridge.domain.GameSystem
+import dev.cartridge.domain.Media
 import dev.cartridge.domain.MediaMotion
 import dev.cartridge.storage.LabelPixels
 import java.nio.ByteBuffer
@@ -37,18 +37,11 @@ class CartridgeSurface(
     private val camera: Camera
     private val materialProvider: UbershaderProvider
     private val assetLoader: AssetLoader
-    private val resourceLoader: ResourceLoader
-    private val tallLoader: ResourceLoader
-    private val discLoader: ResourceLoader
-    private val asset: FilamentAsset
-    private val tallAsset: FilamentAsset
-    private val discAsset: FilamentAsset
-    private val labels: CartridgeLabels
-    private val tallLabels: CartridgeLabels
-    private val discLabels: CartridgeLabels
-    private val instances = arrayOfNulls<FilamentInstance>(CollectionLayout.POOL)
-    private val tallInstances = arrayOfNulls<FilamentInstance>(CollectionLayout.POOL)
-    private val discInstances = arrayOfNulls<FilamentInstance>(CollectionLayout.POOL)
+    /** One object a game can be shown as: its mesh, the loader bringing its textures in, its pooled copies and their labels. */
+    private class Template(val asset: FilamentAsset, val loader: ResourceLoader, val instances: Array<FilamentInstance?>, val labels: CartridgeLabels)
+    /** In [Media] order. Every template has the same bounded pool, whatever the library holds. */
+    private val templates: List<Template>
+    private val loaded get() = templates.all { it.loader.asyncGetLoadProgress() >= 1f }
     private val uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
     private val light: Int
     private val indirectLight: IndirectLight
@@ -59,10 +52,10 @@ class CartridgeSurface(
     private val stageSpring = FocusSpring(0f)
     private var previousLayout = CollectionLayout.Horizontal
     var layout: CollectionLayout = CollectionLayout.Horizontal
-    internal val poolCapacity get() = instances.size
-    internal val meshInstanceCount get() = instances.size + tallInstances.size + discInstances.size
+    internal val poolCapacity get() = CollectionLayout.POOL
+    internal val meshInstanceCount get() = templates.sumOf { it.instances.size }
     /** One shelf entry of the staged window: the template that shows it and the label it must carry. */
-    class Staged(val system: GameSystem, val owner: String, val key: String, val pixels: LabelPixels?)
+    class Staged(val media: Media, val owner: String, val key: String, val pixels: LabelPixels?)
     private class Placed(val global: Int, val entry: Staged?)
     // By pooled object. Until a window is staged the first objects stand as the bare template, for diagnostics.
     private var placed = Array<Placed?>(CollectionLayout.POOL) { Placed(it, null) }
@@ -104,15 +97,15 @@ class CartridgeSurface(
     fun arriveFrom(direction: Int) { if (!reducedMotion && direction != 0) spring.snapTo(selection + direction * 1.4f) }
     internal val focusPosition get() = spring.position
     /** Diagnostic: label textures uploaded since this renderer was created. */
-    internal val labelUploads get() = labels.uploads + tallLabels.uploads + discLabels.uploads
+    internal val labelUploads get() = templates.sumOf { it.labels.uploads }
     /** Diagnostic: staged objects that were on stage in the last frame without their own label. Browsing keeps this at zero. */
     internal var unlabelledOnStage = 0
         private set
     /** Diagnostic: staged objects, on stage or waiting beside it, whose own label is not on the GPU yet. */
     internal val stagedUnbound get() = placed.withIndex().count { (index, place) ->
-        place?.entry?.let { !listOf(labels, tallLabels, discLabels)[format(it.system)].shows(index, it.owner) } == true }
+        place?.entry?.let { !templates[it.media.ordinal].labels.shows(index, it.owner) } == true }
     internal val isClosed get() = closed
-    internal val diagnosticState get() = "closed=$closed active=$active swap=${swapChain != null} ready=$reportedReady uiReady=${uiHelper.isReadyToRender} loads=${if (closed) "released" else "${resourceLoader.asyncGetLoadProgress()}/${tallLoader.asyncGetLoadProgress()}/${discLoader.asyncGetLoadProgress()}"}"
+    internal val diagnosticState get() = "closed=$closed active=$active swap=${swapChain != null} ready=$reportedReady uiReady=${uiHelper.isReadyToRender} loads=${if (closed) "released" else templates.joinToString("/") { it.loader.asyncGetLoadProgress().toString() }}"
     /** Frames handed to the display in each full second, for the optional readout. Main thread. */
     var onFrameRate: ((Int) -> Unit)? = null
     private var counted = 0
@@ -120,7 +113,6 @@ class CartridgeSurface(
     /** Diagnostic only: CPU submission/scheduling, not a GPU presentation-time measurement. */
     internal var frameObserver: ((Long, Long, Boolean) -> Unit)? = null
     private var labelFailure = false
-    private fun format(system: GameSystem) = when { system == GameSystem.PS1 -> 2; system.tallCartridge -> 1; else -> 0 }
     /**
      * Stage the bounded slice of the shelf that starts at [start]. Every shelf index keeps the pooled object
      * [CollectionLayout.slot] gives it, so moving the window re-labels only the objects that entered it;
@@ -131,10 +123,10 @@ class CartridgeSurface(
         if (closed) return
         val next = arrayOfNulls<Placed>(poolCapacity)
         entries.forEachIndexed { offset, entry -> next[CollectionLayout.slot(start + offset)] = Placed(start + offset, entry) }
-        listOf(labels, tallLabels, discLabels).forEachIndexed { pool, target ->
-            val wanted = List(poolCapacity) { slot -> next[slot]?.entry?.takeIf { format(it.system) == pool }?.let { CartridgeLabels.Wanted(it.owner, it.key, it.pixels) } }
-            if (target.wanted.map { it?.key } != wanted.map { it?.key }) labelFailure = false
-            target.wanted = wanted
+        templates.forEachIndexed { pool, template ->
+            val wanted = List(poolCapacity) { slot -> next[slot]?.entry?.takeIf { it.media.ordinal == pool }?.let { CartridgeLabels.Wanted(it.owner, it.key, it.pixels) } }
+            if (template.labels.wanted.map { it?.key } != wanted.map { it?.key }) labelFailure = false
+            template.labels.wanted = wanted
         }
         placed = next; windowStart = start; windowSize = entries.size
     }
@@ -172,23 +164,14 @@ class CartridgeSurface(
         scene.indirectLight = indirectLight
         materialProvider = UbershaderProvider(engine)
         assetLoader = AssetLoader(engine, materialProvider, EntityManager.get())
-        resourceLoader = ResourceLoader(engine)
-        asset = checkNotNull(assetLoader.createInstancedAsset(ByteBuffer.wrap(bytes.cartridge), instances)) {
-            "Cannot decode cartridge GLB"
+        templates = Media.entries.map { media ->
+            val instances = arrayOfNulls<FilamentInstance>(CollectionLayout.POOL)
+            val asset = checkNotNull(assetLoader.createInstancedAsset(ByteBuffer.wrap(bytes.models[media.ordinal]), instances)) { "Cannot decode ${media.model}.glb" }
+            val loader = ResourceLoader(engine)
+            check(loader.asyncBeginLoad(asset)) { "Cannot load the resources of ${media.model}.glb" }
+            asset.releaseSourceData()
+            Template(asset, loader, instances, CartridgeLabels(engine, instances))
         }
-        check(resourceLoader.asyncBeginLoad(asset)) { "Cannot load cartridge resources" }
-        asset.releaseSourceData()
-        tallAsset = checkNotNull(assetLoader.createInstancedAsset(ByteBuffer.wrap(bytes.tallCartridge), tallInstances)) { "Cannot decode tall cartridge GLB" }
-        tallLoader = ResourceLoader(engine)
-        check(tallLoader.asyncBeginLoad(tallAsset)) { "Cannot load tall cartridge resources" }
-        tallAsset.releaseSourceData()
-        discAsset = checkNotNull(assetLoader.createInstancedAsset(ByteBuffer.wrap(bytes.disc), discInstances)) { "Cannot decode optical disc GLB" }
-        discLoader = ResourceLoader(engine)
-        check(discLoader.asyncBeginLoad(discAsset)) { "Cannot load optical disc resources" }
-        discAsset.releaseSourceData()
-        labels = CartridgeLabels(engine, instances)
-        tallLabels = CartridgeLabels(engine, tallInstances)
-        discLabels = CartridgeLabels(engine, discInstances)
         uiHelper.renderCallback = object : UiHelper.RendererCallback {
             override fun onNativeWindowChanged(surface: Surface) {
                 swapChain?.let(engine::destroySwapChain)
@@ -252,26 +235,16 @@ class CartridgeSurface(
         fun restX(global: Int, offset: Float) = when (layout) { CollectionLayout.Horizontal -> offset * 1.66f; CollectionLayout.Vertical -> VERTICAL_X; CollectionLayout.Grid -> (global % 3 - 1) * 1.04f }
         fun restY(global: Int, offset: Float) = when (layout) { CollectionLayout.Horizontal -> 0f; CollectionLayout.Vertical -> -offset * 1.12f; CollectionLayout.Grid -> (gridCenter - global / 3) * .54f + .05f }
         val focusX = restX(selection, selection - focus); val focusY = restY(selection, selection - focus)
-        resourceLoader.asyncUpdateLoad()
-        tallLoader.asyncUpdateLoad()
-        discLoader.asyncUpdateLoad()
-        while (true) {
-            val count = asset.popRenderables(renderables)
-            if (count == 0) break
-            scene.addEntities(renderables.copyOf(count))
+        for (template in templates) {
+            template.loader.asyncUpdateLoad()
+            while (true) {
+                val count = template.asset.popRenderables(renderables)
+                if (count == 0) break
+                scene.addEntities(renderables.copyOf(count))
+            }
         }
-        while (true) {
-            val count = tallAsset.popRenderables(renderables)
-            if (count == 0) break
-            scene.addEntities(renderables.copyOf(count))
-        }
-        while (true) {
-            val count = discAsset.popRenderables(renderables)
-            if (count == 0) break
-            scene.addEntities(renderables.copyOf(count))
-        }
-        if (resourceLoader.asyncGetLoadProgress() >= 1f && tallLoader.asyncGetLoadProgress() >= 1f && discLoader.asyncGetLoadProgress() >= 1f && !labelFailure) {
-            try { labels.update(); tallLabels.update(); discLabels.update() }
+        if (loaded && !labelFailure) {
+            try { for (template in templates) template.labels.update() }
             catch (failure: Exception) {
                 labelFailure = true
                 android.util.Log.e("CartridgeRenderer", "Label texture preparation failed", failure)
@@ -279,7 +252,8 @@ class CartridgeSurface(
             }
         }
         var unlabelled = 0
-        for ((format, pool, bound) in listOf(Triple(0, instances, labels), Triple(1, tallInstances, tallLabels), Triple(2, discInstances, discLabels))) pool.forEachIndexed { index, instance ->
+        for ((format, template) in templates.withIndex()) template.instances.forEachIndexed { index, instance ->
+            val bound = template.labels
             val place = placed[index]
             val entry = place?.entry
             val global = place?.global ?: -1
@@ -301,8 +275,8 @@ class CartridgeSurface(
             val arrival = if (layout != CollectionLayout.Grid) 1f else (2f - abs(global / 3 - gridCenter)).coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
             // An object appears only once it carries its own game's label, never a neighbour's or the template's.
             val visible = place != null && global < collectionCount && (selected || stage < .97f) && arrival > 0f &&
-                format == format(entry?.system ?: GameSystem.GBA) && (entry == null || bound.shows(index, entry.owner))
-            if (entry != null && format == format(entry.system) && global < collectionCount && !bound.shows(index, entry.owner) &&
+                format == (entry?.media ?: Media.Cartridge).ordinal && (entry == null || bound.shows(index, entry.owner))
+            if (entry != null && format == entry.media.ordinal && global < collectionCount && !bound.shows(index, entry.owner) &&
                 (if (layout == CollectionLayout.Grid) arrival > 0f else abs(offset) < 1.5f)) unlabelled++
             Matrix.translateM(matrix, 0, x * (1f - pose.alignment), y * (1f - pose.alignment) + emphasis * lift * .5f + pose.height,
                 if (visible) emphasis * .12f else -100f)
@@ -316,7 +290,7 @@ class CartridgeSurface(
             }
             val browseScale = if (layout == CollectionLayout.Grid) 11.5f + emphasis * 3.5f else 22f + emphasis * 5f
             val restScale = if (selected) browseScale + (STAGE_SCALE - browseScale) * stage else browseScale
-            val scale = (restScale + (27f - restScale) * pose.alignment) * when(format) { 1 -> .62f; 2 -> .40f; else -> 1f } * (if (visible) arrival else 1f)
+            val scale = (restScale + (27f - restScale) * pose.alignment) * Media.entries[format].scale * (if (visible) arrival else 1f)
             Matrix.scaleM(matrix, 0, scale, scale, scale)
             engine.transformManager.setTransform(engine.transformManager.getInstance(instance!!.root), matrix)
         }
@@ -329,9 +303,9 @@ class CartridgeSurface(
             submitted = true
             onLabelsReady(windowStart, List(windowSize) { offset ->
                 val index = CollectionLayout.slot(windowStart + offset)
-                when (placed[index]?.entry?.system?.let(::format)) { 2 -> discLabels.key(index); 1 -> tallLabels.key(index); 0 -> labels.key(index); else -> null }
+                placed[index]?.entry?.let { templates[it.media.ordinal].labels.key(index) }
             })
-            if (!reportedReady && resourceLoader.asyncGetLoadProgress() >= 1f && tallLoader.asyncGetLoadProgress() >= 1f && discLoader.asyncGetLoadProgress() >= 1f) {
+            if (!reportedReady && loaded) {
                 reportedReady = true
                 android.util.Log.i("CartridgeRenderer", "Stage ready ${android.os.SystemClock.uptimeMillis() - created} ms after it was created")
                 onReady()
@@ -348,21 +322,11 @@ class CartridgeSurface(
         closed = true
         pauseRendering()
         uiHelper.detach()
-        resourceLoader.asyncCancelLoad()
-        tallLoader.asyncCancelLoad()
-        discLoader.asyncCancelLoad()
-        scene.removeEntities(asset.entities)
-        scene.removeEntities(tallAsset.entities)
-        scene.removeEntities(discAsset.entities)
-        labels.close()
-        tallLabels.close()
-        discLabels.close()
-        assetLoader.destroyAsset(asset)
-        assetLoader.destroyAsset(tallAsset)
-        assetLoader.destroyAsset(discAsset)
-        resourceLoader.destroy()
-        tallLoader.destroy()
-        discLoader.destroy()
+        for (template in templates) template.loader.asyncCancelLoad()
+        for (template in templates) scene.removeEntities(template.asset.entities)
+        for (template in templates) template.labels.close()
+        for (template in templates) assetLoader.destroyAsset(template.asset)
+        for (template in templates) template.loader.destroy()
         assetLoader.destroy()
         materialProvider.destroyMaterials()
         materialProvider.destroy()

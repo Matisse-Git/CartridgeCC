@@ -44,8 +44,11 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.swordfish.libretrodroid.GLRetroView
+import dev.cartridge.apps.AppSource
+import dev.cartridge.apps.InstalledApps
 import dev.cartridge.domain.CollectionLayout
 import dev.cartridge.domain.GameSystem
+import dev.cartridge.domain.Media
 import dev.cartridge.domain.MediaMotion
 import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.LibretroEngine
@@ -102,6 +105,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
     protected open fun presentationPreferences() = getPreferences(MODE_PRIVATE)
     protected open fun createSessionStore() = SessionStore(File(filesDir, "session-checkpoint"))
     protected open fun systemDirectory() = File(filesDir, "system")
+    protected open fun createAppSource(): AppSource = InstalledApps(this)
     private val inputFrames = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
@@ -115,11 +119,25 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
     private val labelPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(shell::labelPicked) }
     private val packPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(shell::packPicked) }
     private val backupPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(shell::backupPicked) }
-    private val biosPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(shell::biosPicked) }
+    private val firmwarePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(shell::firmwarePicked) }
     private val backupWriter = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { it?.let(shell::backupCreated) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // From Android 10 the interface is taken down before onDestroy is reached: the lifecycle is told of the end
+        // first, Compose then disposes of its views, and the emulator's view takes with it the thread its core ran
+        // on. A game still loaded is let go while that thread is there. These callbacks are told in the reverse of
+        // the order they were added in, and the lifecycle's own were added by the line above.
+        if (android.os.Build.VERSION.SDK_INT >= 29) registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
+            override fun onActivityPreDestroyed(activity: android.app.Activity) = endSession()
+            override fun onActivityCreated(activity: android.app.Activity, state: Bundle?) = Unit
+            override fun onActivityStarted(activity: android.app.Activity) = Unit
+            override fun onActivityResumed(activity: android.app.Activity) = Unit
+            override fun onActivityPaused(activity: android.app.Activity) = Unit
+            override fun onActivityStopped(activity: android.app.Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: android.app.Activity, state: Bundle) = Unit
+            override fun onActivityDestroyed(activity: android.app.Activity) = Unit
+        })
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
@@ -153,12 +171,13 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
             if (coordinator.state.value.allGames.any { it.id == game.id }) coordinator.previewScrapedLabel(game, label)
             else { coordinator.notify("This game is no longer in the collection"); scraper.previewFinished() }
         }
-        shell = ConsoleShell(this, lifecycleScope, this, coordinator, engine, repository, scraper, labelStore, sessionStore, packStore, preferences, systemDirectory())
+        shell = ConsoleShell(this, lifecycleScope, this, coordinator, engine, repository, scraper, labelStore, sessionStore, packStore, preferences, systemDirectory(), createAppSource())
         shell.pendingLocate = savedInstanceState?.getString("recoveryId")
+        shell.reopenApps = savedInstanceState?.getBoolean("appsOpen") == true
         input = ControllerRouter(navigate = shell::navigate, select = shell::select, back = shell::back, pause = coordinator::pause,
             gameKey = engine::key, gameMotion = engine::motion, adjust = shell::adjust, alternate = shell::alternate, secondary = shell::secondary,
             shoulder = shell::shoulder, menu = shell::menu, cancelOperation = coordinator::cancelScan, navigateLibrary = coordinator::navigateSpatial,
-            inspect = ::inspect)
+            inspect = ::inspect, systemBack = shell::systemBack, gameAnalog = engine::analog)
         inputChanged()
         getSystemService(InputManager::class.java).registerInputDeviceListener(this, null)
         lifecycleScope.launch {
@@ -180,13 +199,14 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         val controls = shell.controls
         input.swapMenuButtons = controls.swapMenuButtons; input.swapGameButtons = controls.swapGameButtons
         input.swapShoulders = controls.swapShoulders
+        input.analogGameplay = coordinator.state.value.selectedGame?.system?.core?.analog == true
         if (input.deadZone != controls.deadZone) input.deadZone = controls.deadZone
     }
     private val libraryIdle get() = coordinator.state.value.let { !it.busy && it.screen == CollectionScreen.Library }
     override fun pickFolder() { if (libraryIdle) folderPicker.launch(null) }
     override fun pickGame() { if (libraryIdle) gamePicker.launch(arrayOf("*/*")) }
     override fun pickLabel() { if (libraryIdle) labelPicker.launch(arrayOf("image/png", "image/jpeg", "image/webp")) }
-    override fun pickBios() { biosPicker.launch(arrayOf("*/*")) }
+    override fun pickFirmware() { firmwarePicker.launch(arrayOf("*/*")) }
     override fun pickBackup() { backupPicker.launch(arrayOf("application/zip", "application/octet-stream")) }
     override fun pickPack() { if (!scraper.state.value.busy) packPicker.launch(arrayOf("application/zip", "application/octet-stream")) }
     override fun createBackup() { backupWriter.launch("Cartridge-backup.zip") }
@@ -292,7 +312,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
     }
 
     /** One decoded or typeset label per object of the bounded window; never more. */
-    private class LabelSpec(val key: String, val label: LabelRef?, val title: String, val system: GameSystem, val owner: String)
+    private class LabelSpec(val key: String, val label: LabelRef?, val title: String, val system: GameSystem, val media: Media, val owner: String)
 
     @Composable private fun LibraryViewport(bytes: CollectionAssets, state: CollectionState, suspended: Boolean, presented: Boolean) {
         var surface by remember { mutableStateOf<CartridgeSurface?>(null) }
@@ -306,7 +326,9 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
             val label = labels[index]; val system = systems[index]
             // A game without artwork carries its own title in type. The empty library shows the product's name.
             val title = game?.title ?: "Cartridge"
-            LabelSpec(label?.textureKey(system) ?: TypesetLabel.key(title, system), label, title, system, game?.id.orEmpty())
+            // The object follows the console and, where a console's cartridges differed by market, how the game is named.
+            val media = system.media(title)
+            LabelSpec(label?.textureKey(media) ?: TypesetLabel.key(title, system), label, title, system, media, game?.id.orEmpty())
         }
         val keys = specs.map { it.key }
         LaunchedEffect(keys) {
@@ -328,7 +350,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                 launch {
                     val asked = coroutineContext.job
                     val pixels = withContext(labelDecoding + NonCancellable) {
-                        if (!asked.isActive) null else runCatching { spec.label?.let { labelStore.decode(it, spec.system) } ?: TypesetLabel.render(spec.title, spec.system) }
+                        if (!asked.isActive) null else runCatching { spec.label?.let { labelStore.decode(it, spec.media) } ?: TypesetLabel.render(spec.title, spec.system) }
                     }?.getOrElse { failure ->
                         coordinator.notify(failure.message ?: "Cannot display the label")
                         // The object still needs a face: its title in type, under the key it was asked for.
@@ -361,7 +383,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
             it.reducedMotion = state.reducedMotion
             it.presentation = if (presented) 1f else 0f
             if (arrival.first != applied && arrival.second == state.shelf.key) { applied = arrival.first; it.arriveFrom(arrival.third) }
-            it.setWindow(windowStart, specs.map { spec -> CartridgeSurface.Staged(spec.system, spec.owner, spec.key, decoded[spec.key]) })
+            it.setWindow(windowStart, specs.map { spec -> CartridgeSurface.Staged(spec.media, spec.owner, spec.key, decoded[spec.key]) })
         }, onRelease = { it.close() })
         DisposableEffect(surface, suspended) {
             val renderer = surface
@@ -378,16 +400,18 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
     override fun onResume() {
         super.onResume()
         if (::coordinator.isInitialized) coordinator.foreground()
+        if (::shell.isInitialized) shell.resumed()
         Choreographer.getInstance().removeFrameCallback(inputFrames)
         Choreographer.getInstance().postFrameCallback(inputFrames)
     }
     override fun onSaveInstanceState(outState: Bundle) {
-        if (::shell.isInitialized) outState.putString("recoveryId", shell.pendingLocate)
+        if (::shell.isInitialized) { outState.putString("recoveryId", shell.pendingLocate); outState.putBoolean("appsOpen", shell.appsOpen) }
         super.onSaveInstanceState(outState)
     }
     override fun onPause() {
         Choreographer.getInstance().removeFrameCallback(inputFrames)
         if (::input.isInitialized) input.reset()
+        if (::shell.isInitialized) shell.paused()
         if (::coordinator.isInitialized) coordinator.background()
         super.onPause()
     }
@@ -395,12 +419,19 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         super.onWindowFocusChanged(hasFocus)
         if (!hasFocus && ::input.isInitialized) { input.reset(); coordinator.pause() }
     }
-    override fun onDestroy() {
+    private var ended = false
+    /** The end of everything that works on the session, and of the session, while the emulator's view still has its thread. */
+    private fun endSession() {
+        if (ended) return
+        ended = true
         shell.close()
         getSystemService(InputManager::class.java).unregisterInputDeviceListener(this)
         coordinator.destroy()
         scraper.destroy()
         engine.releaseOnDestroy()
+    }
+    override fun onDestroy() {
+        endSession()
         emulatorHost?.release()
         cartridgeSurface?.close()
         if (::mediaSound.isInitialized) mediaSound.close()

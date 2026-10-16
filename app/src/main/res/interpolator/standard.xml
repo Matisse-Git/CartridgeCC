@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The console's one easing curve, cubic-bezier(.2, 0, 0, 1): the same as ui/Theme.kt Motion.Standard. -->
+<pathInterpolator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:controlX1="0.2" android:controlY1="0" android:controlX2="0" android:controlY2="1" />
