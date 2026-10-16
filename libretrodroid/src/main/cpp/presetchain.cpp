@@ -690,6 +690,9 @@ void PresetChain::render(const PresetSource& source, const PresetTarget& target)
     if (source.width != allocatedWidth || source.height != allocatedHeight
         || viewportWidth != allocatedViewportWidth || viewportHeight != allocatedViewportHeight) {
         allocate(source.width, source.height, viewportWidth, viewportHeight);
+        LOGI("Shader preset viewport %ux%u for a frame of %ux%u, at %.2f,%.2f by %.2f,%.2f and %.2f,%.2f on %ux%u",
+             viewportWidth, viewportHeight, source.width, source.height, (target.origin[0] + 1.0F) * target.width * 0.5F,
+             (target.origin[1] + 1.0F) * target.height * 0.5F, rightX, rightY, downX, downY, target.width, target.height);
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -713,11 +716,28 @@ void PresetChain::render(const PresetSource& source, const PresetTarget& target)
         glGenerateMipmap(GL_TEXTURE_2D);
     }
 
+    // RetroArch draws the last pass into a viewport of whole pixels. The layout's rectangle starts and ends
+    // between pixels, so a viewport-sized pass would be drawn a fraction of a pixel narrower or wider than it
+    // is, and a shader's mask or scanlines would skip or repeat one column where the error crosses a half.
+    // The rectangle keeps its place to the nearest pixel and is exactly the viewport's size; a direction
+    // within a hair of an axis is taken as that axis, so a rotated picture snaps too.
+    auto snap = [](float x, float y, unsigned length, float pixelWidth, float pixelHeight) -> std::array<float, 2> {
+        float size = std::hypot(x, y);
+        float dx = size > 0.0F ? x / size : 1.0F, dy = size > 0.0F ? y / size : 0.0F;
+        if (std::fabs(dx) < 1e-3F) dx = 0.0F, dy = dy < 0.0F ? -1.0F : 1.0F;
+        if (std::fabs(dy) < 1e-3F) dy = 0.0F, dx = dx < 0.0F ? -1.0F : 1.0F;
+        return { dx * (float) length / pixelWidth, dy * (float) length / pixelHeight };
+    };
+    float halfWidth = (float) target.width * 0.5F, halfHeight = (float) target.height * 0.5F;
+    auto right = snap(rightX, rightY, viewportWidth, halfWidth, halfHeight);
+    auto down = snap(downX, downY, viewportHeight, halfWidth, halfHeight);
+    float originX = std::round((target.origin[0] + 1.0F) * halfWidth) / halfWidth - 1.0F;
+    float originY = std::round((target.origin[1] + 1.0F) * halfHeight) / halfHeight - 1.0F;
     std::array<float, 16> screen = {
-        target.right[0], target.right[1], 0, 0,
-        target.down[0], target.down[1], 0, 0,
+        right[0], right[1], 0, 0,
+        down[0], down[1], 0, 0,
         0, 0, 1, 0,
-        target.origin[0], target.origin[1], 0, 1,
+        originX, originY, 0, 1,
     };
     size_t count = programs.size();
     for (size_t i = 0; i < count; ++i) {

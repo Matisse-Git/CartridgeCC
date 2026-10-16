@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit
  *
  *   -e class dev.cartridge.RealGameCheck -e game <hash prefix | PS2 | DREAMCAST | GAMECUBE> [-e pick 0]
  *   [-e seconds 30] [-e every 5] [-e keys 12:BUTTON_START,15:BUTTON_A] [-e stacks 20,21] [-e sleep 20]
- *   [-e shader crt/crt-royale.glslp] [-e check 10:crt/crt-royale.glslp]
+ *   [-e shader crt/crt-royale.glslp] [-e check 10:crt/crt-royale.glslp] [-e full true]
  *
  * `shader` starts the game with a preset from the installed shader library (ADR 0027); `check` pauses the
  * game at that second, checks a preset in its own GL context as Settings will, and resumes it.
@@ -52,7 +52,9 @@ class RealGameCheck {
         val result = CompletableFuture<String>()
         scenario.onActivity { activity ->
             val view = activity.engine.surface.value ?: return@onActivity run { result.complete("no surface") }
-            val bitmap = Bitmap.createBitmap(view.width / 2, view.height / 2, Bitmap.Config.ARGB_8888)
+            // -e full true keeps every pixel, for looking at what a shader draws; otherwise half size.
+            val scale = if (InstrumentationRegistry.getArguments().getString("full") == "true") 1 else 2
+            val bitmap = Bitmap.createBitmap(view.width / scale, view.height / scale, Bitmap.Config.ARGB_8888)
             PixelCopy.request(view, bitmap, { status ->
                 if (status == PixelCopy.SUCCESS) {
                     file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }

@@ -74,3 +74,6 @@ Every later change to this module is the project's own and is described in its c
   5.8 MB.
 - A check logs each pass's mean colour after drawing (`PresetChain::describe`), and every refused way of
   compiling a pass is logged with the compiler's whole message.
+- The last pass is drawn on a rectangle of whole pixels, the viewport's size, at the layout's corner rounded
+  to a pixel, as RetroArch's viewport is; the layout's own fractional rectangle made a viewport-sized pass
+  skip or repeat a column. The rectangle is logged when the chain's sizes change.

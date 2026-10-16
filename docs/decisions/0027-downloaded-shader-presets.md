@@ -116,6 +116,15 @@ missing pass file, a preset without passes); the others have errors no desktop d
   driver evaluates to 0 although each call returns 1; written with `if`, it gives 1. Every pass is now given
   to the GPU with each `x op= cond ? f(a) : g(b);` written as branches (`GlslCompat.selectedCallsAsBranches`),
   which means the same; the final picture's mean on the check's test card went from 0.10 to 0.42.
+- **The last pass is drawn on whole pixels (2026-10-17).** The owner saw a line down the middle with
+  crt-royale and others, plainest on a Saturn game: its 330×224 picture is laid out 1454.69 pixels wide
+  from x = 232.65, while the viewport-sized pass is 1455 wide, so the last pass squeezed it by a third of a
+  pixel and the phosphor mask lost one column at the screen's centre (read from a full-size PixelCopy). As
+  RetroArch's viewport is whole pixels, the chain now puts the picture's corner on the nearest pixel and
+  makes it exactly the viewport's size; the seam is gone and the picture moves by under half a pixel.
+  Of the owner's games checked with crt-royale, the Saturn (1454.69) and GameCube (1309.09) pictures
+  were fractional; GB, GBC, GBA, Super Nintendo, PlayStation, Dreamcast and PlayStation 2 were already
+  whole (1200, 1620 or 1440 wide) and look as before.
 
 ## Consequences
 
