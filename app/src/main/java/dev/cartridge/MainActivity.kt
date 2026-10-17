@@ -360,9 +360,11 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
             val label = labels[index]; val system = systems[index]
             // A game without artwork carries its own title in type. The empty library shows the product's name.
             val title = game?.title ?: "Cartridge"
-            // The object follows the console and, where a console's cartridges differed by market, how the game is named.
-            val media = system.media(title)
-            LabelSpec(label?.textureKey(media) ?: TypesetLabel.key(title, system), label, title, system, media, game?.id.orEmpty())
+            // The object follows the console and the market its file is named for, never a scraped title (ADR 0029).
+            val media = game?.shownAs ?: system.media(title)
+            // A case shows only case art; a label scraped for a cartridge stays stored and the case shows its title.
+            val art = label?.takeIf { media.cover == null || it.isCaseArt }
+            LabelSpec(art?.textureKey(media) ?: TypesetLabel.key(title, system, media), art, title, system, media, game?.id.orEmpty())
         }
         val keys = specs.map { it.key }
         LaunchedEffect(keys) {
@@ -384,11 +386,11 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                 launch {
                     val asked = coroutineContext.job
                     val pixels = withContext(labelDecoding + NonCancellable) {
-                        if (!asked.isActive) null else runCatching { spec.label?.let { labelStore.decode(it, spec.media) } ?: TypesetLabel.render(spec.title, spec.system) }
+                        if (!asked.isActive) null else runCatching { spec.label?.let { labelStore.decode(it, spec.media) } ?: TypesetLabel.render(spec.title, spec.system, spec.media) }
                     }?.getOrElse { failure ->
                         coordinator.notify(failure.message ?: "Cannot display the label")
                         // The object still needs a face: its title in type, under the key it was asked for.
-                        withContext(labelDecoding + NonCancellable) { runCatching { TypesetLabel.render(spec.title, spec.system).copy(key = spec.key) }.getOrNull() }
+                        withContext(labelDecoding + NonCancellable) { runCatching { TypesetLabel.render(spec.title, spec.system, spec.media).copy(key = spec.key) }.getOrNull() }
                     } ?: return@launch
                     publish(pixels)
                 }

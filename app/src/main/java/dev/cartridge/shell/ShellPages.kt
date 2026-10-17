@@ -126,11 +126,13 @@ private fun ConsoleShell.pausePage(state: CollectionState): Page {
 private fun ConsoleShell.labelPage(state: CollectionState): Page {
     val label = state.labelDraft?.label
     val ready = !state.busy
-    return Page("label", "Label preview", listOf(
-        MenuRow("fit", "Sizing", RowKind.Choice, value = if (label?.fit == LabelFit.Crop) "Fill the label" else "Show whole image", enabled = ready,
+    // A case is wrapped in its cover (ADR 0029): a picture of another shape is fitted or fills the front, and is never turned.
+    val cover = state.selectedGame?.shownAs?.cover != null
+    return Page("label", if (cover) "Cover preview" else "Label preview", listOfNotNull(
+        MenuRow("fit", "Sizing", RowKind.Choice, value = if (label?.fit == LabelFit.Crop) (if (cover) "Fill the front" else "Fill the label") else "Show whole image", enabled = ready,
             tag = "label-action-0", adjust = { coordinator.labelAction(0) }),
-        MenuRow("rotate", "Rotate", value = "${(label?.quarterTurns ?: 0) * 90}°", enabled = ready, tag = "label-action-1") { coordinator.labelAction(1) },
-        MenuRow("apply", "Use this label", note = if (state.labelPreviewReady) null else "Preparing the preview…", enabled = ready && state.labelPreviewReady,
+        if (cover) null else MenuRow("rotate", "Rotate", value = "${(label?.quarterTurns ?: 0) * 90}°", enabled = ready, tag = "label-action-1") { coordinator.labelAction(1) },
+        MenuRow("apply", if (cover) "Use this cover" else "Use this label", note = if (state.labelPreviewReady) null else "Preparing the preview…", enabled = ready && state.labelPreviewReady,
             tag = "label-action-2") { coordinator.labelAction(2) },
         MenuRow("cancel", "Cancel", enabled = ready, tag = "label-action-3") { coordinator.labelAction(3) }),
         PageStyle.Sheet, state.selectedGame?.title)

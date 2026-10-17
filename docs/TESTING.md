@@ -1,5 +1,23 @@
 # Tests and actual results
 
+## Cases, step 2: the PlayStation jewel case and the GBA boxes — 2026-10-17 (ADR 0029)
+
+`tools/generate_cases.py` writes `jewel_case.glb`, `gba_box.glb` and `gba_box_jp.glb`. Each was rendered in
+Blender with a test cover before it went to the device (front, back, left and quarter), and the back, spine and
+front each showed its top-left marker where `Media.cover` puts it. `tools/test_assets.py` adds `CaseTemplateTest`
+(13 tests in all, passing). The Khronos validator: 0 errors and 0 warnings on all ten models.
+
+On the RP5 (Android 13, serial bb28de36), 2026-10-17: UxTourTest, BrowseStabilityTest, the three Ps1DeviceTest
+tests, LibraryGrowthTest and RenderRefinementTest passed (7 tests). The tour was run again after the case scale
+was reduced so the grid's rows stand apart. Its screenshots replace `docs/ux/screenshots`; `03a` is a box turned
+by the right stick to its spine. What the screenshots show: GBA games with fixture art fill the front of a
+square box. GBA games without art show a plain box with the title on the front. PlayStation games stand in a
+jewel case with the booklet beside a dark hinge strip.
+
+Not run: any of the owner's games in the branch app, whose library is empty; real ScreenScraper `box-texture`
+art, since there is no login on the device; `-Suite Pacing`. The JVM tests (134), lint and the debug and
+test APKs pass.
+
 ## Cases and ScreenScraper, step 1 — 2026-10-17 (ADR 0029, branch `feature/box-cases`)
 
 The branch app is `dev.cartridge.boxes`: run its tests with `dev.cartridge.boxes.test/androidx.test.runner.AndroidJUnitRunner`

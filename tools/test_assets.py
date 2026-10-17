@@ -205,6 +205,64 @@ class MediaTemplateTest(unittest.TestCase):
         self.assertAlmostEqual(.0596, max(printed), delta=.0003)
 
 
+# ADR 0029: name -> (width, height, depth) in metres, and the cover's back, spine, front widths and height in mm,
+# as `Media.cover` and tools/generate_cases.py state them.
+CASES = {
+    'jewel_case.glb': ((.142, .125, .0104), (138, 10.4, 120, 120)),
+    'gba_box.glb': ((.125, .125, .022), (125, 22, 125, 125)),
+    'gba_box_jp.glb': ((.088, .136, .022), (88, 22, 88, 136)),
+}
+
+
+class CaseTemplateTest(unittest.TestCase):
+    """A case's one art primitive unfolds back, spine and front the way ScreenScraper's box-texture does."""
+
+    def test_size_frame_and_one_cover_primitive(self):
+        for name, (size, _) in CASES.items():
+            with self.subTest(name):
+                glb = Glb(name)
+                low, high = glb.bounds()
+                for axis in range(3):
+                    self.assertAlmostEqual(size[axis], high[axis] - low[axis], delta=.0003)
+                    self.assertAlmostEqual(0, (low[axis] + high[axis]) / 2, delta=.0001)
+                self.assertTrue(all(not {'rotation', 'translation', 'scale', 'matrix'} & set(node) for node in glb.doc['nodes']))
+                glb.label()
+                self.assertTrue(all(m.get('alphaMode', 'OPAQUE') == 'OPAQUE' for m in glb.doc['materials']))
+                self.assertFalse(any('uri' in image for image in glb.doc['images']))
+                self.assertLess(sum(glb.doc['accessors'][p['indices']]['count'] // 3 for p in glb.primitives), 1_000)
+
+    def test_cover_unfolds_back_spine_front_from_the_top_left(self):
+        for name, (_, (back, spine, front, tall)) in CASES.items():
+            with self.subTest(name):
+                glb = Glb(name)
+                label = glb.label()
+                back_end, front_start = back / (back + spine + front), (back + spine) / (back + spine + front)
+                faces = {'front': [], 'back': [], 'spine': []}
+                for (x, y, z), (nx, ny, nz), (u, v) in zip(glb.attribute(label, 'POSITION'), glb.attribute(label, 'NORMAL'), glb.attribute(label, 'TEXCOORD_0')):
+                    self.assertTrue(-1e-4 <= u <= 1 + 1e-4 and -1e-4 <= v <= 1 + 1e-4)
+                    if nz > .98: faces['front'].append((x, y, u, v))
+                    elif nz < -.98: faces['back'].append((x, y, u, v))
+                    elif nx < -.98: faces['spine'].append((z, y, u, v))
+                self.assertTrue(all(faces.values()), 'the cover reaches front, back and spine')
+                for side, (start, end), sign in (('front', (front_start, 1), 1), ('back', (0, back_end), -1), ('spine', (back_end, front_start), 1)):
+                    points = faces[side]
+                    us = [u for *_, u, _ in points]
+                    self.assertAlmostEqual(start, min(us), delta=1e-3); self.assertAlmostEqual(end, max(us), delta=1e-3)
+                    # Left to right as seen from outside: u grows with x on the front, against it on the back, with z on the spine.
+                    a = min(points, key=lambda p: p[2]); b = max(points, key=lambda p: p[2])
+                    self.assertGreater(sign * (b[0] - a[0]), 0, side)
+                    # Up the case is up the picture: v shrinks as y grows.
+                    top = max(points, key=lambda p: p[1]); bottom = min(points, key=lambda p: p[1])
+                    self.assertLess(top[3], bottom[3], side)
+
+    def test_placeholder_has_the_unfolded_cover_aspect(self):
+        for name, (_, (back, spine, front, tall)) in CASES.items():
+            with self.subTest(name):
+                glb = Glb(name)
+                width, height = glb.image_size(glb.texture_image(glb.material(glb.label())['pbrMetallicRoughness']['baseColorTexture']))
+                self.assertAlmostEqual((back + spine + front) / tall, width / height, delta=.02)
+
+
 class StudioTest(unittest.TestCase):
     def test_studio_has_prefiltered_cubemap_and_spherical_harmonics(self):
         raw = (MODELS.parent / 'lighting/studio_ibl.ktx').read_bytes()

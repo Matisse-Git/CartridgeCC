@@ -1,6 +1,8 @@
 # ADR 0029: Cases wrapped in ScreenScraper art
 
 Date: 2026-10-17. Status: accepted; being built on branch `feature/box-cases`, increment by increment.
+Steps 1 and 2 are implemented and run on the RP5 with original fixtures. The live ScreenScraper path is
+not run yet: no login is on the device. Step 3 has not started.
 
 ## Context
 

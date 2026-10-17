@@ -27,8 +27,8 @@ class SystemRegistryTest {
     @Test fun storedIdentitiesAndTheirOrderNeverChangeAndEveryDefinitionIsComplete() {
         // Room, backups, journals and the stored shelf hold these names; a library made before this registry reads back unchanged.
         assertEquals(listOf("GBA", "GB", "GBC", "PS1"), GameSystem.entries.take(4).map { it.name })
-        assertEquals(listOf(Media.Cartridge, Media.TallCartridge, Media.TallCartridge, Media.Disc), GameSystem.entries.take(4).map { it.media })
-        assertEquals(listOf(256, 448, 448, 512), GameSystem.entries.take(4).map { it.media.labelHeight })
+        assertEquals(listOf(Media.GbaBox, Media.TallCartridge, Media.TallCartridge, Media.JewelCase), GameSystem.entries.take(4).map { it.media })
+        assertEquals(listOf(471, 448, 448, 458), GameSystem.entries.take(4).map { it.media.labelHeight })
         assertEquals("mgba-0.10.5-cartridge-memory-2", GameSystem.GBC.coreRevision); assertEquals("pcsx-c8816799-cartridge-1", GameSystem.PS1.coreRevision)
         assertEquals("libmgba_libretro.so", GameSystem.GB.coreFile); assertEquals("libpcsx_rearmed_libretro.so", GameSystem.PS1.coreFile)
         for (system in GameSystem.entries) {
@@ -50,7 +50,7 @@ class SystemRegistryTest {
         for (system in GameSystem.entries.drop(4)) assertEquals(system.name, shapes[system] ?: Media.Disc, system.media)
         assertFalse(GameSystem.SNES.bundle); assertTrue(GameSystem.PS1.bundle)
         // The pool, the packaged files and the on-screen sizes follow this order and these names.
-        assertEquals(listOf("Cartridge", "TallCartridge", "Disc", "NesCartridge", "SnesCartridge", "SnesUsCartridge", "GenesisCartridge"), Media.entries.map { it.name })
+        assertEquals(listOf("Cartridge", "TallCartridge", "Disc", "NesCartridge", "SnesCartridge", "SnesUsCartridge", "GenesisCartridge", "JewelCase", "GbaBox", "GbaBoxJapan"), Media.entries.map { it.name })
         assertEquals(Media.entries.size, Media.entries.map { it.model }.toSet().size)
         assertTrue(Media.entries.all { it.labelHeight in 128..1024 && it.scale > 0f && it.model.matches(Regex("[a-z0-9_]+")) })
     }
@@ -99,7 +99,23 @@ class SystemRegistryTest {
         for (system in GameSystem.entries.filter { it != GameSystem.SNES }) assertEquals(system.name, system.media, system.media("Orbit Field (USA)"))
         val game = LibraryGame("a".repeat(64), "Orbit Field (USA)", "content://dev.cartridge.fixture/orbit.sfc", system = GameSystem.SNES)
         assertEquals(Media.SnesUsCartridge, game.shownAs); assertEquals(Media.SnesUsCartridge, game.copy(title = "Orbit Field").shownAs); // A scraped title keeps the file's market. assertEquals(Media.SnesCartridge, game.copy(fileName = "Orbit Field").shownAs)
-        assertEquals(Media.Cartridge, game.copy(system = GameSystem.GBA).shownAs)
+        assertEquals(Media.GbaBox, game.copy(system = GameSystem.GBA).shownAs)
+    }
+
+    /** ADR 0029: a case follows its file's market, and every label texture has its own size. */
+    @Test fun aCaseFollowsTheFilesMarketAndEveryCoverUnfoldsToItsTexture() {
+        assertEquals(Media.GbaBox, GameSystem.GBA.media("Orbit Field (USA)"))
+        assertEquals(Media.GbaBox, GameSystem.GBA.media("Orbit Field (Europe)"))
+        assertEquals(Media.GbaBoxJapan, GameSystem.GBA.media("Orbit Field (Japan)"))
+        assertEquals(Media.JewelCase, GameSystem.PS1.media("Orbit Field (Japan)"))
+        val game = LibraryGame("a".repeat(64), "Orbit Field (Japan)", "content://orbit")
+        assertEquals(Media.GbaBoxJapan, game.copy(title = "Orbit Field").shownAs)
+        assertEquals(Media.entries.size, Media.entries.map { it.labelHeight }.toSet().size)
+        for (media in Media.entries) media.cover?.let { cover ->
+            assertEquals(media.name, 1024, media.labelWidth)
+            assertEquals(media.name, 1024 / cover.aspect, media.labelHeight.toFloat(), 1f)
+            assertTrue(media.name, cover.backEnd < cover.frontStart)
+        }
     }
 
     @Test fun aFileIsItsConsolesGameByItsFirstBytesNotOnlyItsName() {

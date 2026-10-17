@@ -174,6 +174,11 @@ class UxTourTest {
                 // Journey D: browse, switch console with the shoulders.
                 key(scenario, KeyEvent.KEYCODE_DPAD_RIGHT)
                 shot("03-library-game-boy-advance")
+                // A case turned by the right stick shows its spine (ADR 0029); it eases home once the stick rests.
+                scenario.onActivity { it.collectionSurface!!.spin(1f, 0f) }; Thread.sleep(260)
+                scenario.onActivity { it.collectionSurface!!.spin(0f, 0f) }; Thread.sleep(150)
+                shot("03a-library-case-turned")
+                Thread.sleep(1600)
                 key(scenario, KeyEvent.KEYCODE_BUTTON_R1)
                 await(scenario) { it.coordinator.state.value.shelf == Shelf.Console(GameSystem.GB) }
                 shot("03b-library-game-boy")

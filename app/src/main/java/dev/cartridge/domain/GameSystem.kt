@@ -5,10 +5,28 @@ package dev.cartridge.domain
  * A label is 512 pixels wide and [labelHeight] high; [model] is the packaged template, in metres at its real size,
  * and [scale] brings that size to the one the shelf shows every object at. Templates are pooled in this order.
  */
-enum class Media(val labelHeight: Int, val noun: String, val model: String, val scale: Float) {
+/**
+ * How a case's cover unfolds onto its label texture, left to right: back, spine, front (ScreenScraper's `box-texture`
+ * layout, ADR 0029). Widths and the height are the cover panels' in millimetres, as `tools/generate_cases.py` builds them.
+ */
+class Cover(back: Float, spine: Float, front: Float, val tall: Float) {
+    private val total = back + spine + front
+    /** Where the back ends and the front begins across the texture, 0..1. */
+    val backEnd = back / total
+    val frontStart = (back + spine) / total
+    val aspect = total / tall
+}
+
+enum class Media(val labelHeight: Int, val noun: String, val model: String, val scale: Float, val cover: Cover? = null) {
     Cartridge(256, "cartridge", "gba_cartridge", 1f), TallCartridge(448, "cartridge", "gb_cartridge", .62f), Disc(512, "disc", "ps1_disc", .40f),
     NesCartridge(856, "cartridge", "nes_cartridge", .31f), SnesCartridge(184, "cartridge", "snes_cartridge", .45f),
-    SnesUsCartridge(228, "cartridge", "snes_us_cartridge", .42f), GenesisCartridge(304, "cartridge", "genesis_cartridge", .52f)
+    SnesUsCartridge(228, "cartridge", "snes_us_cartridge", .42f), GenesisCartridge(304, "cartridge", "genesis_cartridge", .52f),
+    // Cases (ADR 0029): the label is the whole unfolded cover, decoded 1024 wide so the front keeps its detail.
+    // About 38 mm tall on the stage, so three rows of the grid stand apart.
+    JewelCase(458, "case", "jewel_case", .30f, Cover(138f, 10.4f, 120f, 120f)),
+    GbaBox(471, "box", "gba_box", .30f, Cover(125f, 22f, 125f, 125f)),
+    GbaBoxJapan(703, "box", "gba_box_jp", .28f, Cover(88f, 22f, 88f, 136f));
+    val labelWidth get() = if (cover != null) 1024 else 512
 }
 
 /**
@@ -265,15 +283,18 @@ enum class GameSystem(
     provider: String? = null,
     /** The shape this console's cartridges had in North America, where that was a different one. */
     val northAmerican: Media? = null,
+    /** The case this console's games came in in Europe and in Japan, where it was not [media] (ADR 0029). */
+    val europe: Media? = null,
+    val japan: Media? = null,
 ) {
-    GBA("Game Boy Advance", "Nintendo", 6, Media.Cartridge, Core.Mgba, "gba",
+    GBA("Game Boy Advance", "Nintendo", 6, Media.GbaBox, Core.Mgba, "gba",
         listOf(Format("gba") { if (it.size < 192) "The GBA file is too small" else null }), 32L shl 20,
-        setOf("gba", "gameboyadvance", "nintendogameboyadvance")),
+        setOf("gba", "gameboyadvance", "nintendogameboyadvance"), japan = Media.GbaBoxJapan),
     GB("Game Boy", "Nintendo", 4, Media.TallCartridge, Core.Mgba, "gb", handheld(color = false), (8L shl 20) + 64,
         setOf("gb", "gameboy", "nintendogameboy")),
     GBC("Game Boy Color", "Nintendo", 5, Media.TallCartridge, Core.Mgba, "gbc", handheld(color = true), (8L shl 20) + 64,
         setOf("gbc", "gameboycolor", "gameboycolour", "nintendogameboycolor")),
-    PS1("PlayStation", "Sony", 5, Media.Disc, Core.Pcsx, "ps1", listOf(
+    PS1("PlayStation", "Sony", 5, Media.JewelCase, Core.Pcsx, "ps1", listOf(
         Format("chd", shared = true) { if (ascii(it, 0, 8) != "MComprHD") "Not a CHD disc" else null },
         Format("pbp") { if (it.size < 4 || it.take(4) != listOf<Byte>(0, 80, 66, 80)) "Not a PBP disc" else null },
         Format("iso", shared = true), Format("cue", shared = true),
@@ -338,8 +359,14 @@ enum class GameSystem(
         GBA -> 12; GB -> 9; GBC -> 10; PS1 -> 57; SNES -> 4; NES -> 3; GENESIS -> 1; SMS -> 2; GG -> 21
         SATURN -> 22; DREAMCAST -> 23; PS2 -> 58; GAMECUBE -> 13
     }
-    /** The object one game is shown as: the console's, or its North American shape for a dump named as that release. */
-    fun media(title: String) = northAmerican?.takeIf { releasedInNorthAmerica(title) } ?: media
+    /**
+     * The object one game is shown as, from how its file is named: the console's North American cartridge where that
+     * differed, else the case of its [Market]. Presentation only.
+     */
+    fun media(title: String): Media {
+        northAmerican?.let { if (releasedInNorthAmerica(title)) return it }
+        return when (Market.of(title)) { Market.EU -> europe; Market.JP -> japan; Market.US -> null } ?: media
+    }
     val coreFile get() = core.file
     val coreRevision get() = core.revision
     fun format(extension: String) = formats.firstOrNull { it.extension == extension }

@@ -11,8 +11,11 @@ data class MetadataValue(val value: String, val provider: String, val recordId: 
 
 /** The kinds of artwork a game's case is wrapped in: the whole unfolded cover, or only its front (ADR 0029). */
 val CASE_ART = setOf("box-texture", "box-2D")
-/** True when this image is case art. A label accepted for a cartridge or disc is kept, but is not drawn on a case. */
-val LabelRef.isCaseArt get() = provenance?.type in CASE_ART
+/**
+ * True when this image is case art: scraped box art, or an image the owner imported themselves, which is their
+ * front cover. A label scraped for a cartridge or disc is kept, but is not drawn on a case and never counts as one.
+ */
+val LabelRef.isCaseArt get() = provenance == null || provenance.type in CASE_ART
 
 /** How much an automatic scrape may change (ADR 0029). Names are shown; append, never rename. */
 enum class FillMode(val title: String) { Missing("Fill missing"), All("Fill all") }

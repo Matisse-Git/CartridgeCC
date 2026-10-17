@@ -205,7 +205,7 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
             val fields = metadata.filter { (field, value) -> value.value.isNotBlank() && before[field]?.value != value.value &&
                 policy.replaces(before[field]?.takeIf { it.value.isNotBlank() }?.automatic) }
             val provenance = LibraryJson.provenance(game.labelProvenance)
-            val art = game.labelAssetId != null && provenance?.type in CASE_ART
+            val art = game.labelAssetId != null && (provenance == null || provenance.type in CASE_ART)
             val replace = label != null && game.labelAssetId != label.assetId && policy.replaces(if (art) provenance!!.automatic else null)
             if (fields.isEmpty() && !replace) return@withTransaction 0
             rememberEnrichment(game)

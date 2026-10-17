@@ -1,5 +1,39 @@
 # Cartridge asset pipeline
 
+## Cases (2026-10-17, ADR 0029, branch `feature/box-cases`)
+
+Games are shown in their retail case. No usable case model could be downloaded without an account, so
+the cases are generated. This is ADR 0029's one exception to the no-generator rule:
+`tools/generate_cases.py` writes only case files, never a file `import_models.py` writes.
+
+```powershell
+& 'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe' -b --factory-startup --disable-autoexec --python tools/generate_cases.py
+python tools/test_assets.py
+node tools/validate_assets.cjs
+```
+
+| Runtime file | Kind | Size (mm, W × H × D) | Cover: back + spine + front × height (mm) | Decoded label |
+| --- | --- | --- | --- | --- |
+| `jewel_case.glb` | plastic case (PlayStation, all markets) | 142 × 125 × 10.4 | 138 + 10.4 + 120 × 120 | 1024 × 458 |
+| `gba_box.glb` | cardboard box (GBA, US and Europe) | 125 × 125 × 22 | 125 + 22 + 125 × 125 | 1024 × 471 |
+| `gba_box_jp.glb` | cardboard box (GBA, Japan) | 88 × 136 × 22 | 88 + 22 + 88 × 136 | 1024 × 703 |
+
+The sizes come from box-protector listings and the CD jewel-case standard. They are approximate: no real
+box was measured. Each case has exactly one primitive with `Replaceable fictional label`, whose UVs unfold
+the cover left to right as back, spine (the left side), front, with (0, 0) at the top left. That is the
+layout of ScreenScraper's `box-texture`. On a cardboard box the art primitive is the whole box: the right
+side, top and bottom repeat the front's adjacent edge, as a printed flap does. On a plastic case the cover
+is a sheet 0.1 mm outside a dark glossy shell, inside the case's frame. The renderer biases it toward the eye.
+`LabelStore.cover` stretches a `box-texture` over the whole texture. It puts a front alone (`box-2D`, or
+the owner's own image) on the front panel and fills spine and back with the colour of its edge.
+`TypesetLabel` prints the title on the front and up the spine for a game without case art.
+
+Each case was rendered from the front, the back, the left and a quarter with a test cover before it went
+to the device: a red back, green spine and blue front, a white square at each panel's top left, a yellow
+one at the front's bottom right. `CaseTemplateTest` in `tools/test_assets.py` checks size and centring, the
+single cover primitive, and that each panel's u range and direction and v direction match `Media.cover`.
+It also checks the placeholder's aspect. The Khronos validator reports 0 errors and 0 warnings.
+
 ## Current media: imported models (2026-10-10, ADR 0019; four more on 2026-10-12, ADR 0025)
 
 The seven objects a game is shown as are converted from models the owner downloaded.

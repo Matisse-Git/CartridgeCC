@@ -156,7 +156,7 @@ import kotlin.math.max
                                     label?.let { ProviderThumbnail(it, coordinator.provider) }
                                     Column(Modifier.weight(1f)) {
                                         Txt(candidate?.title.orEmpty(), Type.Heading, lines = 2)
-                                        Txt(if (game?.label?.provenance?.type in dev.cartridge.library.CASE_ART) "Your current case art is kept" else label?.let { "Preferred case art · ${regionTitle(it.region)}" } ?: "No case art for this match",
+                                        Txt(if (game?.label?.isCaseArt == true) "Your current case art is kept" else label?.let { "Preferred case art · ${regionTitle(it.region)}" } ?: "No case art for this match",
                                             Type.Label, Ink.Soft, Modifier.padding(top = 2.dp))
                                         candidate?.metadata.orEmpty().entries.take(4).forEach { (field, values) ->
                                             Txt("${field.replaceFirstChar(Char::uppercase)}  ${game?.metadata?.get(field)?.value?.let { "$it (kept)" } ?: values.firstOrNull().orEmpty()}",
@@ -165,7 +165,7 @@ import kotlin.math.max
                                     }
                                 }
                             }
-                            item { ReviewAction("Try the preferred case art", 0, state, "review-label", label != null && game?.label?.provenance?.type !in dev.cartridge.library.CASE_ART, coordinator::preferredLabel) }
+                            item { ReviewAction("Try the preferred case art", 0, state, "review-label", label != null && game?.label?.isCaseArt != true, coordinator::preferredLabel) }
                             item { ReviewAction("Fill in missing details", 1, state, "review-fill", candidate?.metadata?.keys?.any { game?.metadata?.get(it)?.value.isNullOrBlank() } == true, coordinator::fillMissingMetadata) }
                             item { ReviewAction("All case art and artwork", 2, state, "review-media", true, coordinator::browseArtwork) }
                             item { ReviewAction("Choose details field by field", 3, state, "review-fields", true, coordinator::metadata) }

@@ -68,6 +68,7 @@ class LabelStore(private val directory: File) {
         } finally { temporary.delete() }
     }
     fun decode(label: LabelRef, media: Media = Media.Cartridge): LabelPixels {
+        media.cover?.let { return cover(label, media, it) }
         val file = original(label.assetId)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, bounds)
@@ -99,5 +100,67 @@ class LabelStore(private val directory: File) {
             bytes.flip()
             return LabelPixels(label.textureKey(media), target.width, target.height, bytes)
         } finally { source.recycle(); target.recycle() }
+    }
+
+    /**
+     * A case's whole unfolded cover (ADR 0029). `box-texture` is the cover already unfolded, back, spine, front, and
+     * fills the texture. A front alone (`box-2D`, or the owner's own image) fills the front panel; the spine and
+     * back take the colour of its edge, a little darker on the spine.
+     */
+    private fun cover(label: LabelRef, media: Media, cover: dev.cartridge.domain.Cover): LabelPixels {
+        val file = original(label.assetId)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.path, bounds)
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "The cached artwork is missing or invalid. Scrape it again." }
+        val whole = label.provenance?.type == "box-texture"
+        val width = media.labelWidth; val height = media.labelHeight
+        // Decode no more than the texture can show, never above 2048.
+        val wantWide = if (whole) width else ((1 - cover.frontStart) * width).toInt()
+        var sample = 1
+        while (max(bounds.outWidth, bounds.outHeight) / sample > 2048 || (bounds.outWidth / (sample * 2) >= wantWide && bounds.outHeight / (sample * 2) >= height)) sample *= 2
+        val source = checkNotNull(BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply {
+            inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888
+        })) { "Cannot decode the artwork" }
+        val target = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        try {
+            val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+            Canvas(target).apply {
+                if (whole) {
+                    drawColor(Color.BLACK)
+                    drawBitmap(source, null, RectF(0f, 0f, width.toFloat(), height.toFloat()), paint)
+                } else {
+                    val edge = edgeColour(source)
+                    drawColor(edge)
+                    val darker = Color.rgb((Color.red(edge) * .78f).toInt(), (Color.green(edge) * .78f).toInt(), (Color.blue(edge) * .78f).toInt())
+                    drawRect(cover.backEnd * width, 0f, cover.frontStart * width, height.toFloat(), Paint().apply { color = darker })
+                    val front = RectF(cover.frontStart * width, 0f, width.toFloat(), height.toFloat())
+                    val art = source.width.toFloat() / source.height; val panel = front.width() / front.height()
+                    // Fronts of another market's case differ a little and are stretched; a picture of another shape keeps it.
+                    if (kotlin.math.abs(art / panel - 1) < .2f) drawBitmap(source, null, front, paint)
+                    else {
+                        val scale = if (label.fit == LabelFit.Fit) min(front.width() / source.width, front.height() / source.height)
+                            else max(front.width() / source.width, front.height() / source.height)
+                        val w = source.width * scale; val h = source.height * scale
+                        save(); clipRect(front)
+                        drawBitmap(source, null, RectF(front.centerX() - w / 2, front.centerY() - h / 2, front.centerX() + w / 2, front.centerY() + h / 2), paint)
+                        restore()
+                    }
+                }
+            }
+            val bytes = ByteBuffer.allocateDirect(target.byteCount)
+            target.copyPixelsToBuffer(bytes)
+            bytes.flip()
+            return LabelPixels(label.textureKey(media), width, height, bytes)
+        } finally { source.recycle(); target.recycle() }
+    }
+
+    /** The average colour around a picture's border, opaque: what a printed box shows where the picture ends. */
+    private fun edgeColour(bitmap: Bitmap): Int {
+        var r = 0L; var g = 0L; var b = 0L; var n = 0
+        val step = max(1, (bitmap.width + bitmap.height) / 200)
+        fun add(x: Int, y: Int) { val c = bitmap.getPixel(x, y); r += Color.red(c); g += Color.green(c); b += Color.blue(c); n++ }
+        for (x in 0 until bitmap.width step step) { add(x, 0); add(x, bitmap.height - 1) }
+        for (y in 0 until bitmap.height step step) { add(0, y); add(bitmap.width - 1, y) }
+        return Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
     }
 }
