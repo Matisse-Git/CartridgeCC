@@ -182,7 +182,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         input = ControllerRouter(navigate = shell::navigate, select = shell::select, back = shell::back, pause = coordinator::pause,
             gameKey = engine::key, gameMotion = engine::motion, adjust = shell::adjust, alternate = shell::alternate, secondary = shell::secondary,
             shoulder = shell::shoulder, menu = shell::menu, cancelOperation = coordinator::cancelScan, navigateLibrary = coordinator::navigateSpatial,
-            inspect = ::inspect, systemBack = shell::systemBack, gameAnalog = engine::analog)
+            inspect = ::inspect, systemBack = shell::systemBack, gameAnalog = engine::analog,
+            quickSave = { coordinator.quickSave() }, quickLoad = { coordinator.quickLoad() }, record = shell::recordKey)
         inputChanged()
         getSystemService(InputManager::class.java).registerInputDeviceListener(this, null)
         lifecycleScope.launch {
@@ -204,6 +205,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         val controls = shell.controls
         input.swapMenuButtons = controls.swapMenuButtons; input.swapGameButtons = controls.swapGameButtons
         input.swapShoulders = controls.swapShoulders
+        input.quickSaveShortcut = controls.quickSave; input.quickLoadShortcut = controls.quickLoad
         input.analogGameplay = coordinator.state.value.selectedGame?.system?.core?.analog == true
         if (input.deadZone != controls.deadZone) input.deadZone = controls.deadZone
     }
@@ -311,7 +313,9 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                         Destination.Details, Destination.Manage -> 400.dp
                         Destination.Options -> if (status.state == SessionState.Paused) 340.dp else 400.dp
                         else -> 0.dp
-                    })
+                    },
+                    // Over a running game a quick save or load is confirmed in a glance.
+                    lingerMs = if (status.state == SessionState.Running) 1500 else 4200)
             }
         }
     }

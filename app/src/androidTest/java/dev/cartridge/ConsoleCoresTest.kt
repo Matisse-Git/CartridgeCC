@@ -139,7 +139,7 @@ class ConsoleCoresTest {
             File(fixtures, probe.file).writeBytes(bytes)
         }
         try {
-            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)).use { scenario ->
+            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name).putExtra("stayInMenu", true)).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 val saves = SaveStore(File(context.filesDir, "saves"))
                 for (probe in probes) {

@@ -27,6 +27,7 @@ Rules:
 | Hidden games | link | List; select a game to restore it | Room `removed_games` |
 | *Backup* | | | |
 | Back up collection | command | Writes a backup archive through the system file dialog | — |
+| Include every save state | Off · On | Adds each game's list of saves, the quick save it last replaced and their pictures; the quick save is always included | `backupAllStates` |
 | Restore from backup | command | Review page: Add to my collection · Also restore settings · Cancel | — |
 
 Moved here from: Tools shelf (Add game, Folder, Rescan), Collection menu (Sort), Folders & search
@@ -63,7 +64,8 @@ to every console and comes first.
 
 | Row | Choices | Applies | Core |
 |---|---|---|---|
-| Start from save state | Off · On. On starts a game from its last Save State; without one, or if it cannot be loaded, the game starts from the beginning | next start | frontend (`option.startFromState`); never sent to a core |
+| Start from save state | Off · On. On starts a game from a saved state; without one, or if it cannot be loaded, the game starts from the beginning | next start | frontend (`option.startFromState`); never sent to a core |
+| Save to start from | Quick save · Newest save. Which state *Start from save state* uses; never an older one in its place | next start, every console | shell preference `startFromLatest`, sent as `cartridge_start_slot` |
 
 A game can override it like any other option (`game.<content id>.startFromState`).
 
@@ -190,7 +192,15 @@ is in the app's private `files/shaders/library`.
 | In-game L and R | As labelled · Swapped | `swapShoulders` |
 | Stick sensitivity | Low · Medium · High (dead zone 50%, 35%, 20%) | `deadZone` |
 | Pause shortcut | L3 + R3 · Start + Select | `alternateShortcut` |
-| Reset controls | command | |
+| Quick save buttons | a recorded combo, L3 + Y by default: hold the buttons together, let go of one | `quickSaveCombo` (key codes) |
+| Quick load buttons | a recorded combo, L3 + X by default | `quickLoadCombo` |
+| Reset quick buttons | command: L3 + Y and L3 + X again | |
+| After Quick Save, Quick Load or Load | Return to game · Stay in menu | `returnToGame` |
+| Reset controls | command; also resets the quick buttons and the row above | |
+
+A combo needs two or more gamepad buttons and may not equal, contain or sit inside the other combo or
+either pause shortcut; the recorder says why it refused one and keeps listening, and five quiet seconds
+keep the old one (ADR 0028). None of these four rows is part of a backup's settings.
 
 Also reachable while paused (Pause › Game Options › Controls), where it is the only settings
 section offered.

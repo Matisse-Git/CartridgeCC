@@ -49,7 +49,7 @@ class CollectionUiTest {
         }
         File(root, "invalid.png").writeText("This is not an image")
         return ActivityScenario.launch(Intent(context, DebugCollectionActivity::class.java)
-            .putExtra("testDatabase", "m1-test-${UUID.randomUUID()}"))
+            .putExtra("testDatabase", "m1-test-${UUID.randomUUID()}").putExtra("stayInMenu", true))
     }
     private fun await(scenario: ActivityScenario<DebugCollectionActivity>, condition: (DebugCollectionActivity) -> Boolean) {
         ui.waitUntil(30_000) { var ready = false; scenario.onActivity { ready = condition(it) }; ready }
@@ -170,9 +170,9 @@ class CollectionUiTest {
             ui.onNodeWithTag("pause").performClick()
             await(scenario) { it.engine.status.value.state == SessionState.Paused && !it.coordinator.state.value.busy }
             ui.onNodeWithTag("menu-1").performClick()
-            await(scenario) { it.coordinator.state.value.message == "State saved" && !it.coordinator.state.value.busy }
+            await(scenario) { it.coordinator.state.value.message == "Quick saved" && !it.coordinator.state.value.busy }
             ui.onNodeWithTag("menu-2").performClick()
-            await(scenario) { it.coordinator.state.value.message == "State loaded" && !it.coordinator.state.value.busy }
+            await(scenario) { it.coordinator.state.value.message == "Quick loaded" && !it.coordinator.state.value.busy }
             ui.onNodeWithTag("menu-0").performClick()
             await(scenario) { it.engine.status.value.state == SessionState.Running && !it.coordinator.state.value.busy }
             scenario.moveToState(Lifecycle.State.CREATED)

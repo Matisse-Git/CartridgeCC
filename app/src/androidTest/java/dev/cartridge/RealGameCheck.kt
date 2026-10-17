@@ -90,6 +90,8 @@ class RealGameCheck {
         val shader = arguments.getString("shader")
         val checkAt = arguments.getString("check")?.substringBefore(':')?.toInt()
         val checkPreset = arguments.getString("check")?.substringAfter(':')
+        // A second at which the quick save combo is held during play, and three seconds later the quick load combo (ADR 0028).
+        val quick = arguments.getString("quick")?.toInt()
         val roms = File(context.filesDir, "roms")
         val system = GameSystem.entries.firstOrNull { it.name.equals(wanted, ignoreCase = true) }
         // Games, not this project's own probes: those are a few hundred kilobytes at most. A game named by its hash
@@ -108,6 +110,14 @@ class RealGameCheck {
         shots.listFiles { file -> file.name.startsWith(tag) }?.forEach { it.delete() }
         val core = File(context.applicationInfo.nativeLibraryDir, console.coreFile).path
         val name = "m1-test-${UUID.randomUUID()}"
+        // The quick combos write to the owner's own quick save and list for this game. What is there is set aside first and
+        // put back exactly when the check ends, whatever happens in between.
+        val saves = File(context.filesDir, "saves")
+        val kept = File(shots, "$tag-kept-saves")
+        if (quick != null) {
+            kept.deleteRecursively(); kept.mkdirs()
+            copyKeepingTimes(File(saves, "$id.state"), File(kept, "$id.state")); copyKeepingTimes(File(saves, "$id.slots"), File(kept, "$id.slots"))
+        }
         android.util.Log.i(TAG, "$tag: ${console.title}, ${bundles.size} candidate(s), $seconds s")
         // An engine that stops answering can take the main thread with it, and with that every step below. A thread
         // of its own watches for a step that takes too long, says where every engine thread is, and ends the process.
@@ -161,6 +171,34 @@ class RealGameCheck {
                         android.util.Log.i(TAG, "$tag t=$second checked $checkPreset while paused in ${(System.nanoTime() - began) / 1_000_000} ms: ${outcome ?: "works"}")
                         kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.Main) { engine!!.resume() }
                         beat.set(System.nanoTime())
+                    }
+                    fun combo(code: Int, expected: List<String>): String? {
+                        scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_THUMBL)) }; Thread.sleep(40)
+                        scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code)) }
+                        val began = System.nanoTime()
+                        var said: String? = null
+                        try { await(scenario, 60_000) { said = it.coordinator.state.value.message; !it.coordinator.state.value.busy && expected.any { e -> said?.startsWith(e) == true } } }
+                        catch (failure: Throwable) { scenario.onActivity { android.util.Log.e(TAG, "$tag combo said ${it.coordinator.state.value.message} ${it.engine.status.value}") }; throw failure }
+                        val took = (System.nanoTime() - began) / 1_000_000
+                        scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code)); it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_THUMBL)) }
+                        beat.set(System.nanoTime())
+                        var state = SessionState.Idle; scenario.onActivity { state = it.engine.status.value.state }
+                        android.util.Log.i(TAG, "$tag t=$second combo answered \"$said\" in $took ms; the game is $state")
+                        check(state == SessionState.Running) { "The game stopped after a quick combo: $state" }
+                        return said
+                    }
+                    if (second == quick) {
+                        val said = combo(KeyEvent.KEYCODE_BUTTON_Y, listOf("Quick saved", "Can't save states"))
+                        if (said == "Quick saved") {
+                            val slot = dev.cartridge.storage.StateSlots(saves).list(id, console).first { it.kind == dev.cartridge.storage.SlotKind.Quick }
+                            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true; slot.thumbnail?.let { file -> android.graphics.BitmapFactory.decodeFile(file.path, this) } }
+                            slot.thumbnail?.copyTo(File(shots, "$tag-quick-thumbnail.jpg"), overwrite = true)
+                            android.util.Log.i(TAG, "$tag quick save: ${slot.size} bytes, thumbnail ${bounds.outWidth}x${bounds.outHeight}")
+                        } else check(console.core.snapshots == dev.cartridge.domain.Snapshots.Never) { "${console.title} refused a quick save: $said" }
+                    }
+                    if (quick != null && second == quick + 3) {
+                        val said = combo(KeyEvent.KEYCODE_BUTTON_X, listOf("Quick loaded", "Can't save states"))
+                        if (said != "Quick loaded") check(console.core.snapshots == dev.cartridge.domain.Snapshots.Never) { "${console.title} refused a quick load: $said" }
                     }
                     if (second == sleep) {
                         val before = stats(scenario, core)
@@ -235,8 +273,23 @@ class RealGameCheck {
             }
         } finally {
             watch.interrupt()
+            if (quick != null) {
+                File(saves, "$id.state").delete(); File(saves, "$id.slots").deleteRecursively()
+                copyKeepingTimes(File(kept, "$id.state"), File(saves, "$id.state")); copyKeepingTimes(File(kept, "$id.slots"), File(saves, "$id.slots"))
+                kept.deleteRecursively()
+                android.util.Log.i(TAG, "$tag the game's own quick save and list were put back")
+            }
             DebugCollectionActivity.closeDatabases(); context.deleteDatabase("$name.db")
             for (folder in listOf("session", "scrape")) File(context.filesDir, "$name-$folder").deleteRecursively()
+        }
+    }
+    /** A file or folder copied with each file's time, which is when a save says it was made. Nothing happens if [from] is not there. */
+    private fun copyKeepingTimes(from: File, to: File) {
+        if (!from.exists()) return
+        from.walkTopDown().forEach { source ->
+            val target = File(to, source.relativeTo(from).path)
+            if (source.isDirectory) target.mkdirs()
+            else java.nio.file.Files.copy(source.toPath(), target.toPath(), java.nio.file.StandardCopyOption.COPY_ATTRIBUTES, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
         }
     }
     private companion object { const val TAG = "CartridgeCheck" }

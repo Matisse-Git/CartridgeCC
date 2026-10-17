@@ -112,6 +112,14 @@
   option with no core family belongs to every console that can make a state; keep adapter-only keys
   out of core variables.
 
+- The quick save is `saves/<id>.state` and stays byte compatible; listed saves, the previous quick save
+  and thumbnails live in `saves/<id>.slots/` through `StateSlots` only (ADR 0028). Publish a listed save
+  by its record last, keep the quick save it replaces before writing a new one, and never delete or
+  rewrite a state from another core build. A thumbnail is optional and can never fail a save. Quick
+  combos need two or more gamepad buttons and may not overlap each other or a pause shortcut; they
+  pass through like the pause chord and stay latched until let go. Re-run `-Suite Saves` after any
+  change to states, combos or the pause menu.
+
 - A console is one entry in `domain/GameSystem` and an engine one entry in `domain/Core` (ADR 0022,
   docs/CONSOLES). Never decide behaviour by comparing a system or core to a constant elsewhere: add a
   field. Enum names are stored ids: append, never rename or reorder. `media` is presentation only;

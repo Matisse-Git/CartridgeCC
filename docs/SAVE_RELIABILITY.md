@@ -84,3 +84,29 @@ state was saved on is shown at boot; the battery byte stays at the value saved l
 state's; a per-game override returns that game to a fresh start; 4 KiB of junk in place of the
 state starts the game from the beginning with the notice and is byte-identical afterwards; a
 missing state reports nothing. Not verified: a PlayStation state at boot, and any commercial game.
+
+## Quick saves and a list of states — 2026-10-17 (ADR 0028)
+
+- The state above is now the **quick save**, at the same path and with the same bytes. Quick Save writes
+  it, from the pause menu or with **L3 + Y** during play, and first copies the one it replaces to
+  `saves/<id>.slots/previous.state`. Quick Load (**L3 + X**) loads it. Both work while the game runs.
+- A **list of saves** sits beside it in `saves/<id>.slots/`: a state, a JPEG thumbnail and a record per
+  save. The record is written last and holds the console, core revision, time, size and SHA-256, so an
+  interrupted write is never listed and a changed file is refused rather than loaded. Overwrite writes a
+  new save and only then removes the old one. Delete removes the record first.
+- **Thumbnails** are the screen as the player saw it, without the even black bars beside the picture, 180
+  pixels high. A screen that cannot be copied gives a save without a picture, never a failed save.
+- Every quick save, load and list operation goes through the session mutex and the same checkpoint as
+  before. A `snapshots = Paused` core is held at rest only for the capture. Every state is checked
+  against the console's core revision before it is loaded, and a state from another build is shown and
+  kept, never loaded or deleted by the app.
+- *Start from save state* can begin from the newest state instead of the quick save (Settings ›
+  Gameplay › Save to start from). It never falls back to an older one: a newest state that cannot be
+  loaded starts the game from the beginning with the usual notice.
+- Backups always carry the quick save; the list, the previous quick save and the pictures only with
+  Settings › Library › *Include every save state*.
+
+Verified on the RP5 with the original probes and with one of the owner's games on each of Game Boy
+Advance, PlayStation, Super Nintendo, Saturn and Dreamcast (TESTING, 2026-10-17). Not verified: a real
+sleep during a quick save, and process death between a state and its record, which is reasoned from the
+write order and covered by `StateSlotsTest` only.

@@ -426,7 +426,10 @@ Advance and PlayStation are as they were ([PS1_PROGRESS](PS1_PROGRESS.md)). Whic
 key code is the Retroid Pocket 5's own button-layout setting, not Cartridge's; Settings › Controls
 › In-game A and B / In-game L and R swap them for every console, and per-console remapping is not
 offered. L3 + R3 is the pause shortcut on every console and reaches a game first if pressed one
-after the other; on the NES the first of them is that core's A+B button.
+after the other; on the NES the first of them is that core's A+B button. L3 + Y quick saves and
+L3 + X quick loads during play on every console that can make a state (ADR 0028), with the same
+pass-through; on Dreamcast the engine stops for the moment of the capture. GameCube and PlayStation 2
+answer the combos with *Can't save states*.
 
 ## Saves at a glance
 

@@ -17,13 +17,20 @@ class BackupReview internal constructor(internal val directory: File, internal v
     val library: LibraryBackup, val preferences: JSONObject, internal val blobs: List<BackupBlob>,
     internal val session: ResumeSession?) : Closeable {
     val imageCount get() = blobs.count { it.kind == "image" }
-    val saveCount get() = blobs.count { it.kind in setOf("sram", "rtc", "state") }
+    val saveCount get() = blobs.count { it.kind in setOf("sram", "rtc", "state", "slot") }
     override fun close() { directory.deleteRecursively() }
 }
-internal data class BackupBlob(val path: String, val sha: String, val bytes: Long, val id: String, val kind: String, val core: String? = null)
+/** [slot] and [savedAt] belong to a game's listed states and their pictures (`slot` and `slot-image`). */
+internal data class BackupBlob(val path: String, val sha: String, val bytes: Long, val id: String, val kind: String, val core: String? = null,
+    val slot: String? = null, val savedAt: Long? = null)
 
+/**
+ * [includeSlots] adds every game's listed states, the quick save each last replaced, and their pictures; the quick save
+ * itself is always in a backup. A backup without them restores as before, and one with them merges only what is missing.
+ */
 class BackupStore(private val repository: BackupRepository, private val labels: LabelStore, private val saves: SaveStore,
-    private val sessions: SessionStore, private val staging: File) {
+    private val sessions: SessionStore, private val staging: File, private val includeSlots: Boolean = false) {
+    private val slots = StateSlots(saves.directory)
     suspend fun export(output: OutputStream, preferences: JSONObject) {
         BackupPreferences.validate(preferences)
         val library = repository.exportLibrary()
@@ -46,6 +53,17 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
                         blobs.add(BackupBlob(path, hash(file), file.length(), game.id, kind, if (kind == "state") GameSystem.valueOf(game.system).coreRevision else null)); files[path] = file
                     }
                 }
+                if (includeSlots) slots.backupEntries(game.id, GameSystem.valueOf(game.system)).forEach { entry ->
+                    currentCoroutineContext().ensureActive()
+                    entry.state?.let { state ->
+                        val path = "slots/${game.id}/${entry.name}.state"
+                        blobs.add(BackupBlob(path, hash(state), state.length(), game.id, "slot", entry.core, entry.name, entry.savedAt)); files[path] = state
+                    }
+                    entry.thumbnail?.let { picture ->
+                        val path = "slots/${game.id}/${entry.name}.jpg"
+                        blobs.add(BackupBlob(path, hash(picture), picture.length(), game.id, "slot-image", null, entry.name)); files[path] = picture
+                    }
+                }
             }
             val session = sessions.available()?.takeIf { saved -> library.games.any { it.id == saved.id && it.system == saved.system.name } }
             session?.let {
@@ -53,7 +71,8 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
                 val path = "session/state.bin"; blobs.add(BackupBlob(path, hash(file), file.length(), it.id, "session")); files[path] = file
             }
             val root = encodeLibrary(library).put("format", FORMAT).put("version", 1).put("core", SessionStore.CORE).put("settings", preferences)
-                .put("blobs", JSONArray(blobs.map { JSONObject().put("path", it.path).put("sha256", it.sha).put("bytes", it.bytes).put("id", it.id).put("kind", it.kind).put("core", it.core) }))
+                .put("blobs", JSONArray(blobs.map { JSONObject().put("path", it.path).put("sha256", it.sha).put("bytes", it.bytes).put("id", it.id).put("kind", it.kind).put("core", it.core)
+                    .apply { it.slot?.let { slot -> put("slot", slot) }; it.savedAt?.let { time -> put("savedAt", time) } } }))
             session?.let { root.put("session", JSONObject().put("id", it.id).put("system", it.system.name).put("savedAt", it.savedAt).put("core", it.system.coreRevision)) }
             val manifest = root.toString().toByteArray(Charsets.UTF_8)
             require(manifest.size <= LIMITS.manifest && blobs.size + 1 <= LIMITS.entries && blobs.sumOf { it.bytes } + manifest.size <= LIMITS.expanded) { "Backup exceeds supported limits" }
@@ -77,7 +96,8 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
             val settings = root.getJSONObject("settings").also(BackupPreferences::validate)
             val array = root.getJSONArray("blobs"); require(array.length() < LIMITS.entries)
             val blobs = (0 until array.length()).map { index -> array.getJSONObject(index).let {
-                BackupBlob(it.getString("path"), it.getString("sha256"), it.getLong("bytes"), it.getString("id"), it.getString("kind"), if (it.has("core")) it.getString("core") else null) } }
+                BackupBlob(it.getString("path"), it.getString("sha256"), it.getLong("bytes"), it.getString("id"), it.getString("kind"), if (it.has("core")) it.getString("core") else null,
+                    if (it.has("slot")) it.getString("slot") else null, if (it.has("savedAt")) it.getLong("savedAt") else null) } }
             if (blobs.any { it.kind in setOf("state", "session") }) require(root.getString("core") == SessionStore.CORE) { "Saved states use a different core revision" }
             require(blobs.map { it.path }.distinct().size == blobs.size && files.keys == (blobs.map { it.path } + "backup.json").toSet()) { "Undeclared or duplicate backup data" }
             val ids = library.games.associateBy { it.id }
@@ -91,13 +111,28 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
                     "image" -> "images/${blob.id}.image"
                     "sram", "rtc", "state" -> { require(blob.id in ids); "saves/${blob.id}.${blob.kind}" }
                     "session" -> "session/state.bin"
+                    "slot" -> {
+                        val slot = checkNotNull(blob.slot); val system = GameSystem.valueOf(checkNotNull(ids[blob.id]) { "Undeclared game" }.system)
+                        require((slot == StateSlots.PREVIOUS || slot.matches(StateSlots.UUID_NAME)) && (blob.savedAt ?: -1) >= 0)
+                        require(blob.core == system.coreRevision) { "Saved state uses a different console core revision" }
+                        "slots/${blob.id}/$slot.state"
+                    }
+                    "slot-image" -> {
+                        val slot = checkNotNull(blob.slot); require(blob.id in ids)
+                        // A picture belongs to a state in the same backup: the quick save, or the listed state of its name.
+                        require(if (slot == StateSlots.QUICK) blobs.any { it.kind == "state" && it.id == blob.id }
+                            else blobs.any { it.kind == "slot" && it.id == blob.id && it.slot == slot }) { "A save picture has no save" }
+                        "slots/${blob.id}/$slot.jpg"
+                    }
                     else -> error("Unsupported backup data")
                 }
                 require(blob.path == expected)
-                val file = checkNotNull(files[blob.path]); val limit = when(blob.kind) { "image" -> 12L * 1024 * 1024; "sram" -> 128L * 1024; "rtc" -> 4096L; else -> SessionStore.MAX_STATE.toLong() }
+                val file = checkNotNull(files[blob.path]); val limit = when(blob.kind) { "image" -> 12L * 1024 * 1024; "sram" -> 128L * 1024; "rtc" -> 4096L
+                    "slot-image" -> StateSlots.MAX_THUMBNAIL.toLong(); else -> SessionStore.MAX_STATE.toLong() }
                 require(blob.bytes in 0..limit && file.length() == blob.bytes && hash(file) == blob.sha) { "Backup data failed its integrity check" }
-                if (blob.kind in setOf("image", "state", "session")) require(blob.bytes > 0)
+                if (blob.kind in setOf("image", "state", "session", "slot", "slot-image")) require(blob.bytes > 0)
                 if (blob.kind == "image") { require(blob.sha == blob.id); labels.validateImage(file) }
+                if (blob.kind == "slot-image") require(StateSlots.isJpeg(file.readBytes())) { "A save picture is not an image" }
             }
             val session = root.optJSONObject("session")?.let {
                 require(it.getString("core") == GameSystem.valueOf(it.getString("system")).coreRevision) { "The saved session uses a different core revision" }
@@ -121,6 +156,16 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
         var restoredSaves = 0
         review.blobs.filter { it.kind in setOf("sram", "rtc", "state") }.forEach {
             if (saves.writeMissing(it.id, it.kind, checkNotNull(review.files[it.path]).readBytes())) restoredSaves++
+        }
+        val systems = review.library.games.associate { it.id to GameSystem.valueOf(it.system) }
+        val pictures = review.blobs.filter { it.kind == "slot-image" }.associateBy { it.id to it.slot }
+        review.blobs.filter { it.kind == "slot" }.forEach { blob ->
+            val picture = pictures[blob.id to blob.slot]?.let { checkNotNull(review.files[it.path]).readBytes() }
+            if (slots.importMissing(blob.id, systems.getValue(blob.id), checkNotNull(blob.slot), checkNotNull(review.files[blob.path]).readBytes(),
+                    checkNotNull(blob.savedAt), picture)) restoredSaves++
+        }
+        pictures.values.filter { it.slot == StateSlots.QUICK }.forEach { blob ->
+            slots.importMissing(blob.id, systems.getValue(blob.id), StateSlots.QUICK, null, 0, checkNotNull(review.files[blob.path]).readBytes())
         }
         val added = repository.mergeLibrary(review.library)
         review.session?.let { sessions.writeMissing(it, checkNotNull(review.files["session/state.bin"]).readBytes()) }

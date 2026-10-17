@@ -50,7 +50,7 @@ class ConsoleStabilityTest {
         val minutes = InstrumentationRegistry.getArguments().getString("soakMinutes")?.toInt() ?: error("Run tools/Test-Stability.ps1; this test is opt-in")
         require(minutes in 2..120)
         val name = "m1-test-${UUID.randomUUID()}"
-        val intent = Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)
+        val intent = Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name).putExtra("stayInMenu", true)
         val fixture = File(context.filesDir, "m1-fixtures/probe.gb").apply { parentFile!!.mkdirs() }
         val bytes = File(context.filesDir, "cartridge-probe.gb").readBytes()
         UUID.randomUUID().toString().take(8).toByteArray().copyInto(bytes, 0x134); fixture.writeBytes(bytes)

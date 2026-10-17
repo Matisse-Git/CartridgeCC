@@ -85,7 +85,7 @@ class LibraryGrowthTest {
         val bitmap = Bitmap.createBitmap(512, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
         File(fixtures, "blue-label.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
         val databaseName = "m1-test-${UUID.randomUUID()}"
-        val intent = Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", databaseName)
+        val intent = Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", databaseName).putExtra("stayInMenu", true)
         try {
             ActivityScenario.launch<DebugCollectionActivity>(intent).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
@@ -124,7 +124,7 @@ class LibraryGrowthTest {
                 ui.onNodeWithTag("pause").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Paused }
                 ui.onNodeWithTag("menu-1").performClick()
-                await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message == "State saved" }
+                await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message == "Quick saved" }
                 ui.onNodeWithTag("menu-3").performClick()
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.screen == CollectionScreen.Library && it.coordinator.state.value.rendererReady }
                 scenario.onActivity { assertEquals(5, it.coordinator.state.value.selection.index) }

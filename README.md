@@ -206,9 +206,13 @@ console's, which wins over every console's. Each preset is checked on the device
 crt-royale, crt-guest-dr-venom and LCD grids run on the RP5; 605 of the library's 621 presets build there.
 
 **In a game.** L3 + R3 pauses (Start + Select is the alternative, Settings › Controls). Android's
-Back and the top-right corner also pause. The pause menu offers Resume, Save State, Load State, Game
-Options and Return to Library. Nothing is drawn over a running game. The first button of a
-two-button shortcut may reach the game before the second is pressed.
+Back and the top-right corner also pause. The pause menu offers Resume, Quick Save, Quick Load, Save
+States, Game Options and Return to Library. During play L3 + Y quick saves and L3 + X quick loads;
+both combos can be recorded again in Settings › Controls. *Save States* lists the quick save, the one
+it last replaced and every save you make, each with a thumbnail, to Load, Overwrite or Delete (ADR
+0028). Quick Save, Quick Load and Load return to the game unless Settings › Controls says *Stay in
+menu*. Nothing is drawn over a running game but a short notice. The first button of a two-button
+shortcut may reach the game before the second is pressed.
 
 **Settings** (START › Settings): Library, Appearance, Gameplay, Controls, System, Advanced. Layout
 (Horizontal, Vertical, Grid) is under Appearance. Gameplay options are grouped by console; a game

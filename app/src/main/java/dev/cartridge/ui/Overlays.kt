@@ -236,7 +236,8 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
         Column(Modifier.padding(top = Space.M), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             page.rows.forEach { row -> RowItem(row, row.id == focused?.id) { shell.activate(page, row) } }
         }
-        if (flow !is ImportFlow.Looking && flow !is ImportFlow.Adding) HintBar(listOf(Hint(if (shell.controls.swapMenuButtons) "B" else "A", "Select"),
+        // While a combo is recorded every button belongs to it, so no button is offered for anything else.
+        if (flow !is ImportFlow.Looking && flow !is ImportFlow.Adding && page.key != "record") HintBar(listOf(Hint(if (shell.controls.swapMenuButtons) "B" else "A", "Select"),
             Hint(if (shell.controls.swapMenuButtons) "A" else "B", "Back", "back", shell::back)), Modifier.padding(start = 14.dp, top = Space.M))
     }
 }
@@ -292,9 +293,9 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
 }
 
 /** Confirmations pass; warnings stay. Both sit clear of the title and the hints. */
-@Composable fun BoxScope.Notices(message: String?, warning: String?, beside: Dp = 0.dp) {
+@Composable fun BoxScope.Notices(message: String?, warning: String?, beside: Dp = 0.dp, lingerMs: Long = 4200) {
     var shown by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(message) { shown = message; if (message != null) { kotlinx.coroutines.delay(4200); shown = null } }
+    LaunchedEffect(message) { shown = message; if (message != null) { kotlinx.coroutines.delay(lingerMs); shown = null } }
     Column(Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 58.dp, end = beside), horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Space.S)) {
         if (warning != null) Notice(warning, true, "message")

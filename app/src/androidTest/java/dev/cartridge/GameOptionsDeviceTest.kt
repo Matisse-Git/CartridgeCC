@@ -63,7 +63,7 @@ class GameOptionsDeviceTest {
         File(context.filesDir, "cartridge-probe.exe").copyTo(File(context.filesDir, "m1-fixtures/probe.exe").apply { parentFile!!.mkdirs() }, true)
         val preferences = context.getSharedPreferences("$name-presentation", 0)
         try {
-            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)).use { scenario ->
+            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name).putExtra("stayInMenu", true)).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 // Journey H: Settings › Gameplay names each console, and the PlayStation rows sit under PlayStation.
                 ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-gameplay").performClick()
@@ -148,7 +148,7 @@ class GameOptionsDeviceTest {
         val saves = SaveStore(File(context.filesDir, "saves"))
         val state = File(context.filesDir, "saves/$id.state")
         try {
-            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)).use { scenario ->
+            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name).putExtra("stayInMenu", true)).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 fun start() { ui.tool("insert").performClick(); await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Running } }
                 fun shown(): Int { var seen = 0; ui.waitUntil(8000) { seen = picture(scenario); seen != 0 }; return seen }

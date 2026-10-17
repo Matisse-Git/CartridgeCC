@@ -19,8 +19,13 @@ interface EmulationEngine {
     fun motion(x: Float, y: Float)
     /** A stick of a pad that has them: 0 is the left, 1 the right, each axis -1..1. */
     fun analog(stick: Int, x: Float, y: Float) = Unit
+    /** The quick save and quick load: from the pause menu, or during play from their button combos. */
     suspend fun saveState()
     suspend fun loadState()
+    /** A paused game's state into its list, as a new save or in place of [replacing]. Returns the name it is listed under. */
+    suspend fun saveSlot(replacing: String? = null): String = error("Saved states are not available")
+    /** A paused game continues from one of its listed states (docs/SAVE_RELIABILITY). */
+    suspend fun loadSlot(name: String): Unit = error("Saved states are not available")
     suspend fun persistSaveRam()
     suspend fun configure(options: Map<String, String>)
     suspend fun checkpointSession() = Unit

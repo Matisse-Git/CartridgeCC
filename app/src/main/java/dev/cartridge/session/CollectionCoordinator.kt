@@ -449,10 +449,38 @@ class CollectionCoordinator(
         runAction {
             when (index) {
                 0 -> engine.resume()
-                1 -> { engine.saveState(); notify("State saved") }
-                2 -> { engine.loadState(); notify("State loaded") }
+                1 -> { engine.saveState(); notify("Quick saved") }
+                2 -> { engine.loadState(); notify("Quick loaded") }
                 3 -> eject()
             }
+        }
+    }
+    /**
+     * The quick save, from the pause menu or from its combo during play. [resume] returns a paused game to play once it
+     * is done, as the owner's After Quick Save setting asks; a running game simply keeps running.
+     */
+    fun quickSave(resume: Boolean = false) = stateAction("Quick saved", resume) { engine.saveState() }
+    fun quickLoad(resume: Boolean = false) = stateAction("Quick loaded", resume) { engine.loadState() }
+    /** One of the paused game's listed states. Saving into the list keeps the menu open; loading follows [resume]. */
+    fun saveSlot(replacing: String? = null, saved: (String) -> Unit = {}) {
+        if (engine.status.value.state != SessionState.Paused) return
+        runAction { val name = engine.saveSlot(replacing); notify(if (replacing == null) "Saved" else "Save overwritten"); saved(name) }
+    }
+    fun loadSlot(name: String, resume: Boolean = false) {
+        if (engine.status.value.state != SessionState.Paused) return
+        runAction { engine.loadSlot(name); if (resume) engine.resume(); notify("Loaded") }
+    }
+    /** File work on a paused game's saves, serialized with everything else the session does. */
+    fun pausedFiles(message: String, operation: suspend () -> Unit) {
+        if (engine.status.value.state == SessionState.Paused) runAction { operation(); notify(message) }
+    }
+    private fun stateAction(message: String, resume: Boolean, operation: suspend () -> Unit) {
+        val running = engine.status.value.state
+        if (running != SessionState.Running && running != SessionState.Paused) return
+        runAction {
+            operation()
+            if (resume && engine.status.value.state == SessionState.Paused) engine.resume()
+            notify(message)
         }
     }
     fun configureGame(options: Map<String, String>, applied: () -> Unit) {

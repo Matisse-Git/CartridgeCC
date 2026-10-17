@@ -116,7 +116,7 @@ class DreamcastCoreTest {
         UUID.randomUUID().toString().toByteArray().copyInto(track, 40 * 2048)
         File(tree, "track03.iso").writeBytes(track)
         try {
-            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)).use { scenario ->
+            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name).putExtra("stayInMenu", true)).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 Intents.init()
                 try {
@@ -162,7 +162,7 @@ class DreamcastCoreTest {
         // A fresh identity per run, appended after the program where nothing reads it.
         File(fixtures, "probe.elf").writeBytes(File(context.filesDir, "cartridge-probe.elf").readBytes() + UUID.randomUUID().toString().toByteArray())
         try {
-            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)).use { scenario ->
+            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name).putExtra("stayInMenu", true)).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 Intents.init()
                 try {
@@ -189,6 +189,14 @@ class DreamcastCoreTest {
                 // The stick is the game's own: held right the program paints blue, and released it returns.
                 stick(scenario, 1f); shows(scenario, "blue")
                 stick(scenario, 0f); shows(scenario, "green")
+                // The quick save combo during play: this engine's state is only consistent at rest, so it stops for the
+                // moment of the capture and goes on. The game is still running afterwards, on the same picture.
+                scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_THUMBL)); it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_Y)) }
+                await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message == "Quick saved" }
+                scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_Y)); it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_THUMBL)) }
+                scenario.onActivity { assertEquals(SessionState.Running, it.engine.status.value.state); assertNull(it.engine.status.value.saveWarning) }
+                assertTrue(String(SaveStore(File(context.filesDir, "saves")).read(id, "state")!!, 0, 64, Charsets.US_ASCII).contains(GameSystem.DREAMCAST.coreRevision))
+                shows(scenario, "green")
                 pause(scenario)
                 val saves = SaveStore(File(context.filesDir, "saves"))
                 val frames = CompletableFuture<Long>()

@@ -86,7 +86,7 @@ class SaturnCoreTest {
         val name = "m1-test-${UUID.randomUUID()}"
         images.forEach { File(system, it).delete() }; disc()
         try {
-            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)).use { scenario ->
+            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name).putExtra("stayInMenu", true)).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 addFolder()
                 // The import result names what the new console still needs and offers the one thing that supplies it.
@@ -128,7 +128,7 @@ class SaturnCoreTest {
         // The stand-in goes where the core looks, under both regional names. It is test equipment, not a BIOS.
         images.forEach { File(context.filesDir, "cartridge-probe-saturn-boot.bin").copyTo(File(system, it), true) }
         try {
-            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)).use { scenario ->
+            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name).putExtra("stayInMenu", true)).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 addFolder()
                 ui.waitUntil(30_000) { ui.shown("import-done") }

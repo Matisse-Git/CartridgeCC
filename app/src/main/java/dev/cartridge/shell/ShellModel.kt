@@ -21,10 +21,15 @@ class MenuRow(
     val tag: String = id,
     val warn: Boolean = false,
     val adjust: ((Int) -> Unit)? = null,
+    /** A row about a saved state shows its thumbnail; a picture without a file is drawn as an empty frame. */
+    val picture: RowPicture? = null,
     val action: (() -> Unit)? = null,
 ) {
     val focusable get() = kind != RowKind.Header && (kind != RowKind.Info || action != null)
 }
+
+/** [stamp] changes whenever the file is replaced, so a row never shows the picture it had before. */
+data class RowPicture(val file: java.io.File?, val stamp: Long)
 
 enum class PageStyle {
     /** A panel at the trailing edge; the stage stays visible and keeps rendering. */
@@ -80,7 +85,17 @@ sealed class Destination(val key: String, val opaque: Boolean = false) {
     /** One folder of the shader library, for choosing [target]'s shader (ADR 0027); "" is the library's top. */
     data class ShaderPicker(val target: dev.cartridge.shaders.ShaderTarget, val folder: String) :
         Destination("shaders:${target.key}:$folder", true)
+    /** The paused game's quick save, the one it replaced and its list of saves, each with its thumbnail. */
+    data object SaveStates : Destination("states", true)
+    /** What can be done with one state of that list. */
+    data class SlotActions(val name: String) : Destination("slot")
+    /** Load, Overwrite and Delete ask once before they replace progress or a save. */
+    data class ConfirmSlot(val action: SlotAction, val name: String) : Destination("confirm")
+    /** Listening for a new quick save or quick load combo; every controller button goes to it. */
+    data class RecordCombo(val quickLoad: Boolean) : Destination("record")
 }
+
+enum class SlotAction { Load, Overwrite, Delete }
 
 /** A folder of the shader library as the picker lists it: folders that hold presets, then its own presets. */
 class ShaderListing(val folders: List<String>, val presets: List<String>)

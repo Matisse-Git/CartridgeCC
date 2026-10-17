@@ -90,7 +90,7 @@ class AdditionalSystemsTest {
             File(fixtures, "probe.$ext").writeBytes(bytes)
         }
         try {
-            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)).use { scenario ->
+            ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name).putExtra("stayInMenu", true)).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 for (system in listOf(GameSystem.GB, GameSystem.GBC)) {
                     choose("probe.${system.extension}"); await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.system == system }

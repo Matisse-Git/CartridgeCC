@@ -164,11 +164,17 @@ class GameCubeCoreTest {
                 assertEquals(sharper.default, running[sharper.variable])
                 assertNull(saves.read(id, "sram")) // Its memory card is a folder of its own, not battery memory.
                 // No state is offered, pausing writes none and warns of nothing, and the game carries on where it was.
-                ui.onNodeWithTag("menu-1").assertDoesNotExist(); ui.onNodeWithTag("menu-2").assertDoesNotExist()
+                ui.onNodeWithTag("menu-1").assertDoesNotExist(); ui.onNodeWithTag("menu-2").assertDoesNotExist(); ui.onNodeWithTag("menu-5").assertDoesNotExist()
                 scenario.onActivity { assertNull(it.engine.status.value.saveWarning) }
                 assertNull(saves.read(id, "state")); assertTrue(GameOptions.forSystem(GameSystem.GAMECUBE).none { it.id == "startFromState" })
                 android.util.Log.i("CartridgeGameCube", "Program ran: red, green on a button, blue on the stick")
                 resume(scenario); shows(scenario, "green")
+                // The quick save combo says why there is nothing to save, and the game carries on untouched.
+                scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_THUMBL)); it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_Y)) }
+                await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message == "Can't save states on GameCube" }
+                scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_Y)); it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_THUMBL)) }
+                scenario.onActivity { assertEquals(SessionState.Running, it.engine.status.value.state) }
+                assertNull(saves.read(id, "state")); shows(scenario, "green")
                 // With no state to come back from, leaving the app must not end the game. It is found paused and still
                 // loaded: green is what the button left it showing, and a program started again would be red.
                 away(scenario); resume(scenario); shows(scenario, "green")

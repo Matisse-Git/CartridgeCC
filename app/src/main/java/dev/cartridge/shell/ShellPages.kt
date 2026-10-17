@@ -7,7 +7,9 @@ import dev.cartridge.domain.GameSystem
 import dev.cartridge.domain.LaunchTransition
 import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.EngineStatus
+import dev.cartridge.environment.ConsoleSettings
 import dev.cartridge.environment.GameOptions
+import dev.cartridge.input.ButtonCombo
 import dev.cartridge.library.LabelFit
 import dev.cartridge.library.LibraryGame
 import dev.cartridge.library.LibrarySort
@@ -19,6 +21,8 @@ import dev.cartridge.shaders.ShaderChoice
 import dev.cartridge.shaders.ShaderLevel
 import dev.cartridge.shaders.ShaderResolution
 import dev.cartridge.shaders.ShaderTarget
+import dev.cartridge.storage.SlotKind
+import dev.cartridge.storage.StateSlot
 import dev.cartridge.ui.Accent
 import dev.cartridge.ui.ClockStyle
 
@@ -74,6 +78,10 @@ internal fun ConsoleShell.buildPage(state: CollectionState, status: EngineStatus
         is Destination.Setup -> setupPage(destination.core)
         Destination.Apps -> Page("apps", "Apps", emptyList(), PageStyle.Apps)
         is Destination.ShaderPicker -> shaderPickerPage(destination)
+        Destination.SaveStates -> game?.let { saveStatesPage(it, state) }
+        is Destination.SlotActions -> game?.let { slotPage(it, destination.name, state) }
+        is Destination.ConfirmSlot -> confirmPage(destination, state)
+        is Destination.RecordCombo -> recordPage(destination)
     }
 }
 
@@ -101,11 +109,15 @@ private fun ConsoleShell.pausePage(state: CollectionState): Page {
     val ready = !state.busy
     // A console whose state cannot be captured is not offered one; its games keep their own saves.
     val states = game?.system?.core?.snapshots != dev.cartridge.domain.Snapshots.Never
+    val saved = stateList?.takeIf { it.first == game?.id }?.second?.count { it.kind == SlotKind.Saved }
     return Page("pause", game?.title ?: "Paused", listOfNotNull(
         MenuRow("resume", "Resume", enabled = ready, tag = "menu-0") { coordinator.menuAction(0) },
-        if (states) MenuRow("save", "Save State", enabled = ready, tag = "menu-1") { coordinator.menuAction(1) } else null,
-        if (states) MenuRow("load", "Load State", value = known?.stateAt?.takeIf { it > 0 }?.let { "Saved ${whenLabel(it)}" },
-            note = if (known != null && known.stateAt <= 0) "Nothing saved yet" else null, enabled = ready && (known == null || known.stateAt > 0), tag = "menu-2") { coordinator.menuAction(2) } else null,
+        if (states) MenuRow("save", "Quick Save", enabled = ready, tag = "menu-1") { coordinator.quickSave(resume = controls.returnToGame) } else null,
+        if (states) MenuRow("load", "Quick Load", value = known?.stateAt?.takeIf { it > 0 }?.let { "Saved ${whenLabel(it)}" },
+            note = if (known != null && known.stateAt <= 0) "Nothing saved yet" else null, enabled = ready && (known == null || known.stateAt > 0), tag = "menu-2") {
+            coordinator.quickLoad(resume = controls.returnToGame) } else null,
+        if (states) MenuRow("states", "Save States", RowKind.Link, value = saved?.let { if (it == 0) null else plural(it, "save") }, enabled = ready, tag = "menu-5") {
+            push(Destination.SaveStates) } else null,
         MenuRow("options", "Game Options", RowKind.Link, enabled = ready, tag = "menu-4") { push(Destination.Options) },
         MenuRow("eject", "Return to Library", enabled = ready, tag = "menu-3") { coordinator.menuAction(3) }),
         PageStyle.Pause, game?.system?.title)
@@ -263,7 +275,15 @@ internal fun ConsoleShell.controlRows(state: CollectionState): List<MenuRow> {
         MenuRow("stick", "Stick sensitivity", RowKind.Choice, value = sensitivity.minBy { kotlin.math.abs(it.first - controls.deadZone) }.second, tag = "controls-stick",
             adjust = { delta -> changeControls(controls.copy(deadZone = sensitivity.map { it.first }.step(sensitivity.minBy { kotlin.math.abs(it.first - controls.deadZone) }.first, delta))) }),
         flip("Pause shortcut", "pause", state.alternateShortcut, "L3 + R3", "Start + Select", tag = "shortcut-setting") { setPauseShortcut(it) },
-        MenuRow("reset", "Reset controls", tag = "controls-reset") { changeControls(controls.copy(swapMenuButtons = false, swapGameButtons = false, swapShoulders = false, deadZone = .35f)); setPauseShortcut(false) })
+        MenuRow("quick-save", "Quick save buttons", RowKind.Link, value = ButtonCombo.title(controls.quickSave), note = "Hold them together during a game. Choose to press new ones.",
+            tag = "controls-quick-save") { recordCombo(quickLoad = false) },
+        MenuRow("quick-load", "Quick load buttons", RowKind.Link, value = ButtonCombo.title(controls.quickLoad), note = "Hold them together during a game. Choose to press new ones.",
+            tag = "controls-quick-load") { recordCombo(quickLoad = true) },
+        MenuRow("quick-reset", "Reset quick buttons", note = "${ButtonCombo.title(ButtonCombo.QUICK_SAVE)} saves, ${ButtonCombo.title(ButtonCombo.QUICK_LOAD)} loads",
+            enabled = controls.quickSave != ButtonCombo.QUICK_SAVE || controls.quickLoad != ButtonCombo.QUICK_LOAD, tag = "controls-quick-reset") { resetQuickButtons() },
+        flip("After Quick Save, Quick Load or Load", "after", !controls.returnToGame, "Return to game", "Stay in menu", tag = "controls-after") {
+            changeControls(controls.copy(returnToGame = !it)) },
+        MenuRow("reset", "Reset controls", tag = "controls-reset") { changeControls(ConsoleSettings(audioFilter = controls.audioFilter, frameSkip = controls.frameSkip)); setPauseShortcut(false) })
 }
 
 internal fun ConsoleShell.settingsRows(state: CollectionState, category: SettingsCategory, status: EngineStatus): List<MenuRow> {
@@ -303,6 +323,8 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
             add(header("Backup"))
             add(MenuRow("export", "Back up collection", note = "Saves, artwork and details. Game files are not included.", enabled = ready, tag = "settings-export") { exportBackup() })
             add(MenuRow("restore", "Restore from backup", enabled = ready, tag = "settings-restore") { restoreBackup() })
+            add(toggle("backup-states", "Include every save state", backupAllStates,
+                note = "Adds each game's list of saves and their pictures. The quick save is always included. A backup holds at most 1 GB.") { changeBackupAllStates(it) })
         }
         SettingsCategory.Appearance -> listOf(
             MenuRow("layout", "Layout", RowKind.Choice, value = state.layout.title, enabled = !state.busy, tag = "layout-setting",
@@ -326,6 +348,9 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
         SettingsCategory.Gameplay -> buildList {
             add(header("Every console"))
             addAll(optionRows(null))
+            add(MenuRow("start-slot", "Save to start from", RowKind.Choice, value = if (startLatest) "Newest save" else "Quick save", tag = "settings-start-slot",
+                note = "Where Start from save state begins: the quick save, or whichever save is newest. If that one can't be loaded the game starts from the beginning.",
+                adjust = { changeStartLatest(!startLatest) }))
             // One heading per core, in the registry's order: the file it needs from the owner, then its options.
             for (core in Core.entries) {
                 add(header(core.title))
@@ -453,4 +478,76 @@ private fun ConsoleShell.shaderPickerPage(destination: Destination.ShaderPicker)
                 tag = "shader-preset-$name") { chooseShader(target, ShaderChoice.Preset(path)) })
         }
     }, PageStyle.Page, destination.folder.ifEmpty { null } ?: "Choosing a preset checks it on this device first.")
+}
+
+// ---- Saved states (docs/SAVE_RELIABILITY) -----------------------------------------------------------------
+
+private fun sizeLabel(bytes: Long) = if (bytes < 1L shl 20) "${(bytes shr 10).coerceAtLeast(1)} KB" else "%.1f MB".format(bytes / (1L shl 20).toDouble())
+private fun ConsoleShell.dateLabel(time: Long) = DateUtils.formatDateTime(context, time,
+    DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_ABBREV_MONTH or DateUtils.FORMAT_NO_YEAR)
+private fun slotTitle(slot: StateSlot) = when (slot.kind) {
+    SlotKind.Quick -> "Quick save"
+    SlotKind.Previous -> "Before the last quick save"
+    SlotKind.Saved -> null
+}
+private const val OTHER_BUILD = "Made by a different core build. It can't be loaded; the file is kept."
+
+private fun ConsoleShell.saveStatesPage(game: LibraryGame, state: CollectionState): Page {
+    val ready = !state.busy
+    val list = stateList?.takeIf { it.first == game.id }?.second
+    fun row(slot: StateSlot) = MenuRow("slot:${slot.name}", slotTitle(slot) ?: dateLabel(slot.savedAt), RowKind.Link,
+        value = whenLabel(slot.savedAt), note = if (slot.compatible) sizeLabel(slot.size) else OTHER_BUILD, warn = !slot.compatible, enabled = ready,
+        tag = "slot-${slot.name}", picture = RowPicture(slot.thumbnail, slot.thumbnail?.lastModified() ?: slot.savedAt)) { push(Destination.SlotActions(slot.name)) }
+    return Page("states", "Save states", buildList {
+        add(MenuRow("new", "New save", note = "Keeps this moment beside your others", enabled = ready, tag = "slots-new") { newSlot() })
+        when {
+            list == null -> add(MenuRow("reading", "Reading saves…", RowKind.Info))
+            else -> {
+                list.filter { it.kind != SlotKind.Saved }.forEach { add(row(it)) }
+                val saved = list.filter { it.kind == SlotKind.Saved }
+                add(MenuRow("header:saves", if (saved.isEmpty()) "Saves" else "Saves · ${saved.size}", RowKind.Header))
+                if (saved.isEmpty()) add(MenuRow("none", "No saves yet", RowKind.Info, note = "New save keeps the moment you paused on."))
+                saved.forEach { add(row(it)) }
+            }
+        }
+    }, PageStyle.Page, game.title,
+        "Quick Save replaces the quick save; the one it replaced stays here until the next. Your saves are kept until you delete them.\n\n" +
+            "During a game, ${ButtonCombo.title(controls.quickSave)} quick saves and ${ButtonCombo.title(controls.quickLoad)} quick loads.")
+}
+
+private fun ConsoleShell.slotPage(game: LibraryGame, name: String, state: CollectionState): Page? {
+    val slot = stateList?.takeIf { it.first == game.id }?.second?.firstOrNull { it.name == name } ?: return null
+    val ready = !state.busy
+    return Page("slot", slotTitle(slot) ?: "Save", buildList {
+        add(MenuRow("load", "Load", note = if (slot.compatible) "Continue from this moment" else OTHER_BUILD, warn = !slot.compatible,
+            enabled = ready && slot.compatible, tag = "slot-load") { push(Destination.ConfirmSlot(SlotAction.Load, name)) })
+        if (slot.kind == SlotKind.Saved) {
+            add(MenuRow("overwrite", "Overwrite", note = "Replace it with the moment you paused on", enabled = ready, tag = "slot-overwrite") {
+                push(Destination.ConfirmSlot(SlotAction.Overwrite, name)) })
+            add(MenuRow("delete", "Delete", RowKind.Danger, enabled = ready, tag = "slot-delete") { push(Destination.ConfirmSlot(SlotAction.Delete, name)) })
+        }
+    }, PageStyle.Sheet, "${dateLabel(slot.savedAt)} · ${sizeLabel(slot.size)}")
+}
+
+private fun ConsoleShell.confirmPage(destination: Destination.ConfirmSlot, state: CollectionState): Page {
+    val (title, body, confirm) = when (destination.action) {
+        SlotAction.Load -> Triple("Load this save?", "Progress since you last saved is lost, unless an in-game save kept it.", "Load")
+        SlotAction.Overwrite -> Triple("Overwrite this save?", "It is replaced by the moment you paused on.", "Overwrite")
+        SlotAction.Delete -> Triple("Delete this save?", "It can't be brought back.", "Delete")
+    }
+    return Page("confirm", title, listOf(
+        MenuRow("confirm", confirm, if (destination.action == SlotAction.Delete) RowKind.Danger else RowKind.Action, enabled = !state.busy, tag = "slot-confirm") {
+            confirmSlot(destination.action, destination.name) },
+        MenuRow("cancel", "Cancel", tag = "slot-cancel") { pop() }), PageStyle.Dialog, body = body)
+}
+
+private fun ConsoleShell.recordPage(destination: Destination.RecordCombo): Page {
+    recordTick // Follows each button pressed.
+    val listener = recorder
+    val held = listener?.captured.orEmpty()
+    val current = if (destination.quickLoad) controls.quickLoad else controls.quickSave
+    return Page("record", if (destination.quickLoad) "Quick load buttons" else "Quick save buttons",
+        listOf(MenuRow("cancel", "Cancel", tag = "record-cancel") { pop() }), PageStyle.Dialog,
+        if (held.isEmpty()) "Now ${ButtonCombo.title(current)}" else "Holding ${ButtonCombo.title(held)}",
+        listener?.problem ?: "Hold the buttons together, then let go. Wait five seconds to keep the ones you have.")
 }

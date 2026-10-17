@@ -89,9 +89,20 @@ window, and from the calling thread when it no longer is.
 Input: for a core with `analog`, `ControllerRouter` sends both sticks to the game through the
 host's two stick channels and the D-pad only as the D-pad. There is no channel for trigger travel.
 
-Snapshots: `Core.snapshots` decides whether the running-game checkpoint, the paused checkpoint, Save
-State and *Start from save state* exist for a console. The engine and the pause page both read it;
-neither compares a console to a constant.
+Snapshots: `Core.snapshots` decides whether the running-game checkpoint, the paused checkpoint, the
+quick save, the list of saves and *Start from save state* exist for a console. The engine and the pause
+page both read it; neither compares a console to a constant.
+
+Saved states (ADR 0028): `storage/StateSlots` keeps a game's quick save at `saves/<id>.state`, as it
+always was, and beside it `saves/<id>.slots/` holds the quick save it last replaced, the listed saves
+(each published by a record written last) and their JPEG thumbnails. `LibretroEngine.saveState` and
+`loadState` are the quick pair and work while running or paused (`liveOperation`); `saveSlot` and
+`loadSlot` need the pause menu. A `snapshots = Paused` core is held at rest only for the capture
+(`atRest`). Thumbnails come from the pause menu's frame or a fresh PixelCopy (`emulation/Thumbnails`,
+`domain/pictureBounds`). `ControllerRouter` fires the pause, quick save and quick load shortcuts from one
+list and latches the fired one until its buttons are up, across the busy lock's mode change;
+`InputMode.Record` hands every button to `ConsoleShell.recordKey` while a combo is recorded
+(`input/ButtonCombo`, `ComboListener`).
 
 ## Console shell (2026-10-10 redesign)
 
@@ -161,7 +172,8 @@ Options: `environment/GameOptions` and `OptionStore` resolve default → console
 LibretroDroid shader and is never sent to a core; PlayStation's BIOS and memory-card variables
 are applied last. An option with no family belongs to every console. `cartridge_start_from_state`
 is the one such option: when it resolves to enabled and no session is being resumed, `prepare`
-reads the game's manual state, loads it before the first frame, and then restores the battery
+reads the game's quick save, or the newest of its states when the shell's `cartridge_start_slot` is
+`latest` (Settings › Gameplay › Save to start from), loads it before the first frame, and then restores the battery
 save and clock again, because a state carries the battery memory of the moment it was made and the
 cartridge must keep what was saved last. A missing state is an ordinary start. An unreadable or
 refused one resets the core, starts from the beginning and reports once through

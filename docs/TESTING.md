@@ -1,5 +1,69 @@
 # Tests and actual results
 
+## Quick saves, the list of states and thumbnails — 2026-10-17 (ADR 0028)
+
+On top of `deac755`. Host: both APKs build; 126 unit tests pass, among them `StateSlotsTest` (6: the
+existing state is the quick save and keeps the one it replaced, newest-first listing and overwrite
+published before removal, interrupted and damaged writes, another core build listed but never read, the
+newest state, a backup adding only what is missing) and `ButtonComboTest` (6: defaults, refused combos,
+stored combos, the listener, black-bar cropping); lint zero errors, the same 25 warnings; 10 asset checks.
+
+RP5 (Android 13, `RP5_V1.0.0.189_20251128_174732_user`), the full set of 64 device tests:
+- 60 of 63 passed in one `All` run.
+- `UxTourTest` failed on an assumption of the new tour step (that the probe game had no older saves on
+  the device). It was corrected and passed.
+- During `ShaderSettingsTest` the launcher cleared recent apps at 12:10:16 (`Force stopping
+  dev.cartridge … from pid` of `com.android.launcher3`, together with Settings and the test runner),
+  which reported "Process crashed"; there was no crash in the app.
+- `ShaderSettingsTest` then failed twice at its last step. Its fixture library is marked with a commit of
+  forty `c`s, and it waited for an installed commit that does not start with `c`. GitHub's newest
+  `glsl-shaders` commit today is `ce9a412…`, so that could never happen (the download itself took 6 s
+  on the device). The test now compares with the fixture's exact value and passed.
+- `UxTourTest`, `BackupDeviceTest` (now 4, with a new test), `ShaderSettingsTest` and
+  `SaveStatesDeviceTest` passed together on the final build.
+
+`SaveStatesDeviceTest` (`-Suite Saves`, about 21 s), on the original Game Boy probe:
+- L3 + Y during play quick saved with a 180-pixel-high thumbnail while the game kept running.
+- L3 + X brought the saved picture back.
+- A combo held down fired once and kept A from the game until it was let go.
+- A second quick save kept the first as *Before the last quick save*.
+- From the pause menu: *Save States*, *New save* (the page stayed open), then Load with its confirmation
+  returned to the game on the saved picture. Overwrite replaced the save under a new name and removed
+  the old file.
+- Delete cancelled kept the save; Delete confirmed removed its state, record and picture. The quick save
+  offered neither.
+- *Stay in menu* kept the pause menu open after Quick Load.
+- Select + R1 was recorded as the new quick save combo and then worked in the game; a one-button combo
+  was refused and five quiet seconds kept L3 + X; *Reset quick buttons* restored L3 + Y.
+- *Start from save state* with *Newest save* started on a list save made after the quick save, and with
+  *Quick save* on the quick save.
+
+`DreamcastCoreTest` now quick saves with the combo during play; the game was still running on the same
+picture afterwards. `GameCubeCoreTest` answers the combo with *Can't save states on GameCube* and keeps
+running. `BackupDeviceTest` carries the list, the previous quick save and their pictures only with
+*Include every save state*, restores them under their own names and times, and refuses a picture
+without its save or a save naming another core build. `UxTourTest`: new captures
+`20b-quick-saved`, `21b-save-states` and `21c-save-actions`, plus the new rows in `21-pause-menu`,
+`12-settings-gameplay` and `13-settings-controls`, all looked at.
+
+`RealGameCheck -e quick N` (new) held the combos on one of the owner's games per console. It set the
+game's own quick save and list aside first and put them back afterwards; the three games that had a
+quick save were byte-identical afterwards, with their original times:
+
+| Console | Quick save | Quick load | State | Thumbnail |
+|---|---|---|---|---|
+| Game Boy Advance | 95 ms | 63 ms | 0.5 MB | 270×180 |
+| PlayStation | 131 ms | 105 ms | 4.3 MB | 240×180 |
+| Super Nintendo | 148 ms | 91 ms | 0.8 MB | 210×180 |
+| Saturn | 161 ms | 180 ms | 6.5 MB | 236×180 |
+| Dreamcast | 368 ms, engine at rest for the capture | 170 ms | 34 MB | 240×180 |
+| GameCube, PlayStation 2 | *Can't save states*, game kept running | — | — | — |
+
+Each game was still Running afterwards; Dreamcast reported no dropped audio frames around the capture.
+Not run: Game Boy, Game Boy Color, NES, Genesis, Master System, Game Gear with an owner's game (their
+cores share the code path the probes and the games above went through); a real sleep during or after a
+quick save; `ConsoleStabilityTest` (it was not in the `All` list before this change either).
+
 ## Shader presets, step 4: settings, picker and backup — 2026-10-16 (ADR 0027)
 
 On top of `7d3134a`. Host: both APKs build; 114 unit tests pass, among them `ShaderChoicesTest` (3: each

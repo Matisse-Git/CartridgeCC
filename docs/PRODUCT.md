@@ -56,7 +56,10 @@ on 2026-10-09**; M1 is in progress, with broader lifecycle/performance hardening
 - D-pad/stick focus, deterministic axis repeat and spring retargeting; touch fallback.
 - Three engineering slots; M0 assigned one user-selected `.gba` per slot for that app session.
 - Short lift, release barrier, internal LibretroDroid/mGBA surface, truthful readiness/errors.
-- App-owned pause menu, resume, single state slot, SaveRAM and return to selected collection item.
+- App-owned pause menu, resume, SaveRAM and return to selected collection item.
+- A quick save and quick load (pause menu rows and gameplay combos, L3 + Y / L3 + X by default) and a
+  list of saves with thumbnails to Load, Overwrite or Delete; the quick save it last replaced is kept
+  (ADR 0028, SAVE_RELIABILITY).
 - Reduced-motion toggle and two menu-shortcut choices saved locally.
 
 The fictional ORBIT FIELD label is engineering artwork, not a claim a playable game is bundled.

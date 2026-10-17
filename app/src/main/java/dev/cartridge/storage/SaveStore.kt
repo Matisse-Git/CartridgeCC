@@ -8,7 +8,7 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.ConcurrentHashMap
 
 /** File replacement leaves the previous save intact if writing the next save fails. */
-class SaveStore(private val directory: File) {
+class SaveStore(internal val directory: File) {
     private val lock = locks.computeIfAbsent(directory.canonicalPath) { Any() }
     private fun file(id: String, kind: String): File {
         require(id.matches(Regex("[a-f0-9]{64}"))) { "Invalid game identifier" }

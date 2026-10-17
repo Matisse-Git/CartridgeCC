@@ -1,5 +1,6 @@
 package dev.cartridge
 
+import androidx.core.content.edit
 import androidx.room.Room
 import dev.cartridge.library.CollectionRepository
 import dev.cartridge.library.LibraryDatabase
@@ -39,7 +40,10 @@ class DebugCollectionActivity : MainActivity() {
     // The tour draws invented apps, so no screenshot shows what the owner has installed. Tests of Android itself leave this unset.
     override fun createAppSource() = testApps ?: super.createAppSource()
     override fun createScrapeJournal() = FileScrapeJournal(File(filesDir, "${intent.getStringExtra("testDatabase")}-scrape"))
-    override fun presentationPreferences() = getSharedPreferences("${intent.getStringExtra("testDatabase")}-presentation", MODE_PRIVATE)
+    /** `stayInMenu` keeps the pause menu open after Quick Save, Quick Load and Load, for tests that go on in it. */
+    override fun presentationPreferences() = getSharedPreferences("${intent.getStringExtra("testDatabase")}-presentation", MODE_PRIVATE).also {
+        if (intent.getBooleanExtra("stayInMenu", false)) it.edit(commit = true) { putBoolean("returnToGame", false) }
+    }
     override fun createPackStore() = dev.cartridge.scraping.ScrapePackStore(File(filesDir, "${intent.getStringExtra("testDatabase")}-packs"))
     override fun createScrapePreferences() = dev.cartridge.scraping.SharedScrapePreferences(this, "${intent.getStringExtra("testDatabase")}-preferences")
     override fun persistDirectoryPermission(uri: Uri) {

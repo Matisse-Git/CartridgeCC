@@ -3,6 +3,8 @@ package dev.cartridge.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +23,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -32,6 +37,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.cartridge.shell.MenuRow
 import dev.cartridge.shell.RowKind
+import dev.cartridge.shell.RowPicture
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Text in the console's own styles. Material's content-colour machinery is not used. */
 @Composable fun Txt(text: String, style: TextStyle, color: Color = Ink.Text, modifier: Modifier = Modifier, lines: Int = Int.MAX_VALUE) =
@@ -100,6 +108,7 @@ class Hint(val glyph: String, val label: String, val tag: String? = null, val ac
         .testTag(row.tag).semantics { selected = focused }.padding(end = 14.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.padding(start = 5.dp).size(3.dp, 18.dp).alpha(mark).clip(CircleShape).background(accent))
+        row.picture?.let { Thumbnail(it, Modifier.alpha(dim).padding(start = 6.dp, top = 6.dp, bottom = 6.dp)) }
         Column(Modifier.weight(1f).alpha(dim).padding(start = 6.dp, top = 9.dp, bottom = 9.dp)) {
             Txt(row.title, Type.Body.copy(fontWeight = if (focused) androidx.compose.ui.text.font.FontWeight.Medium else androidx.compose.ui.text.font.FontWeight.Normal), titleColor, lines = 2)
             if (showNote && row.note != null) Txt(row.note, Type.Label, if (row.warn) Ink.Warning.copy(alpha = .8f) else Ink.Faint, Modifier.padding(top = 2.dp), lines = 3)
@@ -117,6 +126,17 @@ class Hint(val glyph: String, val label: String, val tag: String? = null, val ac
             }
             else -> row.value?.let { Txt(it, Type.Body, Ink.Soft, Modifier.alpha(dim).padding(start = Space.M).widthIn(max = 300.dp), lines = 1) }
         }
+    }
+}
+
+/** A saved state's picture, read off the main thread. Until it is read, or where there is none, the frame stays empty. */
+@Composable private fun Thumbnail(picture: RowPicture, modifier: Modifier = Modifier) {
+    val image by produceState<ImageBitmap?>(null, picture) {
+        value = picture.file?.let { file -> withContext(Dispatchers.IO) { runCatching { BitmapFactory.decodeFile(file.path)?.asImageBitmap() }.getOrNull() } }
+    }
+    Box(modifier.size(96.dp, 54.dp).clip(RoundedCornerShape(6.dp)).background(Ink.Stage).border(1.dp, Ink.Line, RoundedCornerShape(6.dp)).testTag("thumbnail"),
+        contentAlignment = Alignment.Center) {
+        image?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
     }
 }
 

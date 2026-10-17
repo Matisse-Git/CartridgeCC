@@ -127,6 +127,62 @@ class BackupDeviceTest {
             }
         } finally { database.close(); preferences.edit().clear().commit(); directory.deleteRecursively() }
     }
+    private fun jpeg(): ByteArray = ByteArrayOutputStream().use { output ->
+        val bitmap = Bitmap.createBitmap(240, 180, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(200, 80, 40)) }
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, output); bitmap.recycle(); output.toByteArray()
+    }
+    /** ADR 0028: the list of saves, the previous quick save and their pictures go in only when asked, and come back as they were. */
+    @Test fun everySaveStateTravelsOnlyWhenAskedAndEachPictureNeedsItsSave() = runBlocking {
+        val directory = File(context.filesDir, "backup-test-${UUID.randomUUID()}").apply { mkdirs() }
+        val firstDb = Room.inMemoryDatabaseBuilder(context, LibraryDatabase::class.java).build()
+        val secondDb = Room.inMemoryDatabaseBuilder(context, LibraryDatabase::class.java).build()
+        val preferences = context.getSharedPreferences(directory.name, 0)
+        try {
+            val first = RoomCollectionRepository(context, firstDb); first.initialize()
+            first.add(LibraryGame(id, "Original probe", "content://fixture/probe.gb", system = GameSystem.GB))
+            val labels = LabelStore(File(directory, "labels"))
+            val saves = SaveStore(File(directory, "saves")); val slots = StateSlots(File(directory, "saves"))
+            slots.writeQuick(id, byteArrayOf(1), jpeg()); slots.writeQuick(id, byteArrayOf(2), jpeg())
+            val listed = slots.write(id, GameSystem.GB, byteArrayOf(3), jpeg(), now = 777)
+            val session = SessionStore(File(directory, "session"))
+            suspend fun export(all: Boolean) = ByteArrayOutputStream().also {
+                BackupStore(first, labels, saves, session, File(directory, "staging"), includeSlots = all).export(it, BackupPreferences.capture(preferences)) }.toByteArray()
+            assertTrue(unzip(export(false)).keys.none { it.startsWith("slots/") })
+            val bytes = export(true); val entries = unzip(bytes)
+            assertEquals(setOf("slots/$id/previous.state", "slots/$id/$listed.state", "slots/$id/quick.jpg", "slots/$id/previous.jpg", "slots/$id/$listed.jpg"),
+                entries.keys.filter { it.startsWith("slots/") }.toSet())
+
+            val second = RoomCollectionRepository(context, secondDb); second.initialize()
+            val restoredSaves = SaveStore(File(directory, "restored-saves"))
+            val store = BackupStore(second, LabelStore(File(directory, "restored-labels")), restoredSaves, SessionStore(File(directory, "restored-session")), File(directory, "restore-staging"))
+            store.inspect(bytes.inputStream()).use { review -> assertEquals(3, review.saveCount); store.merge(review) }
+            val restored = StateSlots(File(directory, "restored-saves")).list(id, GameSystem.GB)
+            assertEquals(listOf(SlotKind.Quick, SlotKind.Previous, SlotKind.Saved), restored.map { it.kind })
+            assertEquals(listed, restored.last().name); assertEquals(777, restored.last().savedAt)
+            assertTrue(restored.all { it.thumbnail != null })
+            assertArrayEquals(byteArrayOf(2), restoredSaves.read(id, "state"))
+            assertArrayEquals(byteArrayOf(1), StateSlots(File(directory, "restored-saves")).read(id, GameSystem.GB, StateSlots.PREVIOUS))
+
+            // A picture whose save was taken out, and a save that names another core build, are refused before anything is accepted.
+            fun without(path: String) = entries.toMutableMap().apply {
+                remove(path)
+                val root = JSONObject(String(checkNotNull(this["backup.json"])))
+                val blobs = root.getJSONArray("blobs"); val kept = org.json.JSONArray()
+                for (index in 0 until blobs.length()) blobs.getJSONObject(index).takeIf { it.getString("path") != path }?.let(kept::put)
+                this["backup.json"] = root.put("blobs", kept).toString().toByteArray()
+            }
+            val otherCore = entries.toMutableMap().apply {
+                val root = JSONObject(String(checkNotNull(this["backup.json"])))
+                val blobs = root.getJSONArray("blobs")
+                for (index in 0 until blobs.length()) blobs.getJSONObject(index).takeIf { it.optString("kind") == "slot" }?.put("core", "an-older-build")
+                this["backup.json"] = root.toString().toByteArray()
+            }
+            listOf(without("slots/$id/$listed.state"), otherCore).forEach { archive ->
+                try { store.inspect(zip(archive).inputStream()).close(); fail("Invalid archive must fail") } catch (_: Exception) { }
+                assertTrue(File(directory, "restore-staging").listFiles().orEmpty().isEmpty())
+            }
+        } finally { firstDb.close(); secondDb.close(); preferences.edit().clear().commit(); directory.deleteRecursively() }
+    }
     private fun action(tag: String) { ui.onNodeWithTag(tag).performScrollTo().performClick() }
     @Test fun safExportReviewOptInAndCancelledReviewWorkInTheRealConsolePanel() {
         val name = "m1-test-${UUID.randomUUID()}"

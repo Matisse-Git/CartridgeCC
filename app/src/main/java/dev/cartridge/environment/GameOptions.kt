@@ -26,14 +26,18 @@ object GameOptions {
     /** Session keys consumed by the emulator adapter, never forwarded to a core. */
     const val SCREEN_EFFECT = "cartridge_screen_effect"
     const val START_FROM_STATE = "cartridge_start_from_state"
-    val adapterKeys = setOf(SCREEN_EFFECT, START_FROM_STATE)
+    /** Which state a start uses: the quick save ([QUICK]), or the newest of every state ([LATEST]). A setting of every console. */
+    const val START_SLOT = "cartridge_start_slot"
+    const val QUICK = "quick"
+    const val LATEST = "latest"
+    val adapterKeys = setOf(SCREEN_EFFECT, START_FROM_STATE, START_SLOT)
     private val effects = listOf(OptionChoice("standard", "Standard"), OptionChoice("sharp", "Sharp pixels"),
         OptionChoice("lcd", "Handheld LCD"), OptionChoice("crt", "Television"))
     private val onOff = listOf(OptionChoice("disabled", "Off"), OptionChoice("enabled", "On"))
 
     val all = listOf(
         GameOption("startFromState", null, null, "Start from save state",
-            "Starts a game from its last Save State instead of from the beginning. A game without one starts as usual, and in-game saves are kept as they are.",
+            "Starts a game from a saved state instead of from the beginning: its quick save, or its newest state if Save to start from says so. A game without one starts as usual, and in-game saves are kept as they are.",
             onOff, "disabled", live = false, key = START_FROM_STATE),
         GameOption("handheld.effect", Core.Mgba, null, "Screen effect",
             "How the picture is drawn on this screen. Handheld LCD adds the original pixel grid.", effects, "standard", live = true),

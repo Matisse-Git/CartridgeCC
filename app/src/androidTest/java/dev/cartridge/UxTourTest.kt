@@ -284,13 +284,33 @@ class UxTourTest {
                 key(scenario, KeyEvent.KEYCODE_BUTTON_A)
                 await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Running }
                 shot("20-playing")
-                scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_THUMBL)); it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_THUMBR)) }
-                await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Paused }
-                scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_THUMBL)); it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_THUMBR)) }
+                fun pauseChord() {
+                    scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_THUMBL)); it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_THUMBR)) }
+                    await(scenario) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Paused }
+                    scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_THUMBL)); it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_THUMBR)) }
+                }
+                pauseChord()
+                // Quick Save goes straight back to the game, as it does until the owner says otherwise.
                 key(scenario, KeyEvent.KEYCODE_DPAD_DOWN); key(scenario, KeyEvent.KEYCODE_BUTTON_A)
-                await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message == "State saved" }
+                await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message == "Quick saved" && it.engine.status.value.state == SessionState.Running }
+                shot("20b-quick-saved")
+                pauseChord()
+                key(scenario, KeyEvent.KEYCODE_DPAD_UP, 6)
                 shot("21-pause-menu")
-                key(scenario, KeyEvent.KEYCODE_DPAD_DOWN, 2); key(scenario, KeyEvent.KEYCODE_BUTTON_A)
+                key(scenario, KeyEvent.KEYCODE_DPAD_DOWN, 3); key(scenario, KeyEvent.KEYCODE_BUTTON_A)
+                scenario.onActivity { assertEquals(Destination.SaveStates, it.shell.top) }
+                await(scenario) { it.shell.stateList != null }
+                // The probe game keeps the saves of earlier tours on the device: count only the one made here.
+                var before = 0; scenario.onActivity { before = it.shell.stateList!!.second.size }
+                key(scenario, KeyEvent.KEYCODE_BUTTON_A) // New save
+                await(scenario) { !it.coordinator.state.value.busy && it.shell.stateList?.second?.size == before + 1 }
+                shot("21b-save-states")
+                key(scenario, KeyEvent.KEYCODE_BUTTON_A)
+                scenario.onActivity { assertTrue(it.shell.top is Destination.SlotActions) }
+                shot("21c-save-actions")
+                key(scenario, KeyEvent.KEYCODE_BUTTON_B); key(scenario, KeyEvent.KEYCODE_BUTTON_B)
+                scenario.onActivity { assertNull(it.shell.top) }
+                key(scenario, KeyEvent.KEYCODE_DPAD_DOWN); key(scenario, KeyEvent.KEYCODE_BUTTON_A)
                 scenario.onActivity { assertEquals(Destination.Options, it.shell.top) }
                 shot("22-pause-game-options")
                 key(scenario, KeyEvent.KEYCODE_BUTTON_B); key(scenario, KeyEvent.KEYCODE_DPAD_DOWN, 4); key(scenario, KeyEvent.KEYCODE_BUTTON_A)

@@ -10,6 +10,12 @@ object ManualState {
         require(bytes.isNotEmpty() && bytes.size + prefix(system).size <= SessionStore.MAX_STATE)
         return prefix(system) + bytes
     }
+    /** Whether a state that begins with [header] was made by this console's current core build, as far as its bytes can say. */
+    fun compatible(system: GameSystem, header: ByteArray): Boolean {
+        if (!system.core.stateEnvelope) return true
+        val tag = prefix(system)
+        return header.size > tag.size && header.copyOfRange(0, tag.size).contentEquals(tag)
+    }
     fun decode(system: GameSystem, bytes: ByteArray): ByteArray {
         if (!system.core.stateEnvelope) return bytes
         val tag=prefix(system)

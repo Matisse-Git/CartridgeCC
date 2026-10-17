@@ -22,6 +22,7 @@ import dev.cartridge.environment.GameOptions
 import dev.cartridge.shaders.ShaderLibrary
 import dev.cartridge.storage.SaveStore
 import dev.cartridge.storage.SessionStore
+import dev.cartridge.storage.StateSlots
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,6 +55,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     private val mutableFrozenFrame = MutableStateFlow<Bitmap?>(null)
     val frozenFrame = mutableFrozenFrame.asStateFlow()
     private val saves = SaveStore(File(context.filesDir, "saves"))
+    private val slots = StateSlots(File(context.filesDir, "saves"))
     private var owner: SessionOwner? = null
     private var game: GameRequest? = null
     private var eventJob: Job? = null
@@ -95,8 +97,12 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 // A start that continues from the game's own Save State. A missing or unreadable one is no reason
                 // for the game not to start; a resumed session already has its state.
                 var startNotice: String? = null
+                // Which state is the owner's choice: the quick save, or the newest of all. Never an older one in its place.
                 val startState = if (game.resumeState != null || options[GameOptions.START_FROM_STATE] != "enabled") null else try {
-                    withContext(Dispatchers.IO) { saves.read(game.id, "state") }?.let { dev.cartridge.storage.ManualState.decode(game.system, it) }
+                    withContext(Dispatchers.IO) {
+                        if (options[GameOptions.START_SLOT] == GameOptions.LATEST) slots.latest(game.id, game.system)?.let { slots.read(game.id, game.system, it.name) }
+                        else saves.read(game.id, "state")
+                    }?.let { dev.cartridge.storage.ManualState.decode(game.system, it) }
                 } catch (failure: Exception) {
                     if (failure is CancellationException) throw failure
                     startNotice = STATE_NOT_USED
@@ -339,19 +345,69 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
             block()
         }
     }
-    override suspend fun saveState() = pausedOperation {
-        val current = checkNotNull(game)
-        check(current.system.core.snapshots != Snapshots.Never) { "${current.system.title} games cannot save a state" }
-        val bytes = onGl { SaveBridge.captureState(corePath) }
-        withContext(NonCancellable + Dispatchers.IO) { saves.write(current.id, "state", dev.cartridge.storage.ManualState.encode(current.system, bytes)) }
-        checkpointWithWarning()
+    /** The quick save and quick load work during play as well as from the pause menu; the list works from the menu. */
+    private suspend fun <T> liveOperation(block: suspend () -> T): T = withContext(Dispatchers.Main.immediate) {
+        mutex.withLock {
+            check(machine.state == SessionState.Running || machine.state == SessionState.Paused) { "No game is running" }
+            val current = checkNotNull(game)
+            check(current.system.core.snapshots != Snapshots.Never) { "Can't save states on ${current.system.title}" }
+            block()
+        }
     }
-    override suspend fun loadState() = pausedOperation {
+    /**
+     * A core whose state is only consistent while it is at rest (`snapshots = Paused`) stops its frames for the moment
+     * a state is made or loaded during play, and goes on afterwards. Nothing else about the session changes.
+     */
+    private suspend fun <T> atRest(block: suspend () -> T): T {
+        val rest = machine.state == SessionState.Running && game?.system?.core?.snapshots == Snapshots.Paused
+        if (rest) owner!!.registry.currentState = Lifecycle.State.STARTED
+        try { return block() }
+        finally { if (rest && machine.state == SessionState.Running) owner?.registry?.currentState = Lifecycle.State.RESUMED }
+    }
+    /**
+     * The picture a state is listed with: the screen as the player saw it, copied before the state is made. Paused, that
+     * is the frame the pause menu already holds. A picture that cannot be had is no reason not to save.
+     */
+    private suspend fun thumbnail(): ByteArray? {
+        val paused = machine.state == SessionState.Paused
+        val source = (if (paused) mutableFrozenFrame.value else capturePresentedFrame()) ?: return null
+        return try { withContext(Dispatchers.Default) { runCatching { Thumbnails.encode(source) }.getOrNull() } }
+        finally { if (!paused) source.recycle() }
+    }
+    private suspend fun captureEncoded(): ByteArray {
         val current = checkNotNull(game)
-        val bytes = withContext(Dispatchers.IO) { saves.read(current.id, "state") }
-            ?: error("There is no saved state for this game")
-        val native = dev.cartridge.storage.ManualState.decode(current.system, bytes)
-        check(onGl { unserializeState(native, false) }) { "The core rejected this saved state" }
+        return dev.cartridge.storage.ManualState.encode(current.system, atRest { onGl { SaveBridge.captureState(corePath) } })
+    }
+    private suspend fun apply(bytes: ByteArray) {
+        val native = dev.cartridge.storage.ManualState.decode(checkNotNull(game).system, bytes)
+        check(atRest { onGl { unserializeState(native, false) } }) { "The core rejected this saved state" }
+    }
+    override suspend fun saveState() = liveOperation {
+        val current = checkNotNull(game)
+        val picture = thumbnail()
+        val bytes = captureEncoded()
+        withContext(NonCancellable + Dispatchers.IO) { slots.writeQuick(current.id, bytes, picture) }
+        checkpointWithWarning(playing = machine.state == SessionState.Running)
+    }
+    override suspend fun loadState() = liveOperation {
+        val current = checkNotNull(game)
+        val bytes = withContext(Dispatchers.IO) { saves.read(current.id, "state") } ?: error("There is no quick save for this game yet")
+        apply(bytes)
+        checkpointWithWarning(playing = machine.state == SessionState.Running)
+    }
+    override suspend fun saveSlot(replacing: String?): String = pausedOperation {
+        val current = checkNotNull(game)
+        check(current.system.core.snapshots != Snapshots.Never) { "Can't save states on ${current.system.title}" }
+        val picture = thumbnail()
+        val bytes = captureEncoded()
+        val name = withContext(NonCancellable + Dispatchers.IO) { slots.write(current.id, current.system, bytes, picture, replacing = replacing) }
+        checkpointWithWarning()
+        name
+    }
+    override suspend fun loadSlot(name: String) = pausedOperation {
+        val current = checkNotNull(game)
+        val bytes = withContext(Dispatchers.IO) { slots.read(current.id, current.system, name) }
+        apply(bytes)
         checkpointWithWarning()
     }
     override suspend fun persistSaveRam() = pausedOperation {

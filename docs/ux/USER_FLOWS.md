@@ -82,13 +82,19 @@ and every suite that starts a game with the library's own touch target.
 | Step | Player | Sees |
 |---|---|---|
 | 1 | L3 + R3 | The game frozen and dimmed; *Paused*, title, console; focus on **Resume** |
-| 2 | ▼ A | "State saved"; Load State now reads *Saved just now* |
-| 3 | B | The game, running |
+| 2 | ▼ A | **Quick Save**: the game again, running, and "Quick saved" for a moment |
+| 3 | L3 + R3, ▼ ▼ ▼ A | **Save States**: *New save*, the quick save, the one it replaced, then your saves, each with its picture |
+| 4 | A on a save, A on Load, A | "Load this save?" answered: the game, running from that moment |
 
-Return to Library is the last row, set apart. Load State is unavailable until a state exists.
-Saving writes through the same serialized path as before; the battery save is checkpointed too.
+During play **L3 + Y** quick saves and **L3 + X** quick loads, with a short notice and no pause.
+Return to Library is the last row, set apart. Quick Load is unavailable until a quick save exists.
+Quick Save, Quick Load and Load return to the game unless Settings › Controls › *After Quick Save,
+Quick Load or Load* says *Stay in menu*. New save and Overwrite keep the page open. The quick save and
+the one it replaced offer Load only; a save of yours also offers Overwrite and Delete, and each asks
+once. Saving writes through the same serialized path as before; the battery save is checkpointed too.
 
-A GameCube or PlayStation 2 game's pause menu has no Save State or Load State (one GameCube state
+A GameCube or PlayStation 2 game's pause menu has no Quick Save, Quick Load or Save States, and the
+combos say *Can't save states on …* (one GameCube state
 is 87 MiB, and the PlayStation 2 engine names 68 MiB for one; ADR 0023, 0026): Resume, Game Options
 and Return to Library. Its own saves go to its memory card as on the console.
 

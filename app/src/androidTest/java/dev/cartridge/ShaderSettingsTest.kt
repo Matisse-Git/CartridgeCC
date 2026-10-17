@@ -193,7 +193,7 @@ class ShaderSettingsTest {
                 // test's own folder, and the page says what is installed.
                 ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-shaders").performClick()
                 row("shaders-update")
-                await(scenario, 120_000) { it.shell.shaderUpdate == null && it.shell.shaderVersion?.commit?.startsWith("c") == false }
+                await(scenario, 120_000) { it.shell.shaderUpdate == null && it.shell.shaderVersion?.commit.let { commit -> commit != null && commit != "c".repeat(40) } }
                 scenario.onActivity {
                     val version = it.shell.shaderVersion!!
                     android.util.Log.i("CartridgeShaders", "Update shaders installed ${version.commit} with ${version.presets} presets")

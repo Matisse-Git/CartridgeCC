@@ -14,7 +14,12 @@ library itself is never in a backup; Update shaders downloads it again.
 
 Console settings → Export backup writes a ZIP through Android's document picker. Restore backup reads and validates it into generated private staging, shows game/image/save counts, and offers Merge missing data, optional settings, or Cancel. Export/restore require the idle collection. Keep backups private; archives are not encrypted.
 
-`backup.json` declares `project-cartridge.backup`, version 1, logical Room game records, canonical order/removal exclusions, selected slot/query, whitelisted settings and checksummed blobs. Images are `images/<SHA-256>.image`, battery/RTC/manual states are `saves/<ROM-SHA-256>.<kind>`, and manual state blobs carry the integration revision, and an optional compatible automatic checkpoint is `session/state.bin`. ROM bytes, BIOS, Android roles/grants, signing material, credentials, caches, folder indexes, pending scrape reviews/packs and enrichment undo are excluded. Accepted image originals and provenance are preserved. Source content URIs are hints; reauthorize folders or Locate same ROM on another device.
+`backup.json` declares `project-cartridge.backup`, version 1, logical Room game records, canonical order/removal exclusions, selected slot/query, whitelisted settings and checksummed blobs. Images are `images/<SHA-256>.image`, battery/RTC/manual states are `saves/<ROM-SHA-256>.<kind>`, and manual state blobs carry the integration revision, and an optional compatible automatic checkpoint is `session/state.bin`. With Settings › Library ›
+*Include every save state* on (ADR 0028), a game's listed saves and the quick save it last replaced are
+`slots/<ROM-SHA-256>/<uuid|previous>.state` (kind `slot`, with `slot`, `savedAt` and the console's core
+revision), and their thumbnails `slots/<ROM-SHA-256>/<quick|previous|uuid>.jpg` (kind `slot-image`, at
+most 512 KiB, a JPEG, and only beside a state of the same game and name in the archive). A merge adds a
+listed save or picture only where none of that name is kept. ROM bytes, BIOS, Android roles/grants, signing material, credentials, caches, folder indexes, pending scrape reviews/packs and enrichment undo are excluded. Accepted image originals and provenance are preserved. Source content URIs are hints; reauthorize folders or Locate same ROM on another device.
 
 Limits: 10,000 records; 60,001 entries; 32 MiB manifest; 16 MiB maximum individual state; 12 MiB image; 128 KiB battery; 4 KiB RTC; 1 GiB compressed/expanded totals. Unsafe, duplicate and undeclared file paths, unsupported versions/settings/console identities, invalid images and mismatched sizes/hashes are rejected. ZIP names never become filesystem extraction paths.
 

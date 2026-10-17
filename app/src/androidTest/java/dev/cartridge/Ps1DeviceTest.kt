@@ -120,7 +120,7 @@ class Ps1DeviceTest {
             File(fixtures,"probe.$ext").writeBytes(bytes)
         }
         try {
-            ActivityScenario.launch<DebugCollectionActivity>(Intent(context,DebugCollectionActivity::class.java).putExtra("testDatabase",name)).use { scenario ->
+            ActivityScenario.launch<DebugCollectionActivity>(Intent(context,DebugCollectionActivity::class.java).putExtra("testDatabase",name).putExtra("stayInMenu",true)).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 for(ext in listOf("exe","iso","chd")) { choose("probe.$ext");await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.system==GameSystem.PS1 };runGame(scenario) }
                 scenario.recreate();await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
@@ -133,7 +133,7 @@ class Ps1DeviceTest {
         for(ext in listOf("cue","bin")) File(context.filesDir,"cartridge-probe.$ext").copyTo(File(tree,"probe.$ext"),true)
         val sbi=byteArrayOf(83,66,73,0,0,2,0x10,1)+ByteArray(10);File(tree,"probe.sbi").writeBytes(sbi)
         try {
-            ActivityScenario.launch<DebugCollectionActivity>(Intent(context,DebugCollectionActivity::class.java).putExtra("testDatabase",name)).use { scenario ->
+            ActivityScenario.launch<DebugCollectionActivity>(Intent(context,DebugCollectionActivity::class.java).putExtra("testDatabase",name).putExtra("stayInMenu",true)).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 Intents.init()
                 try {

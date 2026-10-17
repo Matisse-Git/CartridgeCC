@@ -27,6 +27,8 @@ import dev.cartridge.environment.ConsoleSettings
 import dev.cartridge.environment.GameOption
 import dev.cartridge.environment.GameOptions
 import dev.cartridge.environment.OptionStore
+import dev.cartridge.input.ButtonCombo
+import dev.cartridge.input.ComboListener
 import dev.cartridge.input.InputMode
 import dev.cartridge.library.*
 import dev.cartridge.scraping.ScrapeCoordinator
@@ -123,6 +125,17 @@ class ConsoleShell(
     /** What the library stage drew in its last full second; written by the renderer, shown only when asked for. */
     var frameRate by mutableIntStateOf(0)
     var controls by mutableStateOf(ConsolePreferences(preferences).read()); private set
+    /** "Start from save state" uses the newest of a game's states rather than its quick save. Every console. */
+    var startLatest by mutableStateOf(preferences.getBoolean("startFromLatest", false)); private set
+    /** Backups carry every state, the previous quick save and the thumbnails, not only the quick save. */
+    var backupAllStates by mutableStateOf(preferences.getBoolean("backupAllStates", false)); private set
+    /** The paused game's states, keyed by its id so a stale list is never shown for another game. */
+    var stateList by mutableStateOf<Pair<String, List<StateSlot>>?>(null); private set
+    private val slots get() = StateSlots(File(context.filesDir, "saves"))
+    /** The combo being recorded and what it has heard so far; [recordTick] makes its dialog follow each button. */
+    var recorder by mutableStateOf<ComboListener?>(null); private set
+    var recordTick by mutableIntStateOf(0); private set
+    private var recordJob: Job? = null
     val options = OptionStore(preferences)
     val shaderChoices = ShaderChoices(preferences)
     val shaderRoot get() = File(shaderBase, "library")
@@ -203,6 +216,11 @@ class ConsoleShell(
             is Destination.Notice -> { readerLine = 0; noticeText = ""; scope.launch {
                 noticeText = withContext(Dispatchers.IO) { context.assets.open("licenses/${destination.name}").bufferedReader().use { it.readText() } } } }
             is Destination.TextEntry -> { text = destination.spec.initial; shift = destination.spec.titleCase && text.isEmpty(); key = KEY_COLUMNS }
+            Destination.SaveStates -> playingId?.let(::loadSlots)
+            is Destination.RecordCombo -> {
+                recorder = ComboListener(if (destination.quickLoad) controls.quickSave else controls.quickLoad)
+                listenFor(destination.quickLoad)
+            }
             Destination.Apps -> {
                 apps.open()
                 if (appsOpened < LEARNED_AFTER) { appsOpened++; preferences.edit { putInt("appsOpened", appsOpened) } }
@@ -217,6 +235,7 @@ class ConsoleShell(
             Destination.LaunchFailure -> coordinator.dismissLaunchFailure()
             Destination.Import -> finishImport()
             Destination.Apps -> { apps.search(""); rememberApp() }
+            is Destination.RecordCombo -> { recordJob?.cancel(); recordJob = null; recorder = null }
             else -> Unit
         }
         host.inputChanged()
@@ -241,6 +260,7 @@ class ConsoleShell(
     fun enterRows() { pane = 1 }
 
     fun inputMode(): InputMode = when {
+        top is Destination.RecordCombo -> InputMode.Record
         scraper.state.value.visible || top != null -> InputMode.Menu
         !state.loaded || state.busy -> InputMode.Locked
         state.screen == CollectionScreen.LabelPreview -> InputMode.Menu
@@ -261,7 +281,7 @@ class ConsoleShell(
         if (next != scene) {
             if (top != Destination.LaunchFailure) home()
             scene = next
-            if (next == Scene.Game) { playingId = state.selectedGame?.id; playingId?.let(::loadFacts) }
+            if (next == Scene.Game) { playingId = state.selectedGame?.id; playingId?.let { loadFacts(it); loadSlots(it) } }
         }
         if (lastScreen == CollectionScreen.LabelPreview && state.screen == CollectionScreen.Library)
             scraper.previewFinished(applied = state.lastLabelAppliedTo == scraper.state.value.current?.game?.id)
@@ -271,7 +291,7 @@ class ConsoleShell(
         }
         lastSession = status.state
         // A finished pause-menu operation may have written a state; show its time without asking.
-        if (lastBusy && !state.busy && scene == Scene.Game) playingId?.let(::loadFacts)
+        if (lastBusy && !state.busy && scene == Scene.Game) playingId?.let { loadFacts(it); loadSlots(it) }
         lastBusy = state.busy
         if (state.launchFailure != null && top != Destination.LaunchFailure && state.screen == CollectionScreen.Library) replace(Destination.LaunchFailure)
         if (reopenApps && scene == Scene.Library && state.loaded) { reopenApps = false; if (top == null) push(Destination.Apps) }
@@ -461,6 +481,8 @@ class ConsoleShell(
     fun changeTransition(value: LaunchTransition) { transition = value; preferences.edit { putString("launchTransition", value.name) } }
     fun changeShowFrameRate(value: Boolean) { showFrameRate = value; preferences.edit { putBoolean("showFrameRate", value) } }
     fun changeControls(next: ConsoleSettings) { controls = next; ConsolePreferences(preferences).write(next); host.inputChanged() }
+    fun changeStartLatest(value: Boolean) { startLatest = value; preferences.edit { putBoolean("startFromLatest", value) } }
+    fun changeBackupAllStates(value: Boolean) { backupAllStates = value; preferences.edit { putBoolean("backupAllStates", value) } }
     fun setHome(value: Boolean) { host.setHome(value); homeEnabled = host.homeEnabled }
     val hintsVisible get() = hints == HintMode.Always || hints == HintMode.Auto && launches < LEARNED_AFTER
 
@@ -474,7 +496,8 @@ class ConsoleShell(
         options.clearGame(game.id); optionsRevision++
         if (status.state == SessionState.Paused) coordinator.configureGame(GameOptions.session(options.resolve(game.system, game.id), liveOnly = true)) {}
     }
-    fun sessionOptions(system: GameSystem, gameId: String) = GameOptions.session(options.resolve(system, gameId))
+    fun sessionOptions(system: GameSystem, gameId: String) = GameOptions.session(options.resolve(system, gameId)) +
+        (GameOptions.START_SLOT to if (startLatest) GameOptions.LATEST else GameOptions.QUICK)
 
     // ---- Shaders (ADR 0027) -------------------------------------------------------------------------------
 
@@ -569,6 +592,7 @@ class ConsoleShell(
     /** Presentation, controls and gameplay options return to their defaults. The library, folders, saves and HOME role are untouched. */
     fun resetSettings() {
         changeControls(ConsoleSettings()); options.resetConsoles(); shaderChoices.resetConsoles(); optionsRevision++
+        changeStartLatest(false)
         setReducedMotion(false); setPauseShortcut(false); changeSound(false); changeAutoScan(true); changeHints(HintMode.Auto)
         changeShowStatus(true); changeShowPercent(true); changeClock(ClockStyle.System); changeAccent(Accent.Sand)
         changeTransition(LaunchTransition.Fade); changeShowFrameRate(false)
@@ -578,6 +602,7 @@ class ConsoleShell(
     /** After a backup restored stored settings, read them back into the running console. */
     private fun reloadPreferences() {
         controls = ConsolePreferences(preferences).read(); sound = preferences.getBoolean("mediaSound", false); autoScan = preferences.getBoolean("autoScan", true)
+        startLatest = preferences.getBoolean("startFromLatest", false); backupAllStates = preferences.getBoolean("backupAllStates", false)
         optionsRevision++; host.inputChanged()
         scope.launch {
             coordinator.state.first { !it.busy }
@@ -768,7 +793,7 @@ class ConsoleShell(
     // ---- Backup -----------------------------------------------------------------------------------------
 
     private fun backupStore() = BackupStore(checkNotNull(repository as? BackupRepository), labels, SaveStore(File(context.filesDir, "saves")),
-        sessions, File(context.cacheDir, "backup-staging"))
+        sessions, File(context.cacheDir, "backup-staging"), includeSlots = backupAllStates)
     fun exportBackup() { if (!state.busy) host.createBackup() }
     fun restoreBackup() { if (!state.busy) host.pickBackup() }
     fun backupCreated(uri: Uri) {
@@ -812,7 +837,54 @@ class ConsoleShell(
         }
     }
     private fun closeReview() { backupReview?.close(); backupReview = null }
-    fun close() { closeReview(); apps.close(); shaderJob?.cancel() }
+    fun close() { closeReview(); apps.close(); shaderJob?.cancel(); recordJob?.cancel() }
+
+    // ---- Saved states (docs/SAVE_RELIABILITY) ---------------------------------------------------------------
+
+    fun loadSlots(gameId: String) {
+        val system = state.allGames.firstOrNull { it.id == gameId }?.system ?: state.selectedGame?.takeIf { it.id == gameId }?.system ?: return
+        scope.launch { runCatching { withContext(Dispatchers.IO) { slots.list(gameId, system) } }.onSuccess { stateList = gameId to it } }
+    }
+    /** The confirmed action, run once the dialog and the sheet it came from have closed. */
+    fun confirmSlot(action: SlotAction, name: String) {
+        val game = state.selectedGame ?: return
+        while (top != null && top != Destination.SaveStates) pop()
+        when (action) {
+            SlotAction.Load -> coordinator.loadSlot(name, resume = controls.returnToGame)
+            SlotAction.Overwrite -> coordinator.saveSlot(name) { saved -> focus["states"] = "slot:$saved" }
+            SlotAction.Delete -> coordinator.pausedFiles("Save deleted") { withContext(Dispatchers.IO) { slots.delete(game.id, name) } }
+        }
+    }
+    fun newSlot() = coordinator.saveSlot { saved -> focus["states"] = "slot:$saved" }
+    fun recordCombo(quickLoad: Boolean) = push(Destination.RecordCombo(quickLoad))
+    /** Every controller button while a combo is recorded. Letting go of the first one finishes it. */
+    fun recordKey(code: Int, down: Boolean) {
+        val listener = recorder ?: return
+        val destination = top as? Destination.RecordCombo ?: return
+        val combo = listener.key(code, down)
+        recordTick++
+        listenFor(destination.quickLoad)
+        if (combo != null) {
+            pop()
+            changeControls(if (destination.quickLoad) controls.copy(quickLoad = combo) else controls.copy(quickSave = combo))
+            coordinator.notify("${if (destination.quickLoad) "Quick load" else "Quick save"}: ${ButtonCombo.title(combo)}")
+        }
+    }
+    /** Five seconds with no button pressed keep the combo that was there. */
+    private fun listenFor(quickLoad: Boolean) {
+        recordJob?.cancel()
+        recordJob = scope.launch {
+            delay(RECORD_TIMEOUT_MS)
+            if (top is Destination.RecordCombo) {
+                pop()
+                coordinator.notify("Kept ${ButtonCombo.title(if (quickLoad) controls.quickLoad else controls.quickSave)}")
+            }
+        }
+    }
+    fun resetQuickButtons() {
+        changeControls(controls.copy(quickSave = ButtonCombo.QUICK_SAVE, quickLoad = ButtonCombo.QUICK_LOAD))
+        coordinator.notify("Quick save ${ButtonCombo.title(ButtonCombo.QUICK_SAVE)} · quick load ${ButtonCombo.title(ButtonCombo.QUICK_LOAD)}")
+    }
 
     companion object {
         const val KEY_COLUMNS = 10
@@ -820,6 +892,7 @@ class ConsoleShell(
         val KEY_ROWS = listOf("1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm,.-", "")
         /** Hints retire on their own once this many games have been started. */
         const val LEARNED_AFTER = 5
+        const val RECORD_TIMEOUT_MS = 5_000L
 
         /** A folder that can no longer be read, as opposed to one that merely held a file Cartridge skipped. */
         fun unreachable(error: String?): String? = plain(error).takeIf { error != null && it != error && ("permission" in it || "can't be reached" in it) }
