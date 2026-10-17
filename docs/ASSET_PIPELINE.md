@@ -17,9 +17,24 @@ node tools/validate_assets.cjs
 | `jewel_case.glb` | plastic case (PlayStation, all markets) | 142 × 125 × 10.4 | 138 + 10.4 + 120 × 120 | 1024 × 458 |
 | `gba_box.glb` | cardboard box (GBA, US and Europe) | 125 × 125 × 22 | 125 + 22 + 125 × 125 | 1024 × 471 |
 | `gba_box_jp.glb` | cardboard box (GBA, Japan) | 88 × 136 × 22 | 88 + 22 + 88 × 136 | 1024 × 703 |
+| `gb_box_jp.glb` | cardboard box (Game Boy and Color, Japan) | 90 × 120 × 22 | 90 + 22 + 90 × 120 | 1024 × 608 |
+| `game_gear_box.glb` | cardboard box (Game Gear) | 130 × 165 × 30 | 130 + 30 + 130 × 165 | 1024 × 583 |
+| `nes_box.glb` | cardboard box (NES, US and Europe) | 127 × 184 × 32 | 127 + 32 + 127 × 184 | 1024 × 659 |
+| `famicom_box.glb` | cardboard box (NES, Japan) | 133 × 95 × 25 | 133 + 25 + 133 × 95 | 1024 × 334 |
+| `snes_box.glb` | cardboard box (Super Nintendo, US and Europe) | 184 × 127 × 38 | 184 + 38 + 184 × 127 | 1024 × 320 |
+| `super_famicom_box.glb` | cardboard box (Super Nintendo, Japan) | 190 × 107 × 31 | 190 + 31 + 190 × 107 | 1024 × 267 |
+| `clamshell_case.glb` | plastic clamshell (Genesis, Master System) | 135 × 190 × 25 | 132 + 25 + 132 × 187 | 1024 × 663 |
+| `saturn_case.glb` | plastic case (Saturn, US and Europe) | 145 × 215 × 22 | 142 + 22 + 142 × 212 | 1024 × 709 |
+| `dvd_case.glb` | DVD keep case (PlayStation 2; Dreamcast, Europe) | 135 × 190 × 14 | 130 + 14 + 130 × 183 | 1024 × 684 |
+| `gamecube_case.glb` | keep case (GameCube) | 135 × 186 × 14 | 130 + 14 + 130 × 180 | 1024 × 673 |
 
-The sizes come from box-protector listings and the CD jewel-case standard. They are approximate: no real
-box was measured. Each case has exactly one primitive with `Replaceable fictional label`, whose UVs unfold
+The seven cartridge and disc GLBs below are no longer packaged on this branch: every console is shown in
+its case, and `CollectionAssets` loads only `Media`'s models. `tools/import_models.py` and its notes stay
+as the record of how they were made. Running it would write those files again, unused.
+
+The sizes come from box-protector and collector listings and the CD jewel-case standard. They are
+approximate: no real box was measured. A case is scaled to about 38 mm tall on the stage (56 mm at most
+across), so every console's case stands about as tall as the next and the grid's rows stand apart. Each case has exactly one primitive with `Replaceable fictional label`, whose UVs unfold
 the cover left to right as back, spine (the left side), front, with (0, 0) at the top left. That is the
 layout of ScreenScraper's `box-texture`. On a cardboard box the art primitive is the whole box: the right
 side, top and bottom repeat the front's adjacent edge, as a printed flap does. On a plastic case the cover
@@ -34,7 +49,7 @@ one at the front's bottom right. `CaseTemplateTest` in `tools/test_assets.py` ch
 single cover primitive, and that each panel's u range and direction and v direction match `Media.cover`.
 It also checks the placeholder's aspect. The Khronos validator reports 0 errors and 0 warnings.
 
-## Current media: imported models (2026-10-10, ADR 0019; four more on 2026-10-12, ADR 0025)
+## Before the cases: imported models (2026-10-10, ADR 0019; four more on 2026-10-12, ADR 0025)
 
 The seven objects a game is shown as are converted from models the owner downloaded.
 The first three replaced the generated cartridge, tall cartridge and disc. The receiving slot and

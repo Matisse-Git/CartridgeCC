@@ -1,5 +1,28 @@
 # Tests and actual results
 
+## Cases, step 3: every console's case — 2026-10-17 (ADR 0029)
+
+`tools/generate_cases.py` adds ten cases: the Japanese Game Boy box, the Game Gear, NES, Famicom, SNES and
+Super Famicom boxes, the clamshell, the Saturn case, the DVD case and the GameCube case. It reproduced the
+first three byte for byte. Each new case was rendered in Blender with the test cover, and the back, spine
+and front markers sat where `Media.cover` puts them. The seven cartridge and disc GLBs left the app.
+`tools/test_assets.py` checks all thirteen cases (4 tests). The Khronos validator finds every packaged GLB
+in the folder and reports 0 errors and 0 warnings on each.
+
+The pacing tests found the screen's layer by the main app's package name; they now use the running app's.
+
+On the RP5 (Android 13, serial bb28de36), 2026-10-17: UxTourTest, BrowseStabilityTest, CollectionLayoutDeviceTest,
+RenderRefinementTest, AdditionalSystemsTest, ConsoleCoresTest, SaturnCoreTest, LaunchExperienceTest, and after the
+layer fix LibraryPacingTest and RenderPacingTest. All three layouts held 60 fps with a p95 of 16.7–16.8 ms and no
+late labels; held-D-pad browsing in Vertical showed one gap. The tour's screenshots replace `docs/ux/screenshots`.
+
+`LibraryPacingTest -e games 3000`: 60 fps in every layout, p95 16.74–16.78 ms, no gaps, no late labels. A broader
+regression then ran on the RP5 and passed: the provider, scrape, review, resume, pack, library, collection, PS1, backup,
+recovery, environment, options, save-state, shader, surface and battery tests. The 37 tests included `CollectionUiTest`, which no
+longer presses Rotate: a case's cover preview has no Rotate.
+
+Not run: any of the owner's games, and live ScreenScraper art.
+
 ## Cases, step 2: the PlayStation jewel case and the GBA boxes — 2026-10-17 (ADR 0029)
 
 `tools/generate_cases.py` writes `jewel_case.glb`, `gba_box.glb` and `gba_box_jp.glb`. Each was rendered in

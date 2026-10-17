@@ -346,7 +346,7 @@ class CollectionCoordinator(
     fun labelsReady(generation: Int, keys: List<String?>, firstIndex: Int = 0) {
         val current = state.value
         if (generation == current.viewportGeneration && current.labelDraft != null && !current.labelPreviewReady &&
-            keys.getOrNull(current.selection.index - firstIndex) == current.labelDraft.label.textureKey(current.selectedGame?.shownAs ?: dev.cartridge.domain.Media.Cartridge)) {
+            keys.getOrNull(current.selection.index - firstIndex) == current.labelDraft.label.textureKey(current.selectedGame?.shownAs ?: dev.cartridge.domain.Media.entries.first())) {
             mutableState.value = current.copy(labelPreviewReady = true)
         }
     }

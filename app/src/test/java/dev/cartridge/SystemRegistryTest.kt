@@ -1,5 +1,6 @@
 package dev.cartridge
 
+import dev.cartridge.domain.Market
 import dev.cartridge.domain.releasedInNorthAmerica
 import dev.cartridge.domain.Claim
 import dev.cartridge.domain.ConsoleCatalog
@@ -27,8 +28,7 @@ class SystemRegistryTest {
     @Test fun storedIdentitiesAndTheirOrderNeverChangeAndEveryDefinitionIsComplete() {
         // Room, backups, journals and the stored shelf hold these names; a library made before this registry reads back unchanged.
         assertEquals(listOf("GBA", "GB", "GBC", "PS1"), GameSystem.entries.take(4).map { it.name })
-        assertEquals(listOf(Media.GbaBox, Media.TallCartridge, Media.TallCartridge, Media.JewelCase), GameSystem.entries.take(4).map { it.media })
-        assertEquals(listOf(471, 448, 448, 458), GameSystem.entries.take(4).map { it.media.labelHeight })
+        assertEquals(listOf(Media.HandheldBox, Media.HandheldBox, Media.HandheldBox, Media.JewelCase), GameSystem.entries.take(4).map { it.media })
         assertEquals("mgba-0.10.5-cartridge-memory-2", GameSystem.GBC.coreRevision); assertEquals("pcsx-c8816799-cartridge-1", GameSystem.PS1.coreRevision)
         assertEquals("libmgba_libretro.so", GameSystem.GB.coreFile); assertEquals("libpcsx_rearmed_libretro.so", GameSystem.PS1.coreFile)
         for (system in GameSystem.entries) {
@@ -44,13 +44,12 @@ class SystemRegistryTest {
         assertEquals(Core.entries.size, Core.entries.map { it.file }.toSet().size)
         assertEquals(Core.entries.size, Core.entries.map { it.revision }.toSet().size)
         assertTrue(Core.entries.all { core -> GameSystem.entries.any { it.core == core } })
-        // A console is shown as the owner's model of its cartridge where there is one, and as a disc until then; that
-        // says nothing about how its games are stored.
-        val shapes = mapOf(GameSystem.SNES to Media.SnesCartridge, GameSystem.NES to Media.NesCartridge, GameSystem.GENESIS to Media.GenesisCartridge)
-        for (system in GameSystem.entries.drop(4)) assertEquals(system.name, shapes[system] ?: Media.Disc, system.media)
+        // A console is shown in its retail case (ADR 0029); that says nothing about how its games are stored.
+        assertEquals(listOf(Media.SnesBox, Media.NesBox, Media.Clamshell, Media.Clamshell, Media.GameGearBox, Media.SaturnCase, Media.JewelCase,
+            Media.DvdCase, Media.GameCubeCase), GameSystem.entries.drop(4).map { it.media })
         assertFalse(GameSystem.SNES.bundle); assertTrue(GameSystem.PS1.bundle)
         // The pool, the packaged files and the on-screen sizes follow this order and these names.
-        assertEquals(listOf("Cartridge", "TallCartridge", "Disc", "NesCartridge", "SnesCartridge", "SnesUsCartridge", "GenesisCartridge", "JewelCase", "GbaBox", "GbaBoxJapan"), Media.entries.map { it.name })
+        assertTrue(Media.entries.all { "_box" in it.model || it.model.endsWith("_case") })
         assertEquals(Media.entries.size, Media.entries.map { it.model }.toSet().size)
         assertTrue(Media.entries.all { it.labelHeight in 128..1024 && it.scale > 0f && it.model.matches(Regex("[a-z0-9_]+")) })
     }
@@ -84,34 +83,35 @@ class SystemRegistryTest {
         assertEquals(FoundFile.Ignored, ConsoleCatalog.classify("orbit.isz", ConsoleCatalog.folderHint("PS2")))
     }
 
-    @Test fun aCartridgeTakesItsMarketsShapeFromTheGamesNameAndNothingElseDoes() {
-        // Only the Super Nintendo's cartridges differed, and only the name of a dump says where it was sold.
-        assertEquals(listOf(GameSystem.SNES), GameSystem.entries.filter { it.northAmerican != null })
+    @Test fun aGamesMarketComesFromItsNameAndNothingElse() {
         for (title in listOf("Orbit Field (USA)", "Orbit Field (USA, Europe)", "Orbit Field (Japan, USA) (Rev 1)", "Orbit Field (U) [!]", "Orbit Field [U]",
             "Orbit Field (JU)", "Orbit Field (UE)", "Orbit Field (US)", "Orbit Field (NTSC-U)", "Orbit Field (North America)")) {
-            assertTrue(title, releasedInNorthAmerica(title)); assertEquals(title, Media.SnesUsCartridge, GameSystem.SNES.media(title))
+            assertTrue(title, releasedInNorthAmerica(title)); assertEquals(title, Market.US, Market.of(title))
         }
-        for (title in listOf("Orbit Field", "Orbit Field (Japan)", "Orbit Field (Europe) (En,Fr,De)", "Orbit Field (E)", "Orbit Field (J)", "Orbit Field (World)",
-            "Orbit Field (Unl)", "USA Orbit Field", "Us and Them", "Orbit Field (Australia)", "Orbit Field (UK)", "U")) {
-            assertFalse(title, releasedInNorthAmerica(title)); assertEquals(title, Media.SnesCartridge, GameSystem.SNES.media(title))
-        }
-        // A name moves no other console's object, and never a game to another console or core.
-        for (system in GameSystem.entries.filter { it != GameSystem.SNES }) assertEquals(system.name, system.media, system.media("Orbit Field (USA)"))
-        val game = LibraryGame("a".repeat(64), "Orbit Field (USA)", "content://dev.cartridge.fixture/orbit.sfc", system = GameSystem.SNES)
-        assertEquals(Media.SnesUsCartridge, game.shownAs); assertEquals(Media.SnesUsCartridge, game.copy(title = "Orbit Field").shownAs); // A scraped title keeps the file's market. assertEquals(Media.SnesCartridge, game.copy(fileName = "Orbit Field").shownAs)
-        assertEquals(Media.GbaBox, game.copy(system = GameSystem.GBA).shownAs)
+        for (title in listOf("Orbit Field", "Orbit Field (World)", "Orbit Field (Unl)", "USA Orbit Field", "Us and Them", "U"))
+            assertEquals(title, Market.US, Market.of(title))
+        for (title in listOf("Orbit Field (Europe) (En,Fr,De)", "Orbit Field (E)", "Orbit Field (Australia)", "Orbit Field (UK)", "Orbit Field (Germany)"))
+            assertEquals(title, Market.EU, Market.of(title))
+        for (title in listOf("Orbit Field (Japan)", "Orbit Field (J)", "Orbit Field (Japan) (Rev 2)")) assertEquals(title, Market.JP, Market.of(title))
     }
 
     /** ADR 0029: a case follows its file's market, and every label texture has its own size. */
     @Test fun aCaseFollowsTheFilesMarketAndEveryCoverUnfoldsToItsTexture() {
-        assertEquals(Media.GbaBox, GameSystem.GBA.media("Orbit Field (USA)"))
-        assertEquals(Media.GbaBox, GameSystem.GBA.media("Orbit Field (Europe)"))
+        assertEquals(Media.HandheldBox, GameSystem.GBA.media("Orbit Field (USA)"))
+        assertEquals(Media.HandheldBox, GameSystem.GB.media("Orbit Field (Europe)"))
         assertEquals(Media.GbaBoxJapan, GameSystem.GBA.media("Orbit Field (Japan)"))
+        assertEquals(Media.GbBoxJapan, GameSystem.GBC.media("Orbit Field (Japan)"))
         assertEquals(Media.JewelCase, GameSystem.PS1.media("Orbit Field (Japan)"))
+        assertEquals(Media.SnesBox, GameSystem.SNES.media("Orbit Field (Europe)")); assertEquals(Media.SuperFamicomBox, GameSystem.SNES.media("Orbit Field (Japan)"))
+        assertEquals(Media.FamicomBox, GameSystem.NES.media("Orbit Field (J)"))
+        assertEquals(Media.SaturnCase, GameSystem.SATURN.media("Orbit Field (Europe)")); assertEquals(Media.JewelCase, GameSystem.SATURN.media("Orbit Field (Japan)"))
+        assertEquals(Media.DvdCase, GameSystem.DREAMCAST.media("Orbit Field (Europe)")); assertEquals(Media.JewelCase, GameSystem.DREAMCAST.media("Orbit Field (USA)"))
+        // A scraped title never moves a game to another case; the file name decides.
         val game = LibraryGame("a".repeat(64), "Orbit Field (Japan)", "content://orbit")
-        assertEquals(Media.GbaBoxJapan, game.copy(title = "Orbit Field").shownAs)
+        assertEquals(Media.GbaBoxJapan, game.shownAs); assertEquals(Media.GbaBoxJapan, game.copy(title = "Orbit Field").shownAs)
+        assertEquals(Media.HandheldBox, game.copy(fileName = "Orbit Field").shownAs)
         assertEquals(Media.entries.size, Media.entries.map { it.labelHeight }.toSet().size)
-        for (media in Media.entries) media.cover?.let { cover ->
+        for (media in Media.entries) media.cover.let { cover ->
             assertEquals(media.name, 1024, media.labelWidth)
             assertEquals(media.name, 1024 / cover.aspect, media.labelHeight.toFloat(), 1f)
             assertTrue(media.name, cover.backEnd < cover.frontStart)
@@ -322,11 +322,10 @@ class SystemRegistryTest {
         assertEquals("Mega Drive", GameSystem.GENESIS.provider); assertEquals("Super Nintendo", GameSystem.SNES.provider)
         assertEquals("Nintendo Entertainment System", GameSystem.NES.provider); assertEquals("PlayStation", GameSystem.PS1.provider)
         assertTrue(GameSystem.SNES.fingerprint); assertFalse(GameSystem.PS1.fingerprint)
-        // A label is decoded for the object that carries it; the first cartridge's key stays as it was stored.
+        // An image is decoded for the case that carries it.
         val label = LabelRef("b".repeat(64))
-        assertEquals(label.textureKey, label.textureKey(Media.Cartridge)); assertEquals("${label.textureKey}:512", label.textureKey(Media.Disc))
-        assertEquals("${label.textureKey}:448", label.textureKey(Media.TallCartridge)); assertEquals("${label.textureKey}:184", label.textureKey(GameSystem.SNES.media))
-        assertEquals("${label.textureKey}:228", label.textureKey(GameSystem.SNES.media("Orbit Field (USA)")))
+        assertEquals("${label.textureKey}:458", label.textureKey(Media.JewelCase)); assertEquals("${label.textureKey}:320", label.textureKey(GameSystem.SNES.media))
+        assertEquals("${label.textureKey}:267", label.textureKey(GameSystem.SNES.media("Orbit Field (Japan)")))
         // No two shapes share a label size, so a key never names the wrong decode.
         assertEquals(Media.entries.size, Media.entries.map { it.labelHeight }.toSet().size)
     }

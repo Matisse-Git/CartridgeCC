@@ -84,7 +84,7 @@ class LibraryPacingTest {
                 scenario.onActivity { it.coordinator.chooseShelf(Shelf.All) }
                 await(scenario) { it.coordinator.state.value.shelf == Shelf.All && it.coordinator.state.value.selection.count == games }
                 val layer = shell("dumpsys SurfaceFlinger --list").lineSequence().single {
-                    it.startsWith("SurfaceView[dev.cartridge/dev.cartridge.DebugCollectionActivity](BLAST)") }
+                    it.startsWith("SurfaceView[${context.packageName}/dev.cartridge.DebugCollectionActivity](BLAST)") }
                 var refresh = 0L
                 fun presents(since: Long, into: TreeSet<Long>) {
                     val rows = shell("dumpsys SurfaceFlinger --latency $layer").lines()

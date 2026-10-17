@@ -38,15 +38,34 @@ LIFT = .0001  # A case's cover sheet sits this far outside its shell.
 
 # name: kind, (width, height, depth) in mm, and for a `case` the cover's visible panels in mm:
 # front (width, height), back (width, height), and the inset of the front panel from the right edge.
-# Sizes are the real cases' (ADR 0029); boxes from box-protector listings, the jewel case from its standard.
+# Sizes are the real cases' (ADR 0029), approximate: boxes from box-protector and collector listings, the jewel
+# case from its standard. No real box was measured.
 CASES = {
-    # Game Boy Advance in North America and Europe, nearly square.
+    # Game Boy, Game Boy Color and Game Boy Advance in North America and Europe, nearly square.
     'gba_box': dict(kind='box', size=(125, 125, 22)),
     # Game Boy Advance in Japan: narrower and taller.
     'gba_box_jp': dict(kind='box', size=(88, 136, 22)),
     # The standard CD jewel case: a 120 mm booklet in the lid, the tray card's back visible behind.
     'jewel_case': dict(kind='case', size=(142, 125, 10.4), front=(120, 120), back=(138, 118), inset=3,
                        shell=(.018, .018, .02), roughness=.12, cover_roughness=.3),
+    # Game Boy and Game Boy Color in Japan: the later, smaller box.
+    'gb_box_jp': dict(kind='box', size=(90, 120, 22)),
+    'game_gear_box': dict(kind='box', size=(130, 165, 30)),
+    # NES in North America and Europe, upright; the Famicom's box in Japan, wide.
+    'nes_box': dict(kind='box', size=(127, 184, 32)),
+    'famicom_box': dict(kind='box', size=(133, 95, 25)),
+    # Super Nintendo in North America and Europe, wide; the Super Famicom's in Japan, wider and flatter.
+    'snes_box': dict(kind='box', size=(184, 127, 38)),
+    'super_famicom_box': dict(kind='box', size=(190, 107, 31)),
+    # Plastic cases with the cover as a sleeve under clear plastic, inset 1.5 mm inside the frame.
+    'clamshell_case': dict(kind='case', size=(135, 190, 25), front=(132, 187), back=(132, 187), inset=1.5,
+                           shell=(.02, .02, .022), roughness=.2, cover_roughness=.3),
+    'saturn_case': dict(kind='case', size=(145, 215, 22), front=(142, 212), back=(142, 212), inset=1.5,
+                        shell=(.02, .02, .022), roughness=.2, cover_roughness=.3),
+    'dvd_case': dict(kind='case', size=(135, 190, 14), front=(130, 183), back=(130, 183), inset=2.5,
+                     shell=(.015, .015, .017), roughness=.3, cover_roughness=.25),
+    'gamecube_case': dict(kind='case', size=(135, 186, 14), front=(130, 180), back=(130, 180), inset=2.5,
+                          shell=(.015, .015, .017), roughness=.3, cover_roughness=.25),
 }
 
 

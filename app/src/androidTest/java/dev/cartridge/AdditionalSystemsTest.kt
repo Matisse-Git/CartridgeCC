@@ -159,7 +159,7 @@ class AdditionalSystemsTest {
             val image = File(context.cacheDir, "m5-original.png")
             image.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
             val label = store.importStream("Original test") { image.inputStream() }
-            assertEquals(448, store.decode(label, GameSystem.GBC.media).height); assertEquals(256, store.decode(label).height)
+            assertEquals(471, store.decode(label, GameSystem.GBC.media).height); assertEquals(608, store.decode(label, GameSystem.GBC.media("Orbit (Japan)")).height)
             val provider = RetroBaseProvider(File(context.cacheDir, "m5-provider"))
             val record = JSONObject().put("id", "00000000-0000-0000-0000-000000000001").put("name", "Original fixture").put("platform", JSONObject().put("name", "Game Boy Color"))
             assertNull(provider.parseGame(record, null)); assertEquals("Game Boy Color", provider.parseGame(record, null, system = GameSystem.GBC)!!.platform)

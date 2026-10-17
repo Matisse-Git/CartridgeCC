@@ -1,11 +1,6 @@
 package dev.cartridge.domain
 
 /**
- * The object a game is shown as. It decides the 3D template and the label's proportions, nothing about how it runs.
- * A label is 512 pixels wide and [labelHeight] high; [model] is the packaged template, in metres at its real size,
- * and [scale] brings that size to the one the shelf shows every object at. Templates are pooled in this order.
- */
-/**
  * How a case's cover unfolds onto its label texture, left to right: back, spine, front (ScreenScraper's `box-texture`
  * layout, ADR 0029). Widths and the height are the cover panels' in millimetres, as `tools/generate_cases.py` builds them.
  */
@@ -17,16 +12,31 @@ class Cover(back: Float, spine: Float, front: Float, val tall: Float) {
     val aspect = total / tall
 }
 
-enum class Media(val labelHeight: Int, val noun: String, val model: String, val scale: Float, val cover: Cover? = null) {
-    Cartridge(256, "cartridge", "gba_cartridge", 1f), TallCartridge(448, "cartridge", "gb_cartridge", .62f), Disc(512, "disc", "ps1_disc", .40f),
-    NesCartridge(856, "cartridge", "nes_cartridge", .31f), SnesCartridge(184, "cartridge", "snes_cartridge", .45f),
-    SnesUsCartridge(228, "cartridge", "snes_us_cartridge", .42f), GenesisCartridge(304, "cartridge", "genesis_cartridge", .52f),
-    // Cases (ADR 0029): the label is the whole unfolded cover, decoded 1024 wide so the front keeps its detail.
-    // About 38 mm tall on the stage, so three rows of the grid stand apart.
+/**
+ * The case a game is shown in (ADR 0029). It decides the 3D template and the cover's proportions, nothing about how
+ * the game runs. The label is the whole unfolded [cover], [labelWidth] by [labelHeight] pixels; [model] is the
+ * packaged template from `tools/generate_cases.py`, in metres at its real size, and [scale] brings it to about
+ * 38 mm tall on the stage (56 mm at most across), so three rows of the grid stand apart. Templates are pooled in
+ * this order; names are not stored.
+ */
+enum class Media(val labelHeight: Int, val noun: String, val model: String, val scale: Float, val cover: Cover) {
     JewelCase(458, "case", "jewel_case", .30f, Cover(138f, 10.4f, 120f, 120f)),
-    GbaBox(471, "box", "gba_box", .30f, Cover(125f, 22f, 125f, 125f)),
-    GbaBoxJapan(703, "box", "gba_box_jp", .28f, Cover(88f, 22f, 88f, 136f));
-    val labelWidth get() = if (cover != null) 1024 else 512
+    /** Game Boy, Game Boy Color and Game Boy Advance in North America and Europe. */
+    HandheldBox(471, "box", "gba_box", .30f, Cover(125f, 22f, 125f, 125f)),
+    GbaBoxJapan(703, "box", "gba_box_jp", .28f, Cover(88f, 22f, 88f, 136f)),
+    GbBoxJapan(608, "box", "gb_box_jp", .32f, Cover(90f, 22f, 90f, 120f)),
+    GameGearBox(583, "box", "game_gear_box", .23f, Cover(130f, 30f, 130f, 165f)),
+    NesBox(659, "box", "nes_box", .21f, Cover(127f, 32f, 127f, 184f)),
+    FamicomBox(334, "box", "famicom_box", .40f, Cover(133f, 25f, 133f, 95f)),
+    SnesBox(320, "box", "snes_box", .30f, Cover(184f, 38f, 184f, 127f)),
+    SuperFamicomBox(267, "box", "super_famicom_box", .29f, Cover(190f, 31f, 190f, 107f)),
+    /** Genesis, Mega Drive and Master System. */
+    Clamshell(663, "case", "clamshell_case", .20f, Cover(132f, 25f, 132f, 187f)),
+    SaturnCase(709, "case", "saturn_case", .18f, Cover(142f, 22f, 142f, 212f)),
+    /** PlayStation 2, and Dreamcast in Europe. */
+    DvdCase(684, "case", "dvd_case", .20f, Cover(130f, 14f, 130f, 183f)),
+    GameCubeCase(673, "case", "gamecube_case", .20f, Cover(130f, 14f, 130f, 180f));
+    val labelWidth get() = 1024
 }
 
 /**
@@ -281,57 +291,55 @@ enum class GameSystem(
     val fingerprint: Boolean = true,
     /** The platform name the artwork provider files this console under, where it differs from [title]. */
     provider: String? = null,
-    /** The shape this console's cartridges had in North America, where that was a different one. */
-    val northAmerican: Media? = null,
     /** The case this console's games came in in Europe and in Japan, where it was not [media] (ADR 0029). */
     val europe: Media? = null,
     val japan: Media? = null,
 ) {
-    GBA("Game Boy Advance", "Nintendo", 6, Media.GbaBox, Core.Mgba, "gba",
+    GBA("Game Boy Advance", "Nintendo", 6, Media.HandheldBox, Core.Mgba, "gba",
         listOf(Format("gba") { if (it.size < 192) "The GBA file is too small" else null }), 32L shl 20,
         setOf("gba", "gameboyadvance", "nintendogameboyadvance"), japan = Media.GbaBoxJapan),
-    GB("Game Boy", "Nintendo", 4, Media.TallCartridge, Core.Mgba, "gb", handheld(color = false), (8L shl 20) + 64,
-        setOf("gb", "gameboy", "nintendogameboy")),
-    GBC("Game Boy Color", "Nintendo", 5, Media.TallCartridge, Core.Mgba, "gbc", handheld(color = true), (8L shl 20) + 64,
-        setOf("gbc", "gameboycolor", "gameboycolour", "nintendogameboycolor")),
+    GB("Game Boy", "Nintendo", 4, Media.HandheldBox, Core.Mgba, "gb", handheld(color = false), (8L shl 20) + 64,
+        setOf("gb", "gameboy", "nintendogameboy"), japan = Media.GbBoxJapan),
+    GBC("Game Boy Color", "Nintendo", 5, Media.HandheldBox, Core.Mgba, "gbc", handheld(color = true), (8L shl 20) + 64,
+        setOf("gbc", "gameboycolor", "gameboycolour", "nintendogameboycolor"), japan = Media.GbBoxJapan),
     PS1("PlayStation", "Sony", 5, Media.JewelCase, Core.Pcsx, "ps1", listOf(
         Format("chd", shared = true) { if (ascii(it, 0, 8) != "MComprHD") "Not a CHD disc" else null },
         Format("pbp") { if (it.size < 4 || it.take(4) != listOf<Byte>(0, 80, 66, 80)) "Not a PBP disc" else null },
         Format("iso", shared = true), Format("cue", shared = true),
         Format("exe", claim = Claim.Content) { if (ascii(it, 0, 8) != "PS-X EXE") "Not a PS-X executable" else null }).map(::disc), 2L shl 30,
         setOf("psx", "ps1", "psone", "playstation", "playstation1", "sonyplaystation"), bundle = true, fingerprint = false),
-    SNES("Super Nintendo", "Nintendo", 4, Media.SnesCartridge, Core.Snes9x, "sfc",
+    SNES("Super Nintendo", "Nintendo", 4, Media.SnesBox, Core.Snes9x, "sfc",
         listOf("sfc", "smc", "swc", "fig").map { Format(it) { bytes -> if (bytes.size < 512) "The Super Nintendo file is too small" else null } }, 16L shl 20,
         setOf("snes", "sfc", "superfamicom", "supernintendo", "supernes", "nintendosnes", "supernintendoentertainmentsystem"),
-        northAmerican = Media.SnesUsCartridge),
-    NES("Nintendo Entertainment System", "Nintendo", 3, Media.NesCartridge, Core.Fceumm, "nes", listOf(
+        japan = Media.SuperFamicomBox),
+    NES("Nintendo Entertainment System", "Nintendo", 3, Media.NesBox, Core.Fceumm, "nes", listOf(
         Format("nes") { if (it.size < 16 || ascii(it, 0, 3) != "NES" || it[3].toInt() != 0x1A) "Not an iNES game" else null },
         Format("unf") { if (ascii(it, 0, 4) != "UNIF") "Not a UNIF game" else null },
         Format("unif") { if (ascii(it, 0, 4) != "UNIF") "Not a UNIF game" else null }), 16L shl 20,
-        setOf("nes", "famicom", "fc", "nintendoentertainmentsystem", "nintendones")),
-    GENESIS("Genesis", "Sega", 4, Media.GenesisCartridge, Core.GenesisPlusGx, "md", listOf(
+        setOf("nes", "famicom", "fc", "nintendoentertainmentsystem", "nintendones"), japan = Media.FamicomBox),
+    GENESIS("Genesis", "Sega", 4, Media.Clamshell, Core.GenesisPlusGx, "md", listOf(
         // .gen and .smd can only be this console's, so an unlicensed cartridge without Sega's name in its header still
         // counts; .md and .bin are shared with text files and disc tracks and must show a header.
         Format("md", claim = Claim.Content, verify = ::megaDrive), Format("gen", verify = ::cartridgeSized), Format("smd", verify = ::cartridgeSized),
         Format("bin", claim = Claim.Folder, verify = ::megaDrive)), 16L shl 20,
         setOf("genesis", "megadrive", "md", "segagenesis", "segamegadrive", "segamegadrivegenesis"), provider = "Mega Drive"),
-    SMS("Master System", "Sega", 3, Media.Disc, Core.GenesisPlusGx, "sms",
+    SMS("Master System", "Sega", 3, Media.Clamshell, Core.GenesisPlusGx, "sms",
         listOf(Format("sms") { if (it.size < 512) "The Master System file is too small" else null }), 4L shl 20,
         setOf("mastersystem", "sms", "segamastersystem", "markiii")),
-    GG("Game Gear", "Sega", 4, Media.Disc, Core.GenesisPlusGx, "gg",
+    GG("Game Gear", "Sega", 4, Media.GameGearBox, Core.GenesisPlusGx, "gg",
         listOf(Format("gg") { if (it.size < 512) "The Game Gear file is too small" else null }), 4L shl 20,
         setOf("gamegear", "gg", "segagamegear")),
-    SATURN("Saturn", "Sega", 5, Media.Disc, Core.BeetleSaturn, "saturn", listOf(
+    SATURN("Saturn", "Sega", 5, Media.SaturnCase, Core.BeetleSaturn, "saturn", listOf(
         Format("cue", shared = true), Format("chd", shared = true) { if (ascii(it, 0, 8) != "MComprHD") "Not a CHD disc" else null }), 1L shl 30,
-        setOf("saturn", "segasaturn", "ss"), bundle = true, fingerprint = false),
-    DREAMCAST("Dreamcast", "Sega", 6, Media.Disc, Core.Flycast, "dreamcast", listOf(
+        setOf("saturn", "segasaturn", "ss"), bundle = true, fingerprint = false, japan = Media.JewelCase),
+    DREAMCAST("Dreamcast", "Sega", 6, Media.JewelCase, Core.Flycast, "dreamcast", listOf(
         Format("gdi"), Format("cdi"),
         // A GD-ROM holds more than any CD and is packed sector by sector like one.
         Format("chd", shared = true, proves = { bytes, _ -> chdUnit(bytes) == 2448L && chdLength(bytes) > CD_BYTES }, verify = ::notChd),
         Format("cue", shared = true),
         Format("elf", claim = Claim.Folder) { if (!program(it, 42)) "Not a Dreamcast program" else null }),
-        2L shl 30, setOf("dreamcast", "segadreamcast", "dc"), bundle = true, fingerprint = false),
-    PS2("PlayStation 2", "Sony", 6, Media.Disc, Core.Armsx2, "ps2", listOf(
+        2L shl 30, setOf("dreamcast", "segadreamcast", "dc"), bundle = true, fingerprint = false, europe = Media.DvdCase),
+    PS2("PlayStation 2", "Sony", 6, Media.DvdCase, Core.Armsx2, "ps2", listOf(
         // A DVD is larger than any CD, and a CHD packs one in 2048-byte units. A game pressed on a CD looks like a
         // PlayStation one from its first bytes, so for those only the folder's name can say.
         Format("iso", shared = true, proves = { bytes, size -> size > CD_BYTES && !gameCubeDisc(bytes) }) {
@@ -342,7 +350,7 @@ enum class GameSystem(
         Format("cso", claim = Claim.Folder) { if (ascii(it, 0, 4) != "CISO") "Not a compressed PlayStation 2 disc" else null },
         Format("elf", claim = Claim.Folder) { if (!program(it, 8)) "Not a PlayStation 2 program" else null }),
         9L shl 30, setOf("ps2", "playstation2", "sonyplaystation2"), bundle = true, fingerprint = false),
-    GAMECUBE("GameCube", "Nintendo", 6, Media.Disc, Core.Dolphin, "gamecube", listOf(
+    GAMECUBE("GameCube", "Nintendo", 6, Media.GameCubeCase, Core.Dolphin, "gamecube", listOf(
         Format("iso", shared = true, proves = { bytes, _ -> gameCubeDisc(bytes) }) { if (!gameCubeDisc(it)) "Not a GameCube disc" else null },
         Format("gcm") { if (!gameCubeDisc(it)) "Not a GameCube disc" else null },
         Format("rvz") { if (!rvz(it) || word(it, 0x48) != 1L) "Not a GameCube disc" else null },
@@ -360,13 +368,9 @@ enum class GameSystem(
         SATURN -> 22; DREAMCAST -> 23; PS2 -> 58; GAMECUBE -> 13
     }
     /**
-     * The object one game is shown as, from how its file is named: the console's North American cartridge where that
-     * differed, else the case of its [Market]. Presentation only.
+     * The case one game is shown in, from the [Market] its file is named for. Presentation only.
      */
-    fun media(title: String): Media {
-        northAmerican?.let { if (releasedInNorthAmerica(title)) return it }
-        return when (Market.of(title)) { Market.EU -> europe; Market.JP -> japan; Market.US -> null } ?: media
-    }
+    fun media(title: String): Media = when (Market.of(title)) { Market.EU -> europe; Market.JP -> japan; Market.US -> null } ?: media
     val coreFile get() = core.file
     val coreRevision get() = core.revision
     fun format(extension: String) = formats.firstOrNull { it.extension == extension }

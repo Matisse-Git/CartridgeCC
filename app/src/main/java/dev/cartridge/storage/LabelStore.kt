@@ -67,40 +67,7 @@ class LabelStore(private val directory: File) {
             return LabelRef(id, sourceUri = source)
         } finally { temporary.delete() }
     }
-    fun decode(label: LabelRef, media: Media = Media.Cartridge): LabelPixels {
-        media.cover?.let { return cover(label, media, it) }
-        val file = original(label.assetId)
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.path, bounds)
-        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "The cached label is missing or invalid. Import it again." }
-        // Decode no more than the label can show: at least half again its size on both sides, never above 2048.
-        val turned = label.quarterTurns % 2 != 0
-        val wide = if (turned) bounds.outHeight else bounds.outWidth; val tall = if (turned) bounds.outWidth else bounds.outHeight
-        var sample = 1
-        while (max(wide, tall) / sample > 2048 || (wide / (sample * 2) >= 768 && tall / (sample * 2) >= media.labelHeight * 3 / 2)) sample *= 2
-        val source = checkNotNull(BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply {
-            inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888
-        })) { "Cannot decode the label" }
-        val target = Bitmap.createBitmap(512, media.labelHeight, Bitmap.Config.ARGB_8888)
-        try {
-            val rotatedWidth = if (label.quarterTurns % 2 == 0) source.width else source.height
-            val rotatedHeight = if (label.quarterTurns % 2 == 0) source.height else source.width
-            val sx = target.width.toFloat() / rotatedWidth; val sy = target.height.toFloat() / rotatedHeight
-            val scale = if (label.fit == LabelFit.Fit) min(sx, sy) else max(sx, sy)
-            Canvas(target).apply {
-                drawColor(Color.rgb(39, 38, 34))
-                translate(target.width / 2f, target.height / 2f)
-                scale(scale, scale)
-                rotate(label.quarterTurns * 90f)
-                drawBitmap(source, -source.width / 2f, -source.height / 2f, Paint(Paint.FILTER_BITMAP_FLAG))
-            }
-            // The canvas was filled before drawing, so every pixel is opaque and ARGB_8888 memory is already R, G, B, A.
-            val bytes = ByteBuffer.allocateDirect(target.byteCount)
-            target.copyPixelsToBuffer(bytes)
-            bytes.flip()
-            return LabelPixels(label.textureKey(media), target.width, target.height, bytes)
-        } finally { source.recycle(); target.recycle() }
-    }
+    fun decode(label: LabelRef, media: Media): LabelPixels = cover(label, media, media.cover)
 
     /**
      * A case's whole unfolded cover (ADR 0029). `box-texture` is the cover already unfolded, back, spine, front, and

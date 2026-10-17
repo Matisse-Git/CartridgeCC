@@ -275,7 +275,7 @@ class CartridgeSurface(
             val arrival = if (layout != CollectionLayout.Grid) 1f else (2f - abs(global / 3 - gridCenter)).coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
             // An object appears only once it carries its own game's label, never a neighbour's or the template's.
             val visible = place != null && global < collectionCount && (selected || stage < .97f) && arrival > 0f &&
-                format == (entry?.media ?: Media.Cartridge).ordinal && (entry == null || bound.shows(index, entry.owner))
+                format == (entry?.media ?: Media.entries.first()).ordinal && (entry == null || bound.shows(index, entry.owner))
             if (entry != null && format == entry.media.ordinal && global < collectionCount && !bound.shows(index, entry.owner) &&
                 (if (layout == CollectionLayout.Grid) arrival > 0f else abs(offset) < 1.5f)) unlabelled++
             Matrix.translateM(matrix, 0, x * (1f - pose.alignment), y * (1f - pose.alignment) + emphasis * lift * .5f + pose.height,

@@ -10,8 +10,8 @@ data class LabelRef(val assetId: String, val fit: LabelFit = LabelFit.Fit, val q
     val sourceUri: String? = null, val provenance: AssetProvenance? = null) {
     init { require(assetId.matches(Regex("[a-f0-9]{64}"))); require(quarterTurns in 0..3) }
     val textureKey: String get() = "$assetId:${fit.name}:$quarterTurns"
-    /** The label as decoded for the object that carries it; the first cartridge's key stays as it always was. */
-    fun textureKey(media: Media) = if (media == Media.Cartridge) textureKey else "$textureKey:${media.labelHeight}"
+    /** The image as decoded for the case that carries it: every case has its own label height. */
+    fun textureKey(media: Media) = "$textureKey:${media.labelHeight}"
 }
 data class LibraryGame(val id: String, val title: String, val sourceUri: String, val label: LabelRef? = null,
     val metadata: Map<String, MetadataValue> = emptyMap(), val media: Map<String, MediaSelection> = emptyMap(),

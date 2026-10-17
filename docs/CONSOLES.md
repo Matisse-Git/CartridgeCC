@@ -39,13 +39,26 @@ games the owner had imported on 2026-10-12, one observation each; nothing is kno
 game until it is tried. PlayStation 2 is playable only once the owner has added the console's BIOS:
 without it the console says what it needs, as Saturn does.
 
-**What each console's games look like.** A game is shown as its console's own object, converted
-from models the owner supplied (ADR 0019, 0025): the Game Boy Advance, Game Boy and NES cartridges,
-the Genesis cartridge, and for the Super Nintendo the rounded shell Japan and the PAL countries had
-or, for a game whose file is named as a North American release (`(USA)`, `(U)`, …), the square
-North American one. Disc consoles are the compact disc. Master System and Game Gear have no model
-yet and are shown as discs too. The object is one word per console in the registry (`media`, and
-`northAmerican` for the Super Nintendo) and changes nothing about how a game is stored or run.
+**What each console's games look like (ADR 0029, branch `feature/box-cases`).** A game is shown in
+its retail case, wrapped in its ScreenScraper cover. The case comes from the market its file is named
+for: US first (`(USA, Europe)` is US), then Europe, then Japan; `(World)` and an untagged name are US.
+
+| Console | US | Europe | Japan |
+| --- | --- | --- | --- |
+| Game Boy, Game Boy Color | handheld box | handheld box | small Japanese box |
+| Game Boy Advance | handheld box | handheld box | tall Japanese box |
+| NES | NES box | NES box | Famicom box |
+| Super Nintendo | SNES box | SNES box | Super Famicom box |
+| Genesis, Master System | clamshell | clamshell | clamshell |
+| Game Gear | Game Gear box | Game Gear box | Game Gear box |
+| PlayStation | jewel case | jewel case | jewel case |
+| Saturn | Saturn case | Saturn case | jewel case |
+| Dreamcast | jewel case | DVD-style case | jewel case |
+| PlayStation 2 | DVD case | DVD case | DVD case |
+| GameCube | GameCube case | GameCube case | GameCube case |
+
+The case is a registry field (`media`, `europe`, `japan`) and changes nothing about how a game is stored
+or run. Sizes are approximate; see ASSET_PIPELINE.
 
 ## What "verified with an original program" covers
 
@@ -285,7 +298,7 @@ Still not shown by anything:
   again: 4.4 GiB for a single-layer PlayStation 2 game. The import says so before it starts if the
   space is not there. An empty 2.2 GiB image was imported and listed in 4.7 s on the RP5.
 - One player. No disc change for multi-disc games; each disc is its own entry.
-- Shown as the compact disc, which is what their games are.
+- Shown in their retail case (ADR 0029).
 - **Leaving the app or sleeping.** Dreamcast is written to a checkpoint and restored from it, like
   the small consoles. PlayStation 2 and GameCube have nothing to restore from, so their game stays
   loaded and paused for as long as Android keeps the app; if Android ends the app in the meantime,
@@ -342,7 +355,7 @@ through their own undocumented activities and extras.
 |---|---|
 | `name` (the stable id) | Room, backups, the scrape journal, the stored shelf |
 | `title`, `maker`, `generation` | shelves, details, import results |
-| `media`, `northAmerican` | which 3D template shows its games and the label's proportions; the second names the other shell where a console's cartridges differed by market, chosen by how a game is named |
+| `media`, `europe`, `japan` | which case shows its games and the cover's proportions; the last two name the case of another market, chosen by how a game's file is named (ADR 0029) |
 | `core` | which packaged library runs it, its options, firmware and state binding |
 | `formats` (extension, shared, claim, content check, proof) | scanning, discovery counts, the importer |
 | `extension`, `bundle`, `maxBytes` | where and how its private working copy is kept |

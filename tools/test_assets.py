@@ -1,4 +1,4 @@
-"""Structural checks for the packaged media GLBs; no Android or Blender required."""
+"""Structural checks for the packaged case GLBs (ADR 0029); no Android or Blender required."""
 import json
 import math
 from pathlib import Path
@@ -74,143 +74,22 @@ class Glb:
         return self.doc['textures'][reference['index']]['source']
 
 
-TEMPLATES = {
-    # name: (width, height, depth) in metres, label artwork aspect, label (width, height, depth) in metres
-    'gba_cartridge.glb': ((.0600, .0343, .0069), 512 / 256, (.0433, .0225, 0)),
-    'gb_cartridge.glb': ((.0575, .0650, .0091), 512 / 448, (.0445, .0392, 0)),
-    'ps1_disc.glb': ((.1200, .1200, .0018), 512 / 512, (.1193, .1193, 0)),
-    'nes_cartridge.glb': ((.1200, .1343, .0101), 512 / 856, (.0539, .0903, 0)),
-    # The Super Famicom shell bulges, and its label with it.
-    'snes_cartridge.glb': ((.1280, .0769, .0198), 512 / 184, (.0987, .0353, .0026)),
-    'snes_us_cartridge.glb': ((.1360, .0880, .0202), 512 / 228, (.0820, .0363, 0)),
-    'genesis_cartridge.glb': ((.1070, .0733, .0203), 512 / 304, (.0691, .0412, 0)),
-}
-
-
-class MediaTemplateTest(unittest.TestCase):
-    """What the renderer and CartridgeLabels rely on, for every object a game can be shown as."""
-
-    def each(self):
-        return [(name, Glb(name), expected) for name, expected in TEMPLATES.items()]
-
-    def test_buffers_and_indices_are_valid(self):
-        for name in TEMPLATES:
-            with self.subTest(name):
-                glb = Glb(name)
-                for view in glb.doc['bufferViews']:
-                    self.assertEqual(0, view.get('byteOffset', 0) % 4)
-                    self.assertLessEqual(view.get('byteOffset', 0) + view['byteLength'], len(glb.binary))
-                for primitive in glb.primitives:
-                    indices = glb.values(primitive['indices'])
-                    self.assertEqual(0, len(indices) % 3)
-                    self.assertLess(max(indices), glb.doc['accessors'][primitive['attributes']['POSITION']]['count'])
-
-    def test_metre_scale_centred_and_unposed(self):
-        for _, glb, (size, _, _) in self.each():
-            low, high = glb.bounds()
-            for axis in range(3):
-                self.assertAlmostEqual(size[axis], high[axis] - low[axis], delta=.0002)
-                self.assertAlmostEqual(0, (low[axis] + high[axis]) / 2, delta=.0001)
-            # The app places the instance root; a posed node would tilt every object.
-            self.assertTrue(all(not {'rotation', 'translation', 'scale', 'matrix'} & set(node) for node in glb.doc['nodes']))
-
-    def test_normals_are_unit_and_agree_with_winding(self):
-        for _, glb, _ in self.each():
-            for primitive in glb.primitives:
-                positions, normals = glb.attribute(primitive, 'POSITION'), glb.attribute(primitive, 'NORMAL')
-                indices = glb.values(primitive['indices'])
-                for normal in normals:
-                    self.assertAlmostEqual(1, sum(v * v for v in normal), places=3)
-                agree = faces = 0
-                for i in range(0, len(indices), 3):
-                    a, b, c = (positions[n] for n in indices[i:i + 3])
-                    u, v = [b[n] - a[n] for n in range(3)], [c[n] - a[n] for n in range(3)]
-                    cross = (u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0])
-                    if math.sqrt(sum(n * n for n in cross)) < 1e-12:
-                        continue  # A collapsed sliver of the source mesh has no facing.
-                    faces += 1
-                    agree += all(sum(cross[n] * normals[k][n] for n in range(3)) > 0 for k in indices[i:i + 3])
-                # Smoothed corners may lean past a neighbouring facet; an inside-out shell would fail wholesale.
-                self.assertGreater(agree / faces, .97)
-
-    def test_label_is_one_named_primitive_facing_the_viewer(self):
-        for _, glb, (_, _, label_size) in self.each():
-            label = glb.label()
-            material = glb.material(label)
-            self.assertIn('baseColorTexture', material['pbrMetallicRoughness'])
-            self.assertEqual(0, material['pbrMetallicRoughness']['metallicFactor'])
-            self.assertTrue(all(normal[2] > .98 for normal in glb.attribute(label, 'NORMAL')))
-            width, height, depth = glb.size([label])
-            self.assertAlmostEqual(label_size[0], width, delta=.0002)
-            self.assertAlmostEqual(label_size[1], height, delta=.0002)
-            # Flat, or following a shell that is not.
-            self.assertAlmostEqual(label_size[2], depth, delta=.0001 if label_size[2] else .00001)
-            # On the printed side of the object, not buried in it.
-            self.assertGreater(glb.bounds([label])[0][2], 0)
-
-    def test_label_uvs_cover_the_artwork_from_the_top_left(self):
-        for name, glb, (_, aspect, _) in self.each():
-            label = glb.label()
-            points = list(zip(glb.attribute(label, 'POSITION'), glb.attribute(label, 'TEXCOORD_0')))
-            self.assertTrue(all(-1e-4 <= uv[0] <= 1 + 1e-4 and -1e-4 <= uv[1] <= 1 + 1e-4 for _, uv in points))
-            low, high = glb.bounds([label])
-            if name == 'ps1_disc.glb':
-                # The artwork square spans the whole 120 mm disc; the annulus clips it.
-                for (x, y, _), (u, v) in points:
-                    self.assertAlmostEqual((x + .06) / .12, u, places=4)
-                    self.assertAlmostEqual(1 - (y + .06) / .12, v, places=4)
-            else:
-                # The whole image maps onto the whole label: U grows right, V grows down, (0, 0) top left.
-                for (x, y, _), (u, v) in points:
-                    self.assertAlmostEqual((x - low[0]) / (high[0] - low[0]), u, places=4)
-                    self.assertAlmostEqual((high[1] - y) / (high[1] - low[1]), v, places=4)
-                # Close enough to the decoded artwork's shape that a label is not visibly stretched.
-                self.assertAlmostEqual(aspect, (high[0] - low[0]) / (high[1] - low[1]), delta=aspect * .05)
-
-    def test_placeholder_label_has_the_artwork_aspect(self):
-        for _, glb, (_, aspect, _) in self.each():
-            width, height = glb.image_size(glb.texture_image(glb.material(glb.label())['pbrMetallicRoughness']['baseColorTexture']))
-            self.assertAlmostEqual(aspect, width / height, places=2)
-
-    def test_shell_is_opaque_pbr_with_tangents_and_bounded_textures(self):
-        for _, glb, _ in self.each():
-            shell = glb.shell()
-            material = glb.material(shell)
-            self.assertEqual(2, len(glb.doc['materials']))
-            self.assertTrue(all(m.get('alphaMode', 'OPAQUE') == 'OPAQUE' for m in glb.doc['materials']))
-            self.assertIn('normalTexture', material)
-            self.assertIn('baseColorTexture', material['pbrMetallicRoughness'])
-            self.assertIn('metallicRoughnessTexture', material['pbrMetallicRoughness'])
-            self.assertIn('TANGENT', shell['attributes'])
-            self.assertFalse(any('uri' in image for image in glb.doc['images']))
-            for index in range(len(glb.doc['images'])):
-                self.assertLessEqual(max(glb.image_size(index)), 1024)
-            self.assertLess(sum(glb.doc['accessors'][p['indices']]['count'] // 3 for p in glb.primitives), 15_000)
-            self.assertLess(len(glb.raw), 3 * 1024 * 1024)
-
-    def test_cartridges_carry_baked_occlusion(self):
-        for name in ('gba_cartridge.glb', 'gb_cartridge.glb'):
-            glb = Glb(name)
-            material = glb.material(glb.shell())
-            self.assertEqual(material['occlusionTexture']['index'], material['pbrMetallicRoughness']['metallicRoughnessTexture']['index'])
-
-    def test_disc_is_an_annulus_with_a_real_hole(self):
-        glb = Glb('ps1_disc.glb')
-        radii = [math.hypot(x, y) for primitive in glb.primitives for x, y, _ in glb.attribute(primitive, 'POSITION')]
-        self.assertAlmostEqual(.0600, max(radii), delta=.0001)
-        self.assertAlmostEqual(.0076, min(radii), delta=.0003)
-        printed = [math.hypot(x, y) for x, y, _ in glb.attribute(glb.label(), 'POSITION')]
-        # From the stacking ring to just inside the rim.
-        self.assertAlmostEqual(.0195, min(printed), delta=.0003)
-        self.assertAlmostEqual(.0596, max(printed), delta=.0003)
-
-
 # ADR 0029: name -> (width, height, depth) in metres, and the cover's back, spine, front widths and height in mm,
 # as `Media.cover` and tools/generate_cases.py state them.
 CASES = {
     'jewel_case.glb': ((.142, .125, .0104), (138, 10.4, 120, 120)),
     'gba_box.glb': ((.125, .125, .022), (125, 22, 125, 125)),
     'gba_box_jp.glb': ((.088, .136, .022), (88, 22, 88, 136)),
+    'gb_box_jp.glb': ((.090, .120, .022), (90, 22, 90, 120)),
+    'game_gear_box.glb': ((.130, .165, .030), (130, 30, 130, 165)),
+    'nes_box.glb': ((.127, .184, .032), (127, 32, 127, 184)),
+    'famicom_box.glb': ((.133, .095, .025), (133, 25, 133, 95)),
+    'snes_box.glb': ((.184, .127, .038), (184, 38, 184, 127)),
+    'super_famicom_box.glb': ((.190, .107, .031), (190, 31, 190, 107)),
+    'clamshell_case.glb': ((.135, .190, .025), (132, 25, 132, 187)),
+    'saturn_case.glb': ((.145, .215, .022), (142, 22, 142, 212)),
+    'dvd_case.glb': ((.135, .190, .014), (130, 14, 130, 183)),
+    'gamecube_case.glb': ((.135, .186, .014), (130, 14, 130, 180)),
 }
 
 

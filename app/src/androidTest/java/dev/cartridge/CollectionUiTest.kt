@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.Lifecycle
@@ -100,7 +101,8 @@ class CollectionUiTest {
             await(scenario) { it.coordinator.state.value.labelPreviewReady }
             awaitLabelColor(scenario, red = true)
             ui.onNodeWithTag("label-action-0").performClick()
-            ui.onNodeWithTag("label-action-1").performClick()
+            // A case's cover is never turned (ADR 0029): the preview offers sizing only.
+            assertTrue(ui.onAllNodesWithTag("label-action-1").fetchSemanticsNodes().isEmpty())
             await(scenario) { it.coordinator.state.value.labelPreviewReady }
             ui.onNodeWithTag("label-action-2").performClick()
             await(scenario) { it.coordinator.state.value.screen == CollectionScreen.Library && !it.coordinator.state.value.busy }
@@ -125,7 +127,7 @@ class CollectionUiTest {
             await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
             scenario.onActivity {
                 assertEquals(0, it.coordinator.state.value.selection.index)
-                assertEquals(1, it.coordinator.state.value.selectedGame!!.label!!.quarterTurns)
+                assertEquals(0, it.coordinator.state.value.selectedGame!!.label!!.quarterTurns)
                 assertEquals(LabelFit.Crop, it.coordinator.state.value.selectedGame!!.label!!.fit)
                 acceptedLabel = it.coordinator.state.value.selectedGame!!.label!!.assetId
                 assertNotEquals(it.coordinator.state.value.slots[0]!!.label!!.assetId, it.coordinator.state.value.slots[1]!!.label!!.assetId)
@@ -152,7 +154,7 @@ class CollectionUiTest {
                 assertEquals(0, it.coordinator.state.value.selection.index)
                 assertEquals(acceptedLabel, it.coordinator.state.value.selectedGame!!.label!!.assetId)
                 assertEquals(LabelFit.Crop, it.coordinator.state.value.selectedGame!!.label!!.fit)
-                assertEquals(1, it.coordinator.state.value.selectedGame!!.label!!.quarterTurns)
+                assertEquals(0, it.coordinator.state.value.selectedGame!!.label!!.quarterTurns)
                 assertNotNull(it.coordinator.state.value.slots[1])
             }
             awaitLabelColor(scenario, red = true)

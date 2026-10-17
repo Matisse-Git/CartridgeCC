@@ -80,16 +80,15 @@
   raw BIN tracks as games. Keep per-system core revisions in states, checkpoints and backups; retain
   existing mGBA state compatibility. BIOS import is explicit, verified and excluded from archives.
 
-- Every object a game is shown as is converted from the owner's downloads by
-  `tools/import_models.py` (ADR 0019 and 0025, ASSET_PIPELINE); never hand-edit those GLBs or bring
-  back a generator that writes them; the one exception is ADR 0029's case generator, which writes only
-  case files for shapes no download covers. Keep one named label primitive, its UV contract, the template
-  sizes and the removal of baked game labels: a download is not converted until the tool asserts its
-  print is gone, and each new GLB is rendered and looked at before it reaches the device. A template
-  is one `Media` entry (file, label height, on-screen scale); the renderer names no object, and no
-  two shapes share a label height. A console's object is `GameSystem.media`, or `media(title)` where
-  its cartridges differed by market; that choice is presentation only and nothing else may ask for
-  it. A game keeps its pooled object while it is in the window
+- Every game is shown in its retail case (ADR 0029, ASSET_PIPELINE). The cases come from
+  `tools/generate_cases.py`, the one generator ADR 0019 allows, which writes only case files. A downloaded
+  case goes through `tools/import_models.py` and its rules: no baked game print, and never hand-edit a
+  GLB. Keep one named label primitive per case whose UVs unfold back, spine, front as `Media.cover` says,
+  and render each new GLB with a test cover and look at it before it reaches the device. A template is one
+  `Media` entry (file, label height, on-screen scale, cover); the renderer names no object, and no two
+  shapes share a label height. A console's case is `GameSystem.media`, or `media(fileName)` by the market
+  the file is named for, never a scraped title; that choice is presentation only and nothing else may
+  ask for it. A game keeps its pooled object while it is in the window
   (`CollectionLayout.slot`): stage labels by key and owner, never by window position, and never draw
   an object with another game's label or the template's. Re-run `BrowseStabilityTest`
   (`-Suite Browse`) after any renderer, window or label change.

@@ -22,7 +22,7 @@ class RenderPacingTest {
             }
             assertTrue("Renderer did not start", start > 0)
             val layer = shell("dumpsys SurfaceFlinger --list").lineSequence().single {
-                it.startsWith("SurfaceView[dev.cartridge/dev.cartridge.CollectionProfileActivity](BLAST)") }
+                it.startsWith("SurfaceView[${InstrumentationRegistry.getInstrumentation().targetContext.packageName}/dev.cartridge.CollectionProfileActivity](BLAST)") }
             val presents = TreeSet<Long>()
             var refresh = 0L
             var finished = false
