@@ -98,7 +98,7 @@ class SystemRegistryTest {
         // A name moves no other console's object, and never a game to another console or core.
         for (system in GameSystem.entries.filter { it != GameSystem.SNES }) assertEquals(system.name, system.media, system.media("Orbit Field (USA)"))
         val game = LibraryGame("a".repeat(64), "Orbit Field (USA)", "content://dev.cartridge.fixture/orbit.sfc", system = GameSystem.SNES)
-        assertEquals(Media.SnesUsCartridge, game.shownAs); assertEquals(Media.SnesCartridge, game.copy(title = "Orbit Field").shownAs)
+        assertEquals(Media.SnesUsCartridge, game.shownAs); assertEquals(Media.SnesUsCartridge, game.copy(title = "Orbit Field").shownAs); // A scraped title keeps the file's market. assertEquals(Media.SnesCartridge, game.copy(fileName = "Orbit Field").shownAs)
         assertEquals(Media.Cartridge, game.copy(system = GameSystem.GBA).shownAs)
     }
 

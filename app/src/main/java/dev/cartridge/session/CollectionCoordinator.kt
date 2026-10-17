@@ -486,6 +486,8 @@ class CollectionCoordinator(
     fun configureGame(options: Map<String, String>, applied: () -> Unit) {
         if (engine.status.value.state == SessionState.Paused) runAction { engine.configure(options); applied() }
     }
+    /** Told the ids of games that were not in the library before; artwork is fetched for them (ADR 0029). */
+    var onAdded: (Collection<String>) -> Unit = {}
     fun addGame(import: suspend () -> LibraryGame) {
         if (state.value.screen != CollectionScreen.Library || !state.value.loaded) return
         runAction {
@@ -494,6 +496,7 @@ class CollectionCoordinator(
             val added = repository.add(game, restoreRemoved = true)
             show(game.id)
             notify(if (added) "Game added" else "Selected the existing entry")
+            if (added) onAdded(listOf(game.id))
         }
     }
     /** A blank result leaves reporting to the caller's own import summary. */

@@ -19,7 +19,7 @@ data class ScrapePreferences(val region: String = "us", val language: String = "
             tags[field] = positions.map { sourceTags.getOrNull(it) ?: MetadataTags() }
         }
         return candidate.copy(metadata = metadata, metadataTags = tags, artwork = candidate.artwork.sortedWith(
-            compareByDescending<ArtworkCandidate> { it.isLabel }.thenBy { regionRank(it.region) }))
+            compareByDescending<ArtworkCandidate> { it.isCaseArt }.thenBy { regionRank(it.region) }))
     }
     private fun regionRank(value: String): Int = when {
         region == "any" -> 0

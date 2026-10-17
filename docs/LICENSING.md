@@ -209,9 +209,17 @@ inspection copies stay outside Git/APKs. Entry removal retains these private ori
 See PROVIDER_RESEARCH for the precise Socket/Slot evidence. Neither Socket's unidentified backend nor
 a community fork's Skyscraper recipe establishes permission to copy that application's assets/keys.
 
+## ScreenScraper (branch `feature/box-cases`, ADR 0029)
+
+On the box-case branch ScreenScraper is the default artwork source. The app is for the owner's own use
+only (their instruction, 2026-10-17). It uses the owner's own ScreenScraper account and a developer ID
+the owner types in Settings. No developer ID is built in, and the login never leaves the app's private
+preferences. Downloaded case art stays in the app's private storage and is never committed, bundled or
+put in a pack. The terms quoted below still apply before anything is distributed.
+
 ## Unadopted scraping providers
 
-ScreenScraper is a researched candidate, not a dependency or adopted artwork source. Its official
+Before ADR 0029, ScreenScraper was a researched candidate, not a dependency or adopted artwork source. Its official
 API documentation requires developer credentials and limits ordinary API use to completely free apps
 unless a prior agreement is obtained. Check current terms, approval, quotas and individual asset rights
 before implementation/distribution. A provider subscription or an API response is not assumed to grant

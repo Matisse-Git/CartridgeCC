@@ -16,10 +16,12 @@ data class LabelRef(val assetId: String, val fit: LabelFit = LabelFit.Fit, val q
 data class LibraryGame(val id: String, val title: String, val sourceUri: String, val label: LabelRef? = null,
     val metadata: Map<String, MetadataValue> = emptyMap(), val media: Map<String, MediaSelection> = emptyMap(),
     val favorite: Boolean = false, val playMs: Long = 0, val lastPlayed: Long = 0, val canUndoEnrichment: Boolean = false,
-    val system: GameSystem = GameSystem.GBA) {
+    val system: GameSystem = GameSystem.GBA,
+    /** The name the game file was listed under, before any scraped title replaced [title]. Its region tags stay here. */
+    val fileName: String = title) {
     init { require(id.matches(Regex("[a-f0-9]{64}"))) }
-    /** The object this game is shown as. Presentation only: it follows the console and how the game is named. */
-    val shownAs: Media get() = system.media(title)
+    /** The object this game is shown as. Presentation only: it follows the console and how the file is named. */
+    val shownAs: Media get() = system.media(fileName)
 }
 data class LibrarySnapshot(val slots: List<LibraryGame?> = listOf(null), val selectedSlot: Int = 0,
     val query: LibraryQuery = LibraryQuery()) {
@@ -46,6 +48,21 @@ interface CollectionRepository {
     suspend fun fillMissingMetadata(gameId: String, values: Map<String, MetadataValue>): Int
     suspend fun setMedia(gameId: String, media: MediaSelection)
     suspend fun undoEnrichment(gameId: String): Boolean
+    /**
+     * What an automatic scrape chose (ADR 0029), written as one change with one Undo: [label] becomes the case art and
+     * [metadata] fills fields, each only where [policy] allows. Returns how many fields and images changed. Only the
+     * Room library is atomic; this default is for test doubles.
+     */
+    suspend fun applyScraped(gameId: String, label: LabelRef?, metadata: Map<String, MetadataValue>, policy: FillPolicy): Int {
+        val game = initialize().slots.filterNotNull().firstOrNull { it.id == gameId } ?: error("This game is no longer in the library")
+        val fields = metadata.filter { (field, value) -> value.value.isNotBlank() && game.metadata[field]?.value != value.value &&
+            policy.replaces(game.metadata[field]?.takeIf { it.value.isNotBlank() }?.automatic) }
+        val art = game.label?.takeIf { it.isCaseArt }
+        val replace = label != null && game.label?.assetId != label.assetId && policy.replaces(art?.provenance?.automatic)
+        if (fields.isNotEmpty()) setMetadata(gameId, fields)
+        if (replace) setLabel(gameId, label)
+        return fields.size + if (replace) 1 else 0
+    }
     suspend fun setFavorite(gameId: String, favorite: Boolean)
     suspend fun setQuery(query: LibraryQuery)
     suspend fun recordPlay(gameId: String, elapsedMs: Long, startedAt: Long? = null)

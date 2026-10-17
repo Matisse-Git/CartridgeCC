@@ -67,7 +67,7 @@ class ConsoleCoresTest {
         Intents.init()
         try {
             intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                Intent().setData(Uri.parse("content://dev.cartridge.fixture/$file"))))
+                Intent().setData(Uri.parse("content://$FIXTURE/$file"))))
             ui.tool("choose-game").performClick(); ui.waitForIdle()
         } finally { Intents.release() }
     }

@@ -31,9 +31,9 @@ class ScrapeUiTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private class Provider : ArtworkProvider {
         override val name = "Original test provider"
-        val red = ArtworkCandidate("support-texture", "us", "https://example.invalid/red")
-        val blue = ArtworkCandidate("support-texture", "jp", "https://example.invalid/blue")
-        val box = ArtworkCandidate("box-2D", "us", "https://example.invalid/box")
+        val red = ArtworkCandidate("box-texture", "us", "https://example.invalid/red")
+        val blue = ArtworkCandidate("box-texture", "jp", "https://example.invalid/blue")
+        val box = ArtworkCandidate("ss", "us", "https://example.invalid/box")
         val one = GameCandidate("one", "Orbit Field", "Game Boy Advance", listOf("Orbit Field"),
             linkedMapOf("title" to listOf("Orbit Field"), "year" to listOf("2002"), "developer" to listOf("Studio A")),
             listOf(red, box), "https://example.invalid/one", "Original fixture")
@@ -63,7 +63,7 @@ class ScrapeUiTest {
                 Intents.init()
                 try {
                     intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                        Intent().setData(Uri.parse("content://dev.cartridge.fixture/probe-one.gba"))))
+                        Intent().setData(Uri.parse("content://$FIXTURE/probe-one.gba"))))
                     ui.tool("choose-game").performClick(); ui.waitForIdle()
                 } finally { Intents.release() }
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame != null }
@@ -99,8 +99,8 @@ class ScrapeUiTest {
                 ui.onNodeWithTag("scrape-action-2").performClick()
                 await(scenario) { !it.scraper.state.value.busy && it.coordinator.state.value.selectedGame?.metadata?.get("developer")?.recordId == "two" }
                 ui.onNodeWithTag("scrape-back").performClick()
-                ui.onNodeWithTag("scrape-asset-1").performClick() // Box saved as extra, never as label.
-                await(scenario) { !it.scraper.state.value.busy && it.coordinator.state.value.selectedGame?.media?.containsKey("box-2D") == true }
+                ui.onNodeWithTag("scrape-asset-1").performClick() // A screenshot is saved as extra, never as case art.
+                await(scenario) { !it.scraper.state.value.busy && it.coordinator.state.value.selectedGame?.media?.containsKey("ss") == true }
                 scenario.recreate()
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 scenario.onActivity {
@@ -108,7 +108,7 @@ class ScrapeUiTest {
                     assertEquals("one", game.label!!.provenance!!.recordId)
                     assertEquals("one", game.metadata["year"]!!.recordId)
                     assertEquals("two", game.metadata["developer"]!!.recordId)
-                    assertEquals("two", game.media["box-2D"]!!.image.provenance!!.recordId)
+                    assertEquals("two", game.media["ss"]!!.image.provenance!!.recordId)
                     assertFalse(game.metadata.containsKey("title"))
                 }
             }

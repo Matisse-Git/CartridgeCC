@@ -137,7 +137,7 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
     override suspend fun hiddenGames(): List<LibraryGame> = dao.removedGames().map { record ->
         val metadata = LibraryJson.metadata(record.metadataJson)
         LibraryGame(record.id, metadata["title"]?.value ?: record.title, record.sourceUri, metadata = metadata,
-            favorite = record.favorite, playMs = record.playMs, lastPlayed = record.lastPlayed, system = GameSystem.valueOf(record.system))
+            favorite = record.favorite, playMs = record.playMs, lastPlayed = record.lastPlayed, system = GameSystem.valueOf(record.system), fileName = record.title)
     }
     private suspend fun replaceSlots(ids: List<String>, selected: Int) {
         dao.clearSlots()
@@ -173,7 +173,7 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
     }
     override suspend fun fillMissingMetadata(gameId: String, values: Map<String, MetadataValue>): Int = writeMetadata(gameId, values, missingOnly = true)
     private suspend fun writeMetadata(gameId: String, values: Map<String, MetadataValue>, missingOnly: Boolean): Int {
-        require(values.keys.all { it in setOf("title", "year", "developer", "publisher", "genre", "description") })
+        require(values.keys.all { it in METADATA_FIELDS })
         require(values.values.all { it.value.length <= 16_384 }) { "The metadata field is too large" }
         return database.withTransaction {
             val game = checkNotNull(dao.game(gameId)) { "This game is no longer in the library" }
@@ -193,6 +193,34 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
             if (before[media.type] == media) return@withTransaction
             rememberEnrichment(game)
             dao.media(gameId, LibraryJson.media(before + (media.type to media)))
+        }
+    }
+    override suspend fun applyScraped(gameId: String, label: LabelRef?, metadata: Map<String, MetadataValue>, policy: FillPolicy): Int {
+        require(gameId.matches(Regex("[a-f0-9]{64}")))
+        require(metadata.keys.all { it in METADATA_FIELDS })
+        require(metadata.values.all { it.value.length <= 16_384 }) { "The metadata field is too large" }
+        return database.withTransaction {
+            val game = checkNotNull(dao.game(gameId)) { "This game is no longer in the library" }
+            val before = LibraryJson.metadata(game.metadataJson)
+            val fields = metadata.filter { (field, value) -> value.value.isNotBlank() && before[field]?.value != value.value &&
+                policy.replaces(before[field]?.takeIf { it.value.isNotBlank() }?.automatic) }
+            val provenance = LibraryJson.provenance(game.labelProvenance)
+            val art = game.labelAssetId != null && provenance?.type in CASE_ART
+            val replace = label != null && game.labelAssetId != label.assetId && policy.replaces(if (art) provenance!!.automatic else null)
+            if (fields.isEmpty() && !replace) return@withTransaction 0
+            rememberEnrichment(game)
+            if (fields.isNotEmpty()) dao.metadata(gameId, LibraryJson.metadata(before + fields))
+            if (replace) {
+                // A cartridge or disc label chosen before the cases is kept as extra media, never thrown away.
+                if (game.labelAssetId != null && !art) {
+                    val media = LibraryJson.media(game.mediaJson)
+                    val type = provenance?.type ?: "label"
+                    if (type !in media) dao.media(gameId, LibraryJson.media(media + (type to MediaSelection(
+                        LabelRef(game.labelAssetId, sourceUri = game.labelSourceUri, provenance = provenance), type, provenance?.region.orEmpty()))))
+                }
+                dao.label(gameId, label!!.assetId, label.fit.name, label.quarterTurns, label.sourceUri, LibraryJson.provenance(label.provenance))
+            }
+            fields.size + if (replace) 1 else 0
         }
     }
     private suspend fun rememberEnrichment(game: GameRecord) {
@@ -238,7 +266,8 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
                 LibraryGame(it, metadata["title"]?.value ?: row.title ?: "Untitled game", row.sourceUri.orEmpty(),
                     row.labelAssetId?.let { asset -> LabelRef(asset, LabelFit.valueOf(row.labelFit ?: "Fit"), row.labelQuarterTurns ?: 0,
                         row.labelSourceUri, LibraryJson.provenance(row.labelProvenance)) }, metadata, LibraryJson.media(row.mediaJson),
-                    row.favorite ?: false, row.playMs ?: 0, row.lastPlayed ?: 0, row.canUndoEnrichment, GameSystem.valueOf(row.system ?: "GBA"))
+                    row.favorite ?: false, row.playMs ?: 0, row.lastPlayed ?: 0, row.canUndoEnrichment, GameSystem.valueOf(row.system ?: "GBA"),
+                    row.title ?: "Untitled game")
             }
         } }, rows.firstOrNull()?.selectedSlot?.coerceIn(0, count - 1) ?: 0,
             rows.firstOrNull()?.let { LibraryQuery(LibrarySort.valueOf(it.sort), it.favoritesOnly, it.search) } ?: LibraryQuery())

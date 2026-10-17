@@ -207,7 +207,7 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
                     game.labelAssetId?.let { require(it.matches(HASH)) }
                     LibraryJson.provenance(game.labelProvenance)?.let { require(it.acceptedAt >= 0) }
                     val metadata = LibraryJson.metadata(game.metadataJson)
-                    require(metadata.keys.all { it in setOf("title", "year", "developer", "publisher", "genre", "description") } && metadata.values.all { it.value.length <= 16384 && it.acceptedAt >= 0 })
+                    require(metadata.keys.all { it in dev.cartridge.library.METADATA_FIELDS } && metadata.values.all { it.value.length <= 16384 && it.acceptedAt >= 0 })
                     val media = LibraryJson.media(game.mediaJson); require(media.size <= 32 && media.keys.all { it.length in 1..64 })
                 }
             } }

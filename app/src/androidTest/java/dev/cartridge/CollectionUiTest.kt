@@ -58,7 +58,7 @@ class CollectionUiTest {
         Intents.init()
         try {
             intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                Intent().setData(Uri.parse("content://dev.cartridge.fixture/$filename"))))
+                Intent().setData(Uri.parse("content://$FIXTURE/$filename"))))
             ui.tool(tag).performClick()
             ui.waitForIdle()
         } finally { Intents.release() }

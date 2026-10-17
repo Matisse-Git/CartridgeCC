@@ -15,17 +15,17 @@ try {
     Invoke-ProofAdb @('install', '-r', 'app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')
     python (Join-Path $PSScriptRoot 'probe/generate_gb_probe.py'); if ($LASTEXITCODE -ne 0) { throw 'Probe generation failed' }
     Invoke-ProofAdb @('push', '.tools/probe/cartridge-probe.gb', '/data/local/tmp/cartridge-probe.gb')
-    Invoke-ProofAdb @('shell', 'run-as', 'dev.cartridge', 'cp', '/data/local/tmp/cartridge-probe.gb', 'files/cartridge-probe.gb')
+    Invoke-ProofAdb @('shell', 'run-as', 'dev.cartridge.boxes', 'cp', '/data/local/tmp/cartridge-probe.gb', 'files/cartridge-probe.gb')
     Invoke-ProofAdb @('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
     $token = [guid]::NewGuid().ToString()
     $arguments = $deviceArgs + @('shell', 'am', 'instrument', '-w', '-r', '-e', 'proofToken', $token, '-e', 'class',
-        'dev.cartridge.ProcessRecoveryTest#prepareCompletedCheckpointThenHoldUncheckpointedRunningCoreForHostKill', 'dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner')
+        'dev.cartridge.ProcessRecoveryTest#prepareCompletedCheckpointThenHoldUncheckpointedRunningCoreForHostKill', 'dev.cartridge.boxes.test/androidx.test.runner.AndroidJUnitRunner')
     $holder = Start-Process -FilePath $adbPath -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $projectRoot '.tools/process-prepare.log') -RedirectStandardError (Join-Path $projectRoot '.tools/process-prepare-error.log')
     $deadline = [datetime]::UtcNow.AddSeconds(60)
     $ready = ''
     while ([datetime]::UtcNow -lt $deadline) {
         $holder.Refresh(); if ($holder.HasExited) { throw 'Preparation exited early; inspect .tools/process-prepare.log.' }
-        $candidate = & $adbPath @deviceArgs shell run-as dev.cartridge cat files/m6-process-ready.properties 2>$null
+        $candidate = & $adbPath @deviceArgs shell run-as dev.cartridge.boxes cat files/m6-process-ready.properties 2>$null
         if ($LASTEXITCODE -eq 0 -and ($candidate -join "`n") -match "(?m)^token=$token\s*$") { $ready = $candidate -join "`n"; break }
         Start-Sleep -Milliseconds 500
     }
@@ -52,16 +52,16 @@ try {
         $currentBoot = Invoke-ProofAdb @('shell', 'cat', '/proc/sys/kernel/random/boot_id')
         if ($currentBoot -eq $previousBoot) { throw 'Device boot ID did not change' }
         Invoke-ProofAdb @('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
-    } else { Invoke-ProofAdb @('shell', 'am', 'force-stop', 'dev.cartridge') }
+    } else { Invoke-ProofAdb @('shell', 'am', 'force-stop', 'dev.cartridge.boxes') }
     $holder.WaitForExit(10000) | Out-Null
-    $currentPid = & $adbPath @deviceArgs shell pidof dev.cartridge 2>$null
+    $currentPid = & $adbPath @deviceArgs shell pidof dev.cartridge.boxes 2>$null
     if ($currentPid -and ($currentPid -join ' ').Split(' ') -contains $targetPid) { throw 'The original target process survived force-stop' }
     "Original running target process terminated ($Mode); testing fresh-process restore."
     $result = Invoke-ProofAdb @('shell', 'am', 'instrument', '-w', '-r', '-e', 'proofToken', $token, '-e', 'class',
-        'dev.cartridge.ProcessRecoveryTest#freshProcessRestoresLastCompletedCheckpointPausedWithRealPixelsAndBattery', 'dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner')
+        'dev.cartridge.ProcessRecoveryTest#freshProcessRestoresLastCompletedCheckpointPausedWithRealPixelsAndBattery', 'dev.cartridge.boxes.test/androidx.test.runner.AndroidJUnitRunner')
     $result | Set-Content -LiteralPath ".tools/process-recovery-$Mode.log"; $result
     if ($result -notmatch '(?m)^OK \(1 test\)\s*$') { throw 'Process-death recovery test failed.' }
-    Invoke-ProofAdb @('shell', 'am', 'start', '-n', 'dev.cartridge/.MainActivity')
+    Invoke-ProofAdb @('shell', 'am', 'start', '-n', 'dev.cartridge.boxes/dev.cartridge.MainActivity')
 } finally {
     if ($holder) { $holder.Refresh(); if (-not $holder.HasExited) { Stop-Process -Id $holder.Id }; $holder.Dispose() }
     Pop-Location

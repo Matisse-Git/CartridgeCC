@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import dev.cartridge.library.FillMode
+import dev.cartridge.library.isCaseArt
 import dev.cartridge.shell.MenuRow
 import dev.cartridge.shell.RowKind
 import dev.cartridge.ui.*
@@ -46,7 +48,7 @@ import kotlin.math.max
                     ScrapePage.Preferences -> "Region & language"
                     ScrapePage.Matches -> "Choose a match"
                     ScrapePage.Review -> "Review"
-                    ScrapePage.Artwork -> "Labels & artwork"
+                    ScrapePage.Artwork -> "Case art & artwork"
                     ScrapePage.Metadata -> "Details"
                 }, Type.Title)
                 Txt("$source · $region · $language", Type.Label, Ink.Faint, Modifier.padding(top = Space.XS), lines = 1)
@@ -57,15 +59,17 @@ import kotlin.math.max
                 }
                 Txt(when (state.page) {
                     ScrapePage.Scope -> if (state.entries.isNotEmpty()) "Pick up the saved batch, or start a new search to replace its progress. Artwork you already applied stays."
-                        else "Find labels and details for your games. Nothing is changed until you choose it."
-                    ScrapePage.Artwork -> "Choose a flat label to try on the real ${state.current?.game?.system?.media?.noun ?: "cartridge"}, or keep other artwork alongside it." +
-                        if (state.candidate?.artwork?.none { it.isLabel } == true) " This match has no flat label." else ""
+                        else "This game and Choose games let you review each match. Consoles, All games and Games without case art apply the best match for you: " +
+                            if (state.fill.mode == FillMode.Missing) "only what is missing is filled." else if (state.fill.replaceManual) "everything is replaced, your own choices too. Undo works per game."
+                            else "what a scrape applied before is replaced; your own choices are kept."
+                    ScrapePage.Artwork -> "Choose case art to try on the real case, or keep other artwork alongside it." +
+                        if (state.candidate?.artwork?.none { it.isCaseArt } == true) " This match has no case art." else ""
                     ScrapePage.Metadata -> "Tick only the fields you want. X steps through a field's versions."
                     ScrapePage.Targets -> "${state.pickedIds.size} selected. X selects all or clears."
                     ScrapePage.Consoles -> "X selects all or clears."
                     ScrapePage.Preferences -> "Preferences decide what is offered first. Every region and language stays available."
                     ScrapePage.Matches -> if (!state.busy && state.current?.searched == true && state.current?.matches?.isEmpty() == true) "No match. Correct the search or move to the next title."
-                        else "Your current label and details are kept until you choose a replacement."
+                        else "Your current case art and details are kept until you choose a replacement."
                     ScrapePage.Review -> "Fill what is missing, or open every choice to replace something on purpose."
                 }, Type.Body, Ink.Soft, Modifier.padding(top = Space.L))
                 if (state.busy || !state.ready) {
@@ -101,10 +105,13 @@ import kotlin.math.max
                             item { Action(if (state.entries.isEmpty()) "No saved batch" else "Continue saved batch", 3, state,
                                 value = if (state.entries.isEmpty()) null else "${state.index + 1} of ${state.entries.size}", action = coordinator::resumeBatch) }
                             item { Action("Choose games", 4, state, link = true, action = coordinator::targets) }
-                            item { Action("Games without a label", 5, state, value = "${state.availableGames.count { it.label == null }}", action = coordinator::missingLabels) }
+                            item { Action("Games without case art", 5, state, value = "${state.availableGames.count { it.label?.isCaseArt != true }}", action = coordinator::missingLabels) }
                             item { Action("Region & language", 6, state, link = true, action = coordinator::preferencePage) }
                             item { Action("Import an artwork pack", 7, state, action = coordinator::pickPack) }
-                            item { Action("Close", 8, state, action = coordinator::back) }
+                            item { Action("How much to change", 8, state, value = state.fill.mode.title, note = "For Consoles, All games and Games without case art", action = coordinator::cycleFill) }
+                            item { Check("Also replace my manual choices", if (state.fill.mode == FillMode.All) "Art and details you picked yourself are replaced too" else "Only with Fill all",
+                                state.fill.replaceManual, 9, state, "scrape-action-9", coordinator::toggleReplaceManual) }
+                            item { Action("Close", 10, state, action = coordinator::back) }
                         }
                         ScrapePage.Consoles -> {
                             item { Action("Search selected consoles", 0, state, action = coordinator::beginConsoles) }
@@ -120,7 +127,7 @@ import kotlin.math.max
                             item { Action("Select all", 1, state) { coordinator.pickAll(true) } }
                             item { Action("Clear selection", 2, state) { coordinator.pickAll(false) } }
                             itemsIndexed(state.availableGames, key = { _, game -> game.id }) { index, game ->
-                                Check(game.title, if (game.label == null) "No label yet" else "Has a label · kept unless you replace it", game.id in state.pickedIds,
+                                Check(game.title, if (game.label == null) "No case art yet" else "Has artwork · kept unless you replace it", game.id in state.pickedIds,
                                     index + 3, state, "scrape-target-$index") { coordinator.pick(game.id) }
                             }
                             item { Action("Back", state.availableGames.size + 3, state, action = coordinator::back) }
@@ -134,7 +141,7 @@ import kotlin.math.max
                             val matches = state.current?.matches.orEmpty()
                             itemsIndexed(matches, key = { _, game -> game.id }) { index, game ->
                                 Action(listOfNotNull(game.title, game.metadata["year"]?.firstOrNull()?.takeIf(String::isNotBlank)).joinToString(" · "), index, state,
-                                    note = "${if (game.exactHash) "Exact match for your file" else "Title match"} · ${game.artwork.count { it.isLabel }} labels · ${game.artwork.size} images") { coordinator.chooseCandidate(index) }
+                                    note = "${if (game.exactHash) "Exact match for your file" else "Title match"} · ${game.artwork.count { it.isCaseArt }} case art · ${game.artwork.size} images") { coordinator.chooseCandidate(index) }
                             }
                             item { Action("Search this title again", matches.size, state, action = coordinator::searchCurrent) }
                             item { Action("Next title", matches.size + 1, state, action = coordinator::next) }
@@ -143,13 +150,13 @@ import kotlin.math.max
                         ScrapePage.Review -> {
                             val game = state.current?.game
                             val candidate = state.candidate
-                            val label = candidate?.artwork?.firstOrNull { it.isLabel }
+                            val label = candidate?.artwork?.firstOrNull { it.isCaseArt }
                             item {
                                 Row(Modifier.padding(start = 14.dp, bottom = Space.M), horizontalArrangement = Arrangement.spacedBy(Space.L)) {
                                     label?.let { ProviderThumbnail(it, coordinator.provider) }
                                     Column(Modifier.weight(1f)) {
                                         Txt(candidate?.title.orEmpty(), Type.Heading, lines = 2)
-                                        Txt(if (game?.label != null) "Your current label is kept" else label?.let { "Preferred label · ${regionTitle(it.region)}" } ?: "No flat label for this match",
+                                        Txt(if (game?.label?.provenance?.type in dev.cartridge.library.CASE_ART) "Your current case art is kept" else label?.let { "Preferred case art · ${regionTitle(it.region)}" } ?: "No case art for this match",
                                             Type.Label, Ink.Soft, Modifier.padding(top = 2.dp))
                                         candidate?.metadata.orEmpty().entries.take(4).forEach { (field, values) ->
                                             Txt("${field.replaceFirstChar(Char::uppercase)}  ${game?.metadata?.get(field)?.value?.let { "$it (kept)" } ?: values.firstOrNull().orEmpty()}",
@@ -158,9 +165,9 @@ import kotlin.math.max
                                     }
                                 }
                             }
-                            item { ReviewAction("Try the preferred label", 0, state, "review-label", label != null && game?.label == null, coordinator::preferredLabel) }
+                            item { ReviewAction("Try the preferred case art", 0, state, "review-label", label != null && game?.label?.provenance?.type !in dev.cartridge.library.CASE_ART, coordinator::preferredLabel) }
                             item { ReviewAction("Fill in missing details", 1, state, "review-fill", candidate?.metadata?.keys?.any { game?.metadata?.get(it)?.value.isNullOrBlank() } == true, coordinator::fillMissingMetadata) }
-                            item { ReviewAction("All labels and artwork", 2, state, "review-media", true, coordinator::browseArtwork) }
+                            item { ReviewAction("All case art and artwork", 2, state, "review-media", true, coordinator::browseArtwork) }
                             item { ReviewAction("Choose details field by field", 3, state, "review-fields", true, coordinator::metadata) }
                             item { ReviewAction("Next title", 4, state, "review-next", true, coordinator::next) }
                             item { ReviewAction("Undo last change", 5, state, "review-undo", game?.canUndoEnrichment == true, coordinator::undo) }
@@ -177,7 +184,7 @@ import kotlin.math.max
                                     ProviderThumbnail(asset, coordinator.provider)
                                     Column(Modifier.weight(1f)) {
                                         Txt("${mediaTitle(asset.type)} · ${regionTitle(asset.region)}", Type.Body)
-                                        Txt(if (asset.isLabel) "Try it on the real object" else "Keep as extra artwork", Type.Label, Ink.Faint, Modifier.padding(top = 2.dp))
+                                        Txt(if (asset.isCaseArt) "Try it on the real object" else "Keep as extra artwork", Type.Label, Ink.Faint, Modifier.padding(top = 2.dp))
                                     }
                                 }
                             }
@@ -208,7 +215,8 @@ import kotlin.math.max
 private fun mediaTitle(type: String) = when (type) {
     "support-texture" -> "Flat label"
     "support-2D" -> "Photo of the media"
-    "box-2D" -> "Box artwork"
+    "box-2D" -> "Front cover"
+    "box-texture" -> "Whole cover"
     "ss", "screenshot" -> "Screenshot"
     "sstitle" -> "Title screen"
     "wheel" -> "Title logo"
@@ -217,6 +225,7 @@ private fun mediaTitle(type: String) = when (type) {
 private fun regionTitle(region: String) = when (region.lowercase()) {
     "us" -> "United States"
     "eu" -> "Europe"
+    "uk" -> "United Kingdom"
     "jp" -> "Japan"
     "wor" -> "Worldwide"
     "" -> "Unspecified region"

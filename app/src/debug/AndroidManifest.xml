@@ -2,9 +2,9 @@
     <application>
         <activity android:name=".CollectionProfileActivity" android:exported="false" android:screenOrientation="landscape" />
         <activity android:name=".DebugCollectionActivity" android:exported="false" android:screenOrientation="landscape" />
-        <provider android:name=".FixtureDocumentProvider" android:authorities="dev.cartridge.fixture"
+        <provider android:name=".FixtureDocumentProvider" android:authorities="${applicationId}.fixture"
             android:exported="false" android:grantUriPermissions="true" />
-        <provider android:name=".FixtureTreeProvider" android:authorities="dev.cartridge.fixture-tree"
+        <provider android:name=".FixtureTreeProvider" android:authorities="${applicationId}.fixture-tree"
             android:exported="true" android:permission="android.permission.MANAGE_DOCUMENTS" android:grantUriPermissions="true" />
         <activity android:name=".SurfaceProbeActivity" android:exported="false"
             android:screenOrientation="landscape" />

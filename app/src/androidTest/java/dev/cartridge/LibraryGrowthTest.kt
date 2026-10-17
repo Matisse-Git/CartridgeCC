@@ -89,11 +89,11 @@ class LibraryGrowthTest {
         try {
             ActivityScenario.launch<DebugCollectionActivity>(intent).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
-                choose("choose-game", Intent.ACTION_OPEN_DOCUMENT, Uri.parse("content://dev.cartridge.fixture/probe-one.gba"))
+                choose("choose-game", Intent.ACTION_OPEN_DOCUMENT, Uri.parse("content://$FIXTURE/probe-one.gba"))
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame != null }
                 var originalId = ""
                 scenario.onActivity { originalId = it.coordinator.state.value.selectedGame!!.id }
-                choose("choose-folder", Intent.ACTION_OPEN_DOCUMENT_TREE, Uri.parse("content://dev.cartridge.fixture-tree/tree/root"))
+                choose("choose-folder", Intent.ACTION_OPEN_DOCUMENT_TREE, Uri.parse("content://$FIXTURE_TREE/tree/root"))
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.slots.size == 6 }
                 scenario.onActivity {
                     assertEquals(originalId, it.coordinator.state.value.selectedGame!!.id)
@@ -104,7 +104,7 @@ class LibraryGrowthTest {
                 await(scenario) { !it.coordinator.state.value.busy && it.shell.lastScan?.let { scan -> scan.added == 0 && scan.duplicates == 7 && scan.failed == 1 } == true }
                 scenario.onActivity { assertEquals(6, it.coordinator.state.value.slots.size); it.coordinator.navigate(5) }
                 ui.waitForIdle()
-                choose("choose-label", Intent.ACTION_OPEN_DOCUMENT, Uri.parse("content://dev.cartridge.fixture/blue-label.png"))
+                choose("choose-label", Intent.ACTION_OPEN_DOCUMENT, Uri.parse("content://$FIXTURE/blue-label.png"))
                 await(scenario) { it.coordinator.state.value.labelPreviewReady }
                 bluePixels(scenario)
                 ui.onNodeWithTag("label-action-2").performClick()
@@ -157,7 +157,7 @@ class LibraryGrowthTest {
                 await(scenario) { !it.coordinator.state.value.busy && it.shell.lastScan != null }
                 scenario.onActivity { assertEquals(5, it.coordinator.state.value.slots.size) }
                 File(fixtures, "probe-two.gba").writeBytes(File(tree, "g5.gba").readBytes())
-                choose("choose-game", Intent.ACTION_OPEN_DOCUMENT, Uri.parse("content://dev.cartridge.fixture/probe-two.gba"))
+                choose("choose-game", Intent.ACTION_OPEN_DOCUMENT, Uri.parse("content://$FIXTURE/probe-two.gba"))
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.id == gameId }
                 scenario.onActivity { assertEquals(6, it.coordinator.state.value.slots.size); assertNotNull(it.coordinator.state.value.selectedGame!!.label) }
                 bluePixels(scenario)

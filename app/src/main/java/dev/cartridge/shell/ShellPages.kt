@@ -155,7 +155,7 @@ private fun ConsoleShell.detailsPage(game: LibraryGame, state: CollectionState):
 private fun ConsoleShell.managePage(game: LibraryGame, state: CollectionState): Page {
     val ready = !state.busy
     return Page("manage", "Manage game", buildList {
-        add(MenuRow("scrape", "Find artwork online", note = "Labels and details from RetroBase", enabled = ready, tag = "manage-scrape") { openScraper(single = true) })
+        add(MenuRow("scrape", "Find artwork online", note = "Case art and details, reviewed match by match", enabled = ready, tag = "manage-scrape") { openScraper(single = true) })
         add(MenuRow("image", "Use my own image", enabled = ready, tag = "manage-image") { chooseLabel() })
         add(MenuRow("edit", "Edit details", RowKind.Link, enabled = ready, tag = "manage-edit") { editDetails() })
         if (game.canUndoEnrichment) add(MenuRow("undo", "Undo last artwork change", enabled = ready, tag = "manage-undo") { coordinator.undoEnrichment() })
@@ -316,6 +316,7 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
                         note = unreachable ?: "Checked ${whenLabel(root.lastScan)}" + if (root.error != null) " · some files were skipped" else "") { push(Destination.Folder(root.uri)) })
                 }
             }
+            artworkRows()?.let(::addAll)
             add(header("Browsing"))
             add(MenuRow("sort", "Sort games by", RowKind.Choice, value = state.query.sort.title, enabled = ready, tag = "settings-sort",
                 adjust = { delta -> coordinator.query(state.query.copy(sort = LibrarySort.entries.step(state.query.sort, delta))) }))
@@ -383,6 +384,46 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
             toggle("framerate", "Show frame rate", showFrameRate, note = "Frames the library drew in the last second, beside the clock.") { changeShowFrameRate(it) },
             MenuRow("reset", "Reset settings", RowKind.Danger, note = "Appearance, controls and gameplay return to defaults. Games, saves and folders are not affected.",
                 enabled = !state.busy, tag = "settings-reset") { resetSettings() })
+    }
+}
+
+// ---- Artwork (ADR 0029) ---------------------------------------------------------------------------------
+
+/** Where case art and details come from, the owner's login, and what the last automatic scrape did. */
+private fun ConsoleShell.artworkRows(): List<MenuRow>? {
+    val settings = artwork ?: return null
+    artworkRevision
+    val source = settings.source
+    val login = settings.login
+    val run = autoScraper?.status?.value
+    return buildList {
+        add(MenuRow("header:Artwork", "Artwork", RowKind.Header))
+        add(MenuRow("artwork-source", "Artwork source", RowKind.Choice, value = source.title, tag = "settings-artwork-source",
+            note = "Case art and details for games you add, and for Artwork & Info.",
+            adjust = { delta -> changeArtworkSource(dev.cartridge.scraping.ArtworkSource.entries.step(source, delta)) }))
+        if (source == dev.cartridge.scraping.ArtworkSource.ScreenScraper) {
+            val kept = "Kept on this device only. Never in a backup."
+            add(MenuRow("login-user", "ScreenScraper user", value = login.user.ifBlank { "Not set" }, warn = login.user.isBlank(), tag = "settings-login-user", note = kept) { editLogin("user") })
+            add(MenuRow("login-password", "ScreenScraper password", value = if (login.password.isBlank()) "Not set" else "Set", warn = login.password.isBlank(), tag = "settings-login-password", note = kept) { editLogin("password") })
+            add(MenuRow("login-dev", "Developer ID", value = login.devId.ifBlank { "Not set" }, warn = login.devId.isBlank(), tag = "settings-login-dev",
+                note = "ScreenScraper asks every program for one. Request yours on the screenscraper.fr forum.") { editLogin("devId") })
+            add(MenuRow("login-dev-password", "Developer password", value = if (login.devPassword.isBlank()) "Not set" else "Set", warn = login.devPassword.isBlank(), tag = "settings-login-dev-password", note = kept) { editLogin("devPassword") })
+        }
+        add(MenuRow("artwork-status", "Automatic artwork", RowKind.Info, tag = "settings-artwork-status", warn = run?.problem != null,
+            value = when {
+                run == null -> null
+                run.running -> "${run.done} of ${run.total}"
+                run.problem != null -> "Waiting"
+                run.done > 0 -> "Done"
+                else -> "Idle"
+            },
+            note = when {
+                run?.running == true -> "Fetching ${run.current ?: "artwork"}…"
+                run?.problem != null -> "${run.problem} Games that were not reached are tried again the next time you add a game or scrape."
+                run != null && run.done > 0 -> "Last run: ${run.summary}."
+                else -> "Games you add get case art and details. Artwork & Info can fill or replace them for many games at once."
+            // Focusable so its note, the run's progress or the reason it stopped, is shown.
+            }) {})
     }
 }
 

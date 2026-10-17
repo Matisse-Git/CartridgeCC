@@ -59,7 +59,9 @@ enum class SettingsCategory(val title: String) {
 
 class TextSpec(val title: String, val hint: String, val initial: String, val limit: Int, val tag: String,
     /** Capitalise the first letter of each word, as a title wants. */
-    val titleCase: Boolean = false, val done: (String) -> Unit)
+    val titleCase: Boolean = false,
+    /** A password: shown as dots and kept exactly as typed, spaces included. */
+    val secret: Boolean = false, val done: (String) -> Unit)
 
 /** Where the player is. Sheets stack over the stage; opaque destinations replace it until dismissed. */
 sealed class Destination(val key: String, val opaque: Boolean = false) {

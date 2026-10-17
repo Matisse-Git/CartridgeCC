@@ -36,7 +36,7 @@ class LibraryManagementTest {
         Intents.init()
         try {
             intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                Intent().setData(Uri.parse("content://dev.cartridge.fixture/$filename"))))
+                Intent().setData(Uri.parse("content://$FIXTURE/$filename"))))
             ui.tool("choose-game").performClick(); ui.waitForIdle()
         } finally { Intents.release() }
     }
@@ -143,7 +143,7 @@ class LibraryManagementTest {
         repeat(6) { File(treeFiles, "g$it.gba").writeBytes(probe + byteArrayOf((it + 40).toByte())) }
         File(treeFiles, "duplicate.gba").writeBytes(File(treeFiles, "g0.gba").readBytes())
         File(treeFiles, "invalid.gba").delete(); File(treeFiles, "readme.gba").delete()
-        val tree = Uri.parse("content://dev.cartridge.fixture-tree/tree/root")
+        val tree = Uri.parse("content://$FIXTURE_TREE/tree/root")
         try {
             val repository = RoomCollectionRepository(context, database); repository.initialize()
             val scanner = DirectoryScanner(context.contentResolver, File(context.filesDir, "roms"), repository, repository)
@@ -173,7 +173,7 @@ class LibraryManagementTest {
             // Changing content under the same document name creates a separate hash, preserving the old game.
             File(treeFiles, "g5.gba").writeBytes(original + byteArrayOf(99))
             assertEquals(1, scanner.scan(tree, {}).added); assertEquals(7, repository.initialize().slots.size)
-            val nested = Uri.parse("content://dev.cartridge.fixture-tree/tree/nested")
+            val nested = Uri.parse("content://$FIXTURE_TREE/tree/nested")
             scanner.scan(nested, {})
             assertEquals(2, repository.directoryRecords().size)
             repository.forgetDirectory(tree.toString()); repository.forgetDirectory(nested.toString())

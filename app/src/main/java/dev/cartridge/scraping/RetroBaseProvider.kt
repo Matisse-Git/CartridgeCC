@@ -42,7 +42,7 @@ class RetroBaseProvider(private val cache: File) : ArtworkProvider {
         }.distinctBy { it.id }
         choices.sortedWith(compareByDescending<GameCandidate> { it.exactHash }
             .thenByDescending { candidate -> candidate.names.any { normalized(it) == normalized(query) } }
-            .thenByDescending { it.artwork.any(ArtworkCandidate::isLabel) })
+            .thenByDescending { it.artwork.any(ArtworkCandidate::isCaseArt) })
     }
 
     internal fun parseGame(game: JSONObject, meta: JSONObject?, exact: Boolean = false, system: dev.cartridge.domain.GameSystem = dev.cartridge.domain.GameSystem.GBA): GameCandidate? {
@@ -75,11 +75,11 @@ class RetroBaseProvider(private val cache: File) : ArtworkProvider {
             if (media != null) repeat(media.length()) { index ->
                 val item = media.optJSONObject(index) ?: return@repeat
                 val type = item.optString("type")
-                if (type !in setOf("support-texture", "support-2D", "box-2D", "ss", "screenshot", "sstitle", "wheel")) return@repeat
+                if (type !in setOf("support-texture", "support-2D", "box-2D", "box-texture", "ss", "screenshot", "sstitle", "wheel")) return@repeat
                 val url = item.optString("url")
                 if (allowedImage(url)) add(ArtworkCandidate(type, item.optString("region"), url, item.text("hash")))
             }
-        }.distinctBy { it.url }.sortedWith(compareByDescending<ArtworkCandidate> { it.isLabel }.thenBy { it.region })
+        }.distinctBy { it.url }.sortedWith(compareByDescending<ArtworkCandidate> { it.isCaseArt }.thenBy { it.region })
         return GameCandidate(id, names.first(), platform, names, metadata, artwork,
             "$base/games/$id", meta?.text("license") ?: "Provider licence not supplied", exact, tags)
     }

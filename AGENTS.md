@@ -26,7 +26,8 @@
   docs/LABEL_SCRAPING.md before enrichment work; preserve manual choices, provenance and offline launch.
 - API/database scraping is the owner's primary artwork workflow. Local custom image import is an
   optional fallback; never report it as completion of the scraping feature. Inspect Socket/Slot's
-  public references and real provider media categories; box art is not a flat label.
+  public references and real provider media categories. Games are shown in their cases (ADR 0029): only
+  `box-texture`/`box-2D` is case art; a flat label is kept as extra media and never wrapped round a case.
 - Collection length is variable; keep the visible GLB/label pool bounded and map GPU acknowledgements
   through its global window offset. Never allocate a mesh or decode every label for a full library.
 - Save scrape targets before network work. Keep accepted Room choices separate from durable candidates;
@@ -43,7 +44,11 @@
   mark unseen documents missing after cancellation or an incomplete traversal. Count only Running time.
 - Scrape one title at a time after publishing targets. Preserve v1 journal compatibility and source tags;
   preferences rank alternatives without hiding them. Re-read accepted Room values before resumed review.
-- Fill missing metadata atomically; never overwrite existing choices implicitly. Enrichment undo restores
+- Fill missing metadata atomically; never overwrite existing choices implicitly. The owner chose automatic
+  apply (ADR 0029): added games and bulk scopes take the best match, Fill missing by default; Fill all
+  replaces only `automatic` choices unless "Also replace my manual choices" is ticked; one write, one Undo.
+  The ScreenScraper login and developer ID live only in private preferences, never in Git, backups, packs,
+  stored URLs or logs, and no developer ID is built in. Enrichment undo restores
   only label/metadata/media, not ROMs, saves, source, membership or history. Keep its previous files available.
 - A filtered scrape preview must never persist a temporary collection query/selection. Test apply, cancel
   and recreation; opaque scraper pages pause 3D, actual label preview resumes it.
@@ -77,7 +82,8 @@
 
 - Every object a game is shown as is converted from the owner's downloads by
   `tools/import_models.py` (ADR 0019 and 0025, ASSET_PIPELINE); never hand-edit those GLBs or bring
-  back a generator that writes them. Keep one named label primitive, its UV contract, the template
+  back a generator that writes them; the one exception is ADR 0029's case generator, which writes only
+  case files for shapes no download covers. Keep one named label primitive, its UV contract, the template
   sizes and the removal of baked game labels: a download is not converted until the tool asserts its
   print is gone, and each new GLB is rendered and looked at before it reaches the device. A template
   is one `Media` entry (file, label height, on-screen scale); the renderer names no object, and no

@@ -41,7 +41,7 @@ class ScrapePackTest {
         val bytes = image(); val sha = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         val metadata = JSONObject().put("year", JSONArray().put(JSONObject().put("value", "2002")))
             .put("developer", JSONArray().put(JSONObject().put("value", "Original studio")))
-        val media = JSONObject().put("asset", "blue").put("type", "support-texture").put("region", "us").put("sourceUrl", "https://example.invalid/original")
+        val media = JSONObject().put("asset", "blue").put("type", "box-texture").put("region", "us").put("sourceUrl", "https://example.invalid/original")
         val match = JSONObject().put("id", "original").put("title", "Orbit Field").put("platform", "Game Boy Advance")
             .put("metadata", metadata).put("media", JSONArray().put(media))
         val game = JSONObject().put("romSha256", hash).put("matches", JSONArray().put(match))
@@ -77,7 +77,7 @@ class ScrapePackTest {
                 Intents.init()
                 try {
                     intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                        Intent().setData(Uri.parse("content://dev.cartridge.fixture/original-pack.zip"))))
+                        Intent().setData(Uri.parse("content://$FIXTURE/original-pack.zip"))))
                     click("scrape-action-7")
                 } finally { Intents.release() }
                 await(scenario) { !it.scraper.state.value.busy && it.scraper.state.value.current?.local == true }

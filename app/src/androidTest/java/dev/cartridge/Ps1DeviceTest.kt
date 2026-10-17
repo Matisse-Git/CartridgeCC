@@ -54,7 +54,7 @@ class Ps1DeviceTest {
         Intents.init()
         try {
             intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                Intent().setData(Uri.parse("content://dev.cartridge.fixture/$file"))))
+                Intent().setData(Uri.parse("content://$FIXTURE/$file"))))
             ui.tool("choose-game").performClick(); ui.waitForIdle()
         } finally { Intents.release() }
     }
@@ -138,7 +138,7 @@ class Ps1DeviceTest {
                 Intents.init()
                 try {
                     intending(hasAction(Intent.ACTION_OPEN_DOCUMENT_TREE)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                        Intent().setData(Uri.parse("content://dev.cartridge.fixture-tree/tree/ps1-root"))))
+                        Intent().setData(Uri.parse("content://$FIXTURE_TREE/tree/ps1-root"))))
                     ui.tool("choose-folder").performClick()
                 } finally { Intents.release() }
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.system==GameSystem.PS1 }
@@ -149,7 +149,7 @@ class Ps1DeviceTest {
                 Intents.init()
                 try {
                     intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                        Intent().setData(Uri.parse("content://dev.cartridge.fixture/red-label.png"))))
+                        Intent().setData(Uri.parse("content://$FIXTURE/red-label.png"))))
                     ui.tool("choose-label").performClick()
                 } finally { Intents.release() }
                 await(scenario) { it.coordinator.state.value.labelPreviewReady }
@@ -205,7 +205,7 @@ class Ps1DeviceTest {
             assertArrayEquals(state,targetSaves.read(id,"state"))
             val bios=File(directory,"bios").apply { mkdirs() };File(bios,"scph5501.bin").writeBytes(byteArrayOf(9,8,7))
             File(context.filesDir,"m1-fixtures/invalid.png").apply { parentFile!!.mkdirs();writeBytes(byteArrayOf(0)) }
-            try { FirmwareStore(bios).import(context.contentResolver,Uri.parse("content://dev.cartridge.fixture/invalid.png"),dev.cartridge.domain.Core.Pcsx);fail("Invalid firmware accepted") } catch (_: IllegalArgumentException) { }
+            try { FirmwareStore(bios).import(context.contentResolver,Uri.parse("content://$FIXTURE/invalid.png"),dev.cartridge.domain.Core.Pcsx);fail("Invalid firmware accepted") } catch (_: IllegalArgumentException) { }
             assertArrayEquals(byteArrayOf(9,8,7),File(bios,"scph5501.bin").readBytes())
         } finally { firstDb.close();secondDb.close();preferences.edit().clear().commit();directory.deleteRecursively() }
     }

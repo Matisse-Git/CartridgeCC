@@ -61,7 +61,7 @@ class SaturnCoreTest {
         Intents.init()
         try {
             intending(hasAction(Intent.ACTION_OPEN_DOCUMENT_TREE)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                Intent().setData(Uri.parse("content://dev.cartridge.fixture-tree/tree/discs"))))
+                Intent().setData(Uri.parse("content://$FIXTURE_TREE/tree/discs"))))
             ui.tool("choose-folder").performClick()
         } finally { Intents.release() }
     }
@@ -116,7 +116,7 @@ class SaturnCoreTest {
                 ui.onNodeWithTag("settings-bios-mpr-17933").performScrollTo().assertIsDisplayed(); ui.onNodeWithTag("settings-bios-sega_101").performScrollTo().assertIsDisplayed()
                 // A file that is not a known Saturn BIOS is refused in words, and nothing is written.
                 File(context.filesDir, "m1-fixtures/invalid.png").apply { parentFile!!.mkdirs(); writeBytes(ByteArray(512 * 1024)) }
-                val refusal = runCatching { FirmwareStore(system).import(context.contentResolver, Uri.parse("content://dev.cartridge.fixture/invalid.png"), Core.BeetleSaturn) }.exceptionOrNull()
+                val refusal = runCatching { FirmwareStore(system).import(context.contentResolver, Uri.parse("content://$FIXTURE/invalid.png"), Core.BeetleSaturn) }.exceptionOrNull()
                 assertTrue(refusal is IllegalArgumentException && refusal.message!!.contains("Saturn BIOS")); assertTrue(images.none { File(system, it).exists() })
             }
         } finally { DebugCollectionActivity.closeDatabases(); context.deleteDatabase("$name.db") }

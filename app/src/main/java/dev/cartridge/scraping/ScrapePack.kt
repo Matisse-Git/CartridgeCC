@@ -66,7 +66,7 @@ class ScrapePackStore(private val directory: File) {
                     } }
                     val artwork = match.getJSONArray("media").objects(64).map { media ->
                         val type = media.getString("type")
-                        require(type in setOf("support-texture", "support-2D", "box-2D", "ss", "screenshot", "sstitle", "wheel")) { "Unsupported media type" }
+                        require(type in setOf("support-texture", "support-2D", "box-2D", "box-texture", "ss", "screenshot", "sstitle", "wheel")) { "Unsupported media type" }
                         ArtworkCandidate(type, media.text("region", "", 16), checkNotNull(assets[media.getString("asset")]) { "Unknown asset reference" },
                             originalUrl = media.text("sourceUrl", "", 4096).takeIf(String::isNotBlank))
                     }.distinctBy { it.url }

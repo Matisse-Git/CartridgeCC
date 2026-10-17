@@ -47,7 +47,7 @@ class LargeDiscImportTest {
                 Intents.init()
                 try {
                     intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                        Intent().setData(Uri.parse("content://dev.cartridge.fixture/probe.iso"))))
+                        Intent().setData(Uri.parse("content://$FIXTURE/probe.iso"))))
                     ui.tool("choose-game").performClick(); ui.waitForIdle()
                 } finally { Intents.release() }
                 await(scenario, 300_000) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame != null }

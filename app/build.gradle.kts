@@ -11,7 +11,10 @@ android {
     compileSdk = 35
     ndkVersion = "27.2.12479018"
     defaultConfig {
-        applicationId = "dev.cartridge"
+        // The box-case branch installs beside the main app with a library of its own (docs/decisions/0029).
+        // Merging into master puts back "dev.cartridge" and "Cartridge".
+        applicationId = "dev.cartridge.boxes"
+        manifestPlaceholders["appLabel"] = "Cartridge Boxes"
         minSdk = 26
         targetSdk = 35
         versionCode = 17

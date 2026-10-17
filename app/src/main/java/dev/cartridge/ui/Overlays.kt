@@ -141,7 +141,10 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
             Box(Modifier.fillMaxWidth().padding(top = Space.S).clip(RoundedCornerShape(Radius.Row)).background(Ink.Surface).border(1.dp, Ink.Line, RoundedCornerShape(Radius.Row))
                 .padding(horizontal = 14.dp, vertical = 11.dp)) {
                 BasicTextField(shell.text, shell::replaceText, Modifier.fillMaxWidth().heightIn(max = 66.dp).testTag(spec?.tag ?: "text-entry"),
-                    textStyle = Type.Heading.copy(color = Ink.Text), cursorBrush = SolidColor(accent), maxLines = 3)
+                    textStyle = Type.Heading.copy(color = Ink.Text), cursorBrush = SolidColor(accent), maxLines = 3,
+                    visualTransformation = if (spec?.secret == true) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+                    keyboardOptions = if (spec?.secret == true) androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password, autoCorrectEnabled = false)
+                        else androidx.compose.foundation.text.KeyboardOptions.Default)
                 if (shell.text.isEmpty()) Txt(page.subtitle.orEmpty(), Type.Heading, Ink.Faint, lines = 1)
             }
             Column(Modifier.padding(top = Space.M), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -149,7 +152,7 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
                 ConsoleShell.KEY_ROWS.forEachIndexed { rowIndex, keys ->
                     Row(Modifier.fillMaxWidth().height(38.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                         if (keys.isNotEmpty()) keys.forEachIndexed { column, character ->
-                            Key(if (shell.shift) character.uppercase() else character.toString(), rowIndex == focusRow && column == focusColumn, 1f, "key-$character") {
+                            Key(if (shell.shift) ConsoleShell.shifted(character).toString() else character.toString(), rowIndex == focusRow && column == focusColumn, 1f, "key-$character") {
                                 shell.pressKeyAt(rowIndex * ConsoleShell.KEY_COLUMNS + column)
                             }
                         } else listOf(Triple("Shift", 2f, 0), Triple("Space", 4f, 2), Triple("Delete", 2f, 6), Triple("Done", 2f, 8)).forEachIndexed { index, (label, weight, column) ->

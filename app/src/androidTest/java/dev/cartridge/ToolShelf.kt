@@ -11,6 +11,10 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.compose.ui.geometry.Offset
 
+/** The debug build's fixture document providers, named after whichever application ID this build has. */
+internal val FIXTURE get() = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext.packageName + ".fixture"
+internal val FIXTURE_TREE get() = "$FIXTURE-tree"
+
 internal fun ComposeTestRule.shown(tag: String) = onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
 /**

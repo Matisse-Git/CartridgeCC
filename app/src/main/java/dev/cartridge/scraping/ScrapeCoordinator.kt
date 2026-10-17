@@ -17,12 +17,18 @@ data class ScrapeState(val visible: Boolean = false, val page: ScrapePage = Scra
     val busy: Boolean = false, val focus: Int = 0, val progress: String? = null, val message: String? = null,
     val metadataChoices: Map<String, Int> = emptyMap(), val checkedFields: Set<String> = emptySet(), val ready: Boolean = true,
     val preferences: ScrapePreferences = ScrapePreferences(), val availableGames: List<LibraryGame> = emptyList(),
-    val pickedIds: Set<String> = emptySet(), val pickedSystems: Set<GameSystem> = emptySet()) {
+    val pickedIds: Set<String> = emptySet(), val pickedSystems: Set<GameSystem> = emptySet(),
+    /** What a bulk scope may change. Chosen each time the panel opens; never saved, so Fill all is never a surprise. */
+    val fill: FillPolicy = FillPolicy()) {
     val current get() = entries.getOrNull(index)
     val consoles get() = availableGames.map { it.system }.distinct().sortedBy { it.ordinal }
 }
 
-/** Reviewed multi-system queue. Provider results never auto-overwrite accepted choices. */
+/**
+ * Reviewed multi-system queue. Provider results never overwrite accepted choices from here. Bulk scopes (consoles, all
+ * games, games without case art) go to [automatic] instead when it is given (ADR 0029); one game, or a chosen list,
+ * is still reviewed title by title.
+ */
 class ScrapeCoordinator(
     val provider: ArtworkProvider,
     private val repository: CollectionRepository,
@@ -33,6 +39,7 @@ class ScrapeCoordinator(
     private val preferences: ScrapePreferenceStore = MemoryScrapePreferences(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val choosePack: () -> Unit = {},
+    private val automatic: ((List<LibraryGame>, FillPolicy) -> Unit)? = null,
     private val preview: (LibraryGame, LabelRef) -> Unit,
 ) {
     private val mutableState = MutableStateFlow(ScrapeState(ready = false))
@@ -59,11 +66,29 @@ class ScrapeCoordinator(
 
     fun open(games: List<LibraryGame>, focused: LibraryGame?) {
         available = games.distinctBy { it.id }; selected = focused
-        mutableState.value = state.value.copy(visible = true, page = ScrapePage.Scope, focus = 0, availableGames = available)
+        mutableState.value = state.value.copy(visible = true, page = ScrapePage.Scope, focus = 0, availableGames = available, fill = FillPolicy())
     }
     fun chooseScope(single: Boolean) {
         if (state.value.busy || !state.value.ready) return
-        begin(if (single) listOfNotNull(selected) else available)
+        if (single) begin(listOfNotNull(selected)) else bulk(available)
+    }
+    /** Fill missing, then Fill all. Leaving Fill all also clears the manual tick, so it is never left on unseen. */
+    fun cycleFill() {
+        if (state.value.busy) return
+        val fill = state.value.fill
+        mutableState.value = state.value.copy(fill = if (fill.mode == FillMode.Missing) fill.copy(mode = FillMode.All) else FillPolicy())
+    }
+    fun toggleReplaceManual() {
+        if (state.value.busy || state.value.fill.mode != FillMode.All) return
+        mutableState.value = state.value.copy(fill = state.value.fill.copy(replaceManual = !state.value.fill.replaceManual))
+    }
+    /** A bulk scope: applied automatically when this app does that, otherwise the reviewed queue. */
+    private fun bulk(targets: List<LibraryGame>) {
+        val apply = automatic ?: return begin(targets)
+        if (state.value.busy || !state.value.ready) return
+        if (targets.isEmpty()) { message("Add a game before scraping"); return }
+        apply(targets.distinctBy { it.id }, state.value.fill)
+        mutableState.value = state.value.copy(visible = false, page = ScrapePage.Scope, focus = 0)
     }
     fun pickPack() { if (!state.value.busy && state.value.ready) choosePack() }
     fun consoles() {
@@ -75,7 +100,7 @@ class ScrapeCoordinator(
     fun pickAllConsoles(all: Boolean) { if (!state.value.busy) mutableState.value = state.value.copy(pickedSystems = if (all) state.value.consoles.toSet() else emptySet()) }
     fun beginConsoles() {
         val targets = available.filter { it.system in state.value.pickedSystems }
-        if (targets.isEmpty()) message("Choose at least one console with games") else begin(targets)
+        if (targets.isEmpty()) message("Choose at least one console with games") else bulk(targets)
     }
     fun importPack(import: suspend () -> ScrapePack) = action {
         val pack = import()
@@ -107,8 +132,8 @@ class ScrapeCoordinator(
         if (targets.isEmpty()) message("Choose at least one game") else begin(targets)
     }
     fun missingLabels() {
-        val targets = available.filter { it.label == null }
-        if (targets.isEmpty()) message("Every game already has a label") else begin(targets)
+        val targets = available.filter { it.label?.isCaseArt != true }
+        if (targets.isEmpty()) message("Every game already has case art") else bulk(targets)
     }
     fun preferencePage() { if (!state.value.busy) mutableState.value = state.value.copy(page = ScrapePage.Preferences, focus = 0) }
     fun cyclePreference(region: Boolean) = action {
@@ -176,7 +201,7 @@ class ScrapeCoordinator(
         refreshCurrentGame()
         val ranked = state.value.preferences.rank(candidate)
         val game = state.value.current!!.game
-        val focus = if (game.label == null && ranked.artwork.any { it.isLabel }) 0
+        val focus = if (game.label?.isCaseArt != true && ranked.artwork.any { it.isCaseArt }) 0
             else if (ranked.metadata.keys.any { game.metadata[it]?.value.isNullOrBlank() }) 1 else 4
         mutableState.value = state.value.copy(page = ScrapePage.Review, candidate = ranked, focus = focus, message = null)
     }
@@ -203,8 +228,8 @@ class ScrapeCoordinator(
         message(if (changed == 0) "Metadata is already filled. Existing choices kept." else "$changed missing fields filled. Existing choices kept.")
     }
     fun preferredLabel() {
-        val asset = state.value.candidate?.artwork?.indexOfFirst { it.isLabel } ?: -1
-        if (asset < 0) message("This match has no flat label") else artwork(asset, missingOnly = true)
+        val asset = state.value.candidate?.artwork?.indexOfFirst { it.isCaseArt } ?: -1
+        if (asset < 0) message("This match has no case art") else artwork(asset, missingOnly = true)
     }
     fun undo() = action {
         val game = refreshCurrentGame()
@@ -246,12 +271,12 @@ class ScrapeCoordinator(
         val candidate = state.value.candidate ?: return@action
         val game = refreshCurrentGame()
         val asset = candidate.artwork.getOrNull(index) ?: return@action
-        if (asset.isLabel && missingOnly && game.label != null) { message("This game already has a label. Choose All label / media choices to replace it explicitly."); return@action }
+        if (asset.isCaseArt && missingOnly && game.label?.isCaseArt == true) { message("This game already has case art. Choose All case art and artwork to replace it on purpose."); return@action }
         val bytes = provider.image(asset)
         val label = withContext(ioDispatcher) { images.importStream(asset.url) { bytes.inputStream() } }.copy(
             provenance = AssetProvenance(candidate.sourceName.ifBlank { provider.name }, candidate.id, asset.type, asset.region, asset.originalUrl ?: asset.url,
                 "Artwork rights remain with their owners; provider grants no image licence. Data: ${candidate.license}", System.currentTimeMillis()))
-        if (asset.isLabel) {
+        if (asset.isCaseArt) {
             previewPending = true
             previewReturnPage = state.value.page
             mutableState.value = state.value.copy(visible = false)
@@ -259,7 +284,7 @@ class ScrapeCoordinator(
         } else {
             repository.setMedia(game.id, MediaSelection(label, asset.type, asset.region))
             refreshCurrentGame(); updateEntry { it.copy(outcome = ScrapeOutcome.Applied) }
-            message("${asset.type} (${asset.region}) saved as additional media. The cartridge label was preserved.")
+            message("${asset.type} (${asset.region}) saved as additional media. The case art was kept.")
         }
     }
     fun previewFinished(applied: Boolean = false) {
@@ -267,10 +292,10 @@ class ScrapeCoordinator(
         previewPending = false
         mutableState.value = state.value.copy(visible = true, page = previewReturnPage,
             focus = if (previewReturnPage == ScrapePage.Review && applied) 1 else state.value.focus,
-            message = if (applied) "Label applied. Fill missing metadata or move to the next title." else "Preview cancelled. Accepted label kept.")
+            message = if (applied) "Case art applied. Fill missing details or move to the next title." else "Preview cancelled. Accepted case art kept.")
         action {
             refreshCurrentGame(); if (applied) updateEntry { it.copy(outcome = ScrapeOutcome.Applied) }
-            message(if (applied) "Label applied. Fill missing metadata or move to the next title." else "Preview cancelled. Accepted label kept.")
+            message(if (applied) "Case art applied. Fill missing details or move to the next title." else "Preview cancelled. Accepted case art kept.")
         }
     }
     fun next() {
@@ -304,7 +329,8 @@ class ScrapeCoordinator(
         if (state.value.busy) return
         val focus = state.value.focus
         when (state.value.page) {
-            ScrapePage.Scope -> when (focus) { 0 -> chooseScope(true); 1 -> consoles(); 2 -> chooseScope(false); 3 -> resumeBatch(); 4 -> targets(); 5 -> missingLabels(); 6 -> preferencePage(); 7 -> pickPack(); else -> back() }
+            ScrapePage.Scope -> when (focus) { 0 -> chooseScope(true); 1 -> consoles(); 2 -> chooseScope(false); 3 -> resumeBatch(); 4 -> targets(); 5 -> missingLabels(); 6 -> preferencePage(); 7 -> pickPack()
+                8 -> cycleFill(); 9 -> toggleReplaceManual(); else -> back() }
             ScrapePage.Targets -> when (focus) { 0 -> beginPicked(); 1 -> pickAll(true); 2 -> pickAll(false)
                 else -> available.getOrNull(focus - 3)?.let { pick(it.id) } ?: back() }
             ScrapePage.Consoles -> when (focus) { 0 -> beginConsoles(); 1 -> pickAllConsoles(true); 2 -> pickAllConsoles(false)
@@ -331,7 +357,7 @@ class ScrapeCoordinator(
         }
     }
     private fun actionCount() = when (state.value.page) {
-        ScrapePage.Scope -> 9
+        ScrapePage.Scope -> 11
         ScrapePage.Targets -> available.size + 4
         ScrapePage.Consoles -> state.value.consoles.size + 4
         ScrapePage.Preferences -> 3

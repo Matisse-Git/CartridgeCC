@@ -136,7 +136,7 @@ class RealGameCheck {
             ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name)
                 .apply { if (shader != null) putExtra("testShader", shader) }).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
-                scenario.onActivity { it.coordinator.addGame { LibraryGame(id, "Imported game", "content://dev.cartridge.fixture/none", system = console) } }
+                scenario.onActivity { it.coordinator.addGame { LibraryGame(id, "Imported game", "content://$FIXTURE/none", system = console) } }
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.id == id }
                 ui.tool("insert").performClick()
                 try { await(scenario, 45_000) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Running } }

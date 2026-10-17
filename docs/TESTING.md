@@ -1,5 +1,27 @@
 # Tests and actual results
 
+## Cases and ScreenScraper, step 1 — 2026-10-17 (ADR 0029, branch `feature/box-cases`)
+
+The branch app is `dev.cartridge.boxes`: run its tests with `dev.cartridge.boxes.test/androidx.test.runner.AndroidJUnitRunner`
+and `run-as dev.cartridge.boxes`. Its private storage starts empty: the probes were copied from the main app
+(`run-as dev.cartridge cat` to `/data/local/tmp`, then `run-as dev.cartridge.boxes cp`). Device tests keep
+automatic scraping off unless they pass `-e automaticScraping true` in the intent, so the reviewed-queue tests
+are unchanged in what they check. Their fixtures now use `box-texture` as case art and a screenshot as extra
+artwork, following the new rule.
+
+- `AutoScraperTest` (JVM, 7): market from the file name; Fill missing / Fill all / manual tick; case art by
+  region then whole cover; stored links without the login; added games get art and details marked automatic;
+  Fill all keeps the owner's choices and skips downloads it could not apply; an unreachable provider keeps
+  every game pending until the next add, and an empty add retries nothing.
+- `ProviderContractTest` on the RP5 (Android 13, serial bb28de36): a documented ScreenScraper record parses into
+  regional titles, years, genre, players and case art with no login in any link; Room's automatic apply
+  is one write with one Undo, keeps a displaced cartridge label as extra media and leaves the owner's field
+  alone under Fill all. `liveScreenScraperFindsCaseArtWithTheOwnersLogin` runs only with `-e liveProvider true`
+  after the owner has typed the login into the branch app's Settings. **Not run yet: there is no login on the device.**
+- Passed on the RP5 on 2026-10-17: ProviderContractTest 7, ScrapeUiTest, ScrapeReviewTest, ScrapeResumeTest,
+  ScrapePackTest, LibraryGrowthTest, LibraryManagementTest, CollectionUiTest. Lint, the 133 JVM tests and
+  `tools/test_assets.py` pass.
+
 ## Quick saves, the list of states and thumbnails — 2026-10-17 (ADR 0028)
 
 On top of `deac755`. Host: both APKs build; 126 unit tests pass, among them `StateSlotsTest` (6: the
@@ -272,11 +294,11 @@ BIOS must be in the test folder (it is not taken from your library):
 ```bash
 adb push <your BIOS> /data/local/tmp/ps2-bios.bin
 adb shell chmod 644 /data/local/tmp/ps2-bios.bin
-adb shell run-as dev.cartridge mkdir -p files/m1-owner-firmware/pcsx2/bios
-adb shell run-as dev.cartridge cp /data/local/tmp/ps2-bios.bin files/m1-owner-firmware/pcsx2/bios/ps2-bios.bin
+adb shell run-as dev.cartridge.boxes mkdir -p files/m1-owner-firmware/pcsx2/bios
+adb shell run-as dev.cartridge.boxes cp /data/local/tmp/ps2-bios.bin files/m1-owner-firmware/pcsx2/bios/ps2-bios.bin
 adb shell am instrument -w -r -e class dev.cartridge.RealGameCheck -e game PS2 -e pick 0 \
   -e seconds 60 -e every 10 -e keys 20:BUTTON_START,26:BUTTON_A -e sleep 40 \
-  dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner
+  dev.cartridge.boxes.test/androidx.test.runner.AndroidJUnitRunner
 adb logcat -d -s "CartridgeCheck:*" "TestRunner:*"
 ```
 
@@ -364,7 +386,7 @@ ordinary way); nothing about it is written to the repository.
 ```bash
 adb shell am instrument -w -r -e class dev.cartridge.RealGameCheck -e game GAMECUBE -e pick 0 \
   -e seconds 60 -e every 10 -e keys 20:BUTTON_START,26:BUTTON_A -e sleep 40 \
-  dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner
+  dev.cartridge.boxes.test/androidx.test.runner.AndroidJUnitRunner
 adb logcat -d -s "CartridgeCheck:*" "TestRunner:*"
 ```
 
@@ -692,7 +714,7 @@ Notes for whoever runs these next:
   the script stops at its first `adb push` (stderr progress becomes a terminating error); the runs
   above used the same `am instrument` command through adb directly. PowerShell 7 is unaffected.
 - `UxTourTest` writes `files/ux-tour/*.png` on the device:
-  `adb exec-out run-as dev.cartridge cat files/ux-tour/01-welcome.png > 01-welcome.png`.
+  `adb exec-out run-as dev.cartridge.boxes cat files/ux-tour/01-welcome.png > 01-welcome.png`.
 
 PS1 increment, 2026-10-10: the source-built arm64 PCSX core, scoped disc imports and actual native
 video/audio/card/state/recreation tests run on the connected RP5. Both APKs build, 48 host tests and
@@ -839,7 +861,7 @@ Equivalent individual commands:
 .\tools\Build-Probe.ps1 -Sdk "$env:ANDROID_HOME"
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb push .tools/probe/cartridge-probe.gba /data/local/tmp/cartridge-probe.gba
-adb shell run-as dev.cartridge cp /data/local/tmp/cartridge-probe.gba files/cartridge-probe.gba
+adb shell run-as dev.cartridge.boxes cp /data/local/tmp/cartridge-probe.gba files/cartridge-probe.gba
 adb shell input keyevent KEYCODE_WAKEUP
 .\gradlew.bat :app:connectedDebugAndroidTest --console=plain
 ```
@@ -849,7 +871,7 @@ multiple devices are attached; keep actual serials out of committed scripts):
 
 ```powershell
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb shell am instrument -w -r -e cycles 50 -e class dev.cartridge.SurfaceHandoffTest dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w -r -e cycles 50 -e class dev.cartridge.SurfaceHandoffTest dev.cartridge.boxes.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 If this workspace's local SDK is used, omit `-Sdk` to use `.tools/sdk`. On another OS, assemble the

@@ -51,7 +51,7 @@ class BatterySaveTest {
         Intents.init()
         try {
             intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                Intent().setData(Uri.parse("content://dev.cartridge.fixture/battery-probe.gba"))))
+                Intent().setData(Uri.parse("content://$FIXTURE/battery-probe.gba"))))
             ui.tool("choose-game").performClick(); ui.waitForIdle()
         } finally { Intents.release() }
         await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.id == id }

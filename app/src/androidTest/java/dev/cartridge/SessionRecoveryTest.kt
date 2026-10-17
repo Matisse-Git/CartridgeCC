@@ -75,7 +75,7 @@ class SessionRecoveryTest {
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 Intents.init()
                 try {
-                    intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(Uri.parse("content://dev.cartridge.fixture/probe.gb"))))
+                    intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(Uri.parse("content://$FIXTURE/probe.gb"))))
                     ui.tool("choose-game").performClick(); ui.waitForIdle()
                 } finally { Intents.release() }
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame!=null }

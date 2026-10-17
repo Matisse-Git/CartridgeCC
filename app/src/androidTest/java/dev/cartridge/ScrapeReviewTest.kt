@@ -28,7 +28,7 @@ class ScrapeReviewTest {
     private class Provider : ArtworkProvider {
         override val name = "Original review fixture"
         var calls = 0
-        val us = ArtworkCandidate("support-texture", "us", "https://example.invalid/us")
+        val us = ArtworkCandidate("box-texture", "us", "https://example.invalid/us")
         val jp = us.copy(region = "jp", url = "https://example.invalid/jp")
         override suspend fun search(query: String, rom: File?, system: dev.cartridge.domain.GameSystem): List<GameCandidate> {
             calls++

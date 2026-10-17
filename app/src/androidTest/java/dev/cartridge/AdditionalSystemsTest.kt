@@ -47,7 +47,7 @@ class AdditionalSystemsTest {
         Intents.init()
         try {
             intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                Intent().setData(Uri.parse("content://dev.cartridge.fixture/$file"))))
+                Intent().setData(Uri.parse("content://$FIXTURE/$file"))))
             ui.tool("choose-game").performClick(); ui.waitForIdle()
         } finally { Intents.release() }
     }
@@ -151,7 +151,7 @@ class AdditionalSystemsTest {
             tree.listFiles()?.forEach { it.deleteRecursively() }
             for (ext in listOf("gba", "gb", "gbc")) File(context.filesDir, "cartridge-probe.$ext").copyTo(File(tree, "m5-$ext.$ext"), overwrite = true)
             val scanner = DirectoryScanner(context.contentResolver, File(context.filesDir, "roms"), repository, repository)
-            val uri = android.provider.DocumentsContract.buildTreeDocumentUri("dev.cartridge.fixture-tree", "root")
+            val uri = android.provider.DocumentsContract.buildTreeDocumentUri(FIXTURE_TREE, "root")
             val first = scanner.scan(uri, {}); assertEquals(first.message, 3, first.added); assertEquals(0, scanner.scan(uri, {}).added)
             assertEquals(setOf(GameSystem.GBA, GameSystem.GB, GameSystem.GBC), repository.initialize().slots.filterNotNull().map { it.system }.toSet())
             val bitmap = Bitmap.createBitmap(64, 56, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.BLUE) }

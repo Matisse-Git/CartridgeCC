@@ -37,6 +37,10 @@ class DebugCollectionActivity : MainActivity() {
     }
     override fun createLabelStore() = LabelStore(File(filesDir, "m1-test-labels"))
     override fun createArtworkProvider() = testProvider ?: super.createArtworkProvider()
+    // A test's own login and waiting list; the owner's ScreenScraper login is never read by a test that does not ask for it.
+    override fun createArtworkSettings() = dev.cartridge.scraping.ArtworkSettings(this, intent.getStringExtra("artworkSettings") ?: "${intent.getStringExtra("testDatabase")}-artwork")
+    override fun createPendingScrapes() = dev.cartridge.scraping.SharedPendingScrapes(this, "${intent.getStringExtra("testDatabase")}-auto-scrape")
+    override fun automaticScraping() = intent.getBooleanExtra("automaticScraping", false)
     // The tour draws invented apps, so no screenshot shows what the owner has installed. Tests of Android itself leave this unset.
     override fun createAppSource() = testApps ?: super.createAppSource()
     override fun createScrapeJournal() = FileScrapeJournal(File(filesDir, "${intent.getStringExtra("testDatabase")}-scrape"))
@@ -47,7 +51,7 @@ class DebugCollectionActivity : MainActivity() {
     override fun createPackStore() = dev.cartridge.scraping.ScrapePackStore(File(filesDir, "${intent.getStringExtra("testDatabase")}-packs"))
     override fun createScrapePreferences() = dev.cartridge.scraping.SharedScrapePreferences(this, "${intent.getStringExtra("testDatabase")}-preferences")
     override fun persistDirectoryPermission(uri: Uri) {
-        if (uri.authority != "dev.cartridge.fixture-tree") super.persistDirectoryPermission(uri)
+        if (uri.authority != "$packageName.fixture-tree") super.persistDirectoryPermission(uri)
         // Own-UID, MANAGE_DOCUMENTS-protected fixture; only the system-picker grant is stubbed.
     }
     companion object {

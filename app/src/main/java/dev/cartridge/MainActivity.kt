@@ -80,6 +80,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
     internal lateinit var engine: LibretroEngine
         private set
     internal lateinit var scraper: ScrapeCoordinator
+    internal lateinit var autoScraper: dev.cartridge.scraping.AutoScraper
+    internal lateinit var artworkSettings: dev.cartridge.scraping.ArtworkSettings
         private set
     internal lateinit var shell: ConsoleShell
         private set
@@ -95,7 +97,11 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
     internal val collectionSurface get() = cartridgeSurface
     protected open fun createRepository(): CollectionRepository = RoomCollectionRepository(this)
     protected open fun createLabelStore(): LabelStore = LabelStore(File(filesDir, "labels"))
-    protected open fun createArtworkProvider(): ArtworkProvider = RetroBaseProvider(File(cacheDir, "scrape-candidates"))
+    protected open fun createArtworkSettings() = dev.cartridge.scraping.ArtworkSettings(this)
+    protected open fun createArtworkProvider(): ArtworkProvider = dev.cartridge.scraping.ChosenProvider(artworkSettings, File(cacheDir, "scrape-candidates"))
+    protected open fun createPendingScrapes(): dev.cartridge.scraping.PendingScrapes = dev.cartridge.scraping.SharedPendingScrapes(this)
+    /** Added games and bulk scopes are scraped without a review (ADR 0029). Device tests of the reviewed queue turn it off. */
+    protected open fun automaticScraping() = true
     protected open fun createScrapeJournal(): ScrapeJournal = FileScrapeJournal(File(filesDir, "scrape-job"))
     protected open fun createScrapePreferences(): ScrapePreferenceStore = SharedScrapePreferences(this)
     protected open fun createPackStore(): ScrapePackStore = ScrapePackStore(File(filesDir, "scrape-packs"))
@@ -171,12 +177,23 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
             initialShelf = Shelf.parse(preferences.getString("shelf", null)),
             initialShelfFocus = runCatching { JSONObject(preferences.getString("shelfFocus", "{}")!!).let { json -> json.keys().asSequence().associateWith(json::getString) } }.getOrDefault(emptyMap()),
             onBrowseChanged = { shelf, focus -> preferences.edit { putString("shelf", shelf.key); putString("shelfFocus", JSONObject(focus).toString()) } })
-        scraper = ScrapeCoordinator(PackAwareProvider(createArtworkProvider(), packStore), repository, labelStore, File(filesDir, "roms"), lifecycleScope, createScrapeJournal(), createScrapePreferences(), choosePack = ::pickPack) { game, label ->
+        artworkSettings = createArtworkSettings()
+        val provider = PackAwareProvider(createArtworkProvider(), packStore)
+        val scrapePreferences = createScrapePreferences()
+        autoScraper = dev.cartridge.scraping.AutoScraper(provider, repository, File(filesDir, "roms"), lifecycleScope, createPendingScrapes(), scrapePreferences,
+            importImage = { source, bytes -> labelStore.importStream(source) { bytes.inputStream() } })
+        val automatic = automaticScraping()
+        if (automatic) coordinator.onAdded = autoScraper::added
+        scraper = ScrapeCoordinator(provider, repository, labelStore, File(filesDir, "roms"), lifecycleScope, createScrapeJournal(), scrapePreferences, choosePack = ::pickPack,
+            automatic = if (!automatic) null else { games, policy ->
+                autoScraper.scrape(games.map { it.id }, policy)
+                coordinator.notify("Fetching artwork for ${games.size} ${if (games.size == 1) "game" else "games"}. Settings › Library shows how far it is.")
+            }) { game, label ->
             if (coordinator.state.value.allGames.any { it.id == game.id }) coordinator.previewScrapedLabel(game, label)
             else { coordinator.notify("This game is no longer in the collection"); scraper.previewFinished() }
         }
         shell = ConsoleShell(this, lifecycleScope, this, coordinator, engine, repository, scraper, labelStore, sessionStore, packStore, preferences, systemDirectory(),
-            createAppSource(), shaderBase = shaderBase())
+            createAppSource(), shaderBase = shaderBase(), artwork = artworkSettings, autoScraper = autoScraper)
         shell.pendingLocate = savedInstanceState?.getString("recoveryId")
         shell.reopenApps = savedInstanceState?.getBoolean("appsOpen") == true
         input = ControllerRouter(navigate = shell::navigate, select = shell::select, back = shell::back, pause = coordinator::pause,
@@ -187,11 +204,19 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         inputChanged()
         getSystemService(InputManager::class.java).registerInputDeviceListener(this, null)
         lifecycleScope.launch {
-            combine(coordinator.state, engine.status, scraper.state) { state, status, _ -> state to status }.collect { (state, status) ->
+            combine(coordinator.state, engine.status, scraper.state, autoScraper.status) { state, status, _, _ -> state to status }.collect { (state, status) ->
                 shell.sync(state, status)
                 input.pauseShortcut = if (state.alternateShortcut)
                     setOf(KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_BUTTON_SELECT)
                 else setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_THUMBR)
+            }
+        }
+        lifecycleScope.launch {
+            // One line when an automatic run ends, so the owner knows without opening Settings.
+            var running = false
+            autoScraper.status.collect { run ->
+                if (running && !run.running) coordinator.notify(run.problem ?: if (run.done > 0) "Artwork: ${run.summary}" else "Artwork is up to date")
+                running = run.running
             }
         }
         setContent { Console() }

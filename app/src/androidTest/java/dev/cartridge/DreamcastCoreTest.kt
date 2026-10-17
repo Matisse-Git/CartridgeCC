@@ -121,7 +121,7 @@ class DreamcastCoreTest {
                 Intents.init()
                 try {
                     intending(hasAction(Intent.ACTION_OPEN_DOCUMENT_TREE)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                        Intent().setData(Uri.parse("content://dev.cartridge.fixture-tree/tree/gdrom"))))
+                        Intent().setData(Uri.parse("content://$FIXTURE_TREE/tree/gdrom"))))
                     ui.tool("choose-folder").performClick()
                 } finally { Intents.release() }
                 ui.waitUntil(30_000) { ui.shown("import-done") }
@@ -167,7 +167,7 @@ class DreamcastCoreTest {
                 Intents.init()
                 try {
                     intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                        Intent().setData(Uri.parse("content://dev.cartridge.fixture/probe.elf"))))
+                        Intent().setData(Uri.parse("content://$FIXTURE/probe.elf"))))
                     ui.tool("choose-game").performClick(); ui.waitForIdle()
                 } finally { Intents.release() }
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.system == GameSystem.DREAMCAST }

@@ -198,13 +198,13 @@ class BackupDeviceTest {
                 ui.tool("console-settings").performClick()
                 Intents.init()
                 try {
-                    intending(hasAction(Intent.ACTION_CREATE_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(Uri.parse("content://dev.cartridge.fixture/backup.zip"))))
+                    intending(hasAction(Intent.ACTION_CREATE_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(Uri.parse("content://$FIXTURE/backup.zip"))))
                     action("settings-export"); await { !it.coordinator.state.value.busy && fixture.length() > 0 }
                 } finally { Intents.release() }
                 assertEquals(1, JSONObject(String(unzip(fixture.readBytes()).getValue("backup.json"))).getJSONArray("games").length())
                 Intents.init()
                 try {
-                    intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(Uri.parse("content://dev.cartridge.fixture/backup.zip"))))
+                    intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(Uri.parse("content://$FIXTURE/backup.zip"))))
                     action("settings-restore"); await { !it.coordinator.state.value.busy }; ui.onNodeWithTag("page-backup").assertExists()
                     action("backup-cancel"); ui.tool("console-settings").performClick(); action("settings-restore"); await { !it.coordinator.state.value.busy }
                 } finally { Intents.release() }

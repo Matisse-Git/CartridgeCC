@@ -16,7 +16,7 @@ class ScrapePreferencesTest {
                 "title" to listOf(MetadataTags(region = "us"), MetadataTags(region = "jp")),
                 "description" to listOf(MetadataTags(language = "en"), MetadataTags(language = "fr"))))
         val ranked = ScrapePreferences("jp", "fr").rank(source)
-        assertEquals(listOf(jp, secondJp, us, box), ranked.artwork)
+        assertEquals(listOf(box, jp, secondJp, us), ranked.artwork) // Case art first (ADR 0029), then the preferred region.
         assertEquals(listOf("JP title", "Unknown", "US title"), ranked.metadata["title"])
         assertEquals(listOf("French", "English"), ranked.metadata["description"])
         assertEquals("fr", ranked.metadataTags["description"]!![0].language)

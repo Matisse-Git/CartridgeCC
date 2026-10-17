@@ -109,7 +109,7 @@ class UxTourTest {
                 Intents.init()
                 try {
                     intending(hasAction(Intent.ACTION_OPEN_DOCUMENT_TREE)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                        Intent().setData(Uri.parse("content://dev.cartridge.fixture-tree/tree/root"))))
+                        Intent().setData(Uri.parse("content://$FIXTURE_TREE/tree/root"))))
                     key(scenario, KeyEvent.KEYCODE_BUTTON_A)
                 } finally { Intents.release() }
                 await(scenario) { it.shell.import is ImportFlow.Done }

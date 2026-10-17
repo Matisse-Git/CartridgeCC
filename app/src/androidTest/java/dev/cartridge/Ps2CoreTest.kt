@@ -125,7 +125,7 @@ class Ps2CoreTest {
         Intents.init()
         try {
             intending(hasAction(Intent.ACTION_OPEN_DOCUMENT_TREE)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                Intent().setData(Uri.parse("content://dev.cartridge.fixture-tree/tree/ps2"))))
+                Intent().setData(Uri.parse("content://$FIXTURE_TREE/tree/ps2"))))
             ui.tool("choose-folder").performClick()
         } finally { Intents.release() }
     }
@@ -162,7 +162,7 @@ class Ps2CoreTest {
                 // A file of the right size that is not one is refused in words, and nothing is written.
                 val fixtures = File(context.filesDir, "m1-fixtures").apply { mkdirs() }
                 File(fixtures, "invalid.png").writeBytes(ByteArray(4 * 1024 * 1024))
-                val refusal = runCatching { FirmwareStore(system).import(context.contentResolver, Uri.parse("content://dev.cartridge.fixture/invalid.png"), Core.Armsx2) }.exceptionOrNull()
+                val refusal = runCatching { FirmwareStore(system).import(context.contentResolver, Uri.parse("content://$FIXTURE/invalid.png"), Core.Armsx2) }.exceptionOrNull()
                 assertTrue(refusal is IllegalArgumentException && refusal.message!!.contains("PlayStation 2 BIOS")); assertFalse(bios.exists())
                 // An original stand-in for the shape of a dump, not a BIOS: a table that begins with RESET, sixteen bytes
                 // a row, and the fourteen characters of ROMVER where the table says that file is. Whatever its region, it
@@ -176,7 +176,7 @@ class Ps2CoreTest {
                     "0160JC20020207".toByteArray(Charsets.US_ASCII).copyInto(bytes, 0x2740 + 0x50)
                 }
                 File(fixtures, "stand-in-bios.bin").writeBytes(shaped)
-                val (core, firmware) = FirmwareStore(system).import(context.contentResolver, Uri.parse("content://dev.cartridge.fixture/stand-in-bios.bin"))
+                val (core, firmware) = FirmwareStore(system).import(context.contentResolver, Uri.parse("content://$FIXTURE/stand-in-bios.bin"))
                 assertEquals(Core.Armsx2, core); assertEquals("pcsx2/bios/ps2-bios.bin", firmware.file); assertArrayEquals(shaped, bios.readBytes())
                 File(fixtures, "stand-in-bios.bin").delete(); File(fixtures, "invalid.png").delete()
             }
@@ -237,7 +237,7 @@ class Ps2CoreTest {
                 Intents.init()
                 try {
                     intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK,
-                        Intent().setData(Uri.parse("content://dev.cartridge.fixture/probe-ps2.elf"))))
+                        Intent().setData(Uri.parse("content://$FIXTURE/probe-ps2.elf"))))
                     ui.tool("choose-game").performClick(); ui.waitForIdle()
                 } finally { Intents.release() }
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.system == GameSystem.PS2 }

@@ -14,7 +14,7 @@
          that learns which of a game's memory was touched from the address of a fault compares that address with
          ones it took from the heap, and a tagged heap address never matches the plain one a fault reports. Games
          were run on the device with it off only (docs/CONSOLES, PlayStation 2). -->
-    <application android:label="Cartridge" android:theme="@style/Theme.Cartridge"
+    <application android:label="${appLabel}" android:theme="@style/Theme.Cartridge"
         android:icon="@drawable/ic_cartridge" android:dataExtractionRules="@xml/data_extraction_rules"
         android:allowBackup="false" android:supportsRtl="true" android:allowNativeHeapPointerTagging="false">
         <activity android:name=".MainActivity" android:exported="true"
@@ -25,7 +25,7 @@
             </intent-filter>
         </activity>
         <activity-alias android:name=".CartridgeHome" android:targetActivity=".MainActivity"
-            android:enabled="false" android:exported="true" android:label="Cartridge">
+            android:enabled="false" android:exported="true" android:label="${appLabel}">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />

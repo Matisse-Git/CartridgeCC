@@ -19,6 +19,25 @@ fun releasedInNorthAmerica(title: String) = NORTH_AMERICA.containsMatchIn(title)
 private val NORTH_AMERICA = Regex("""[(\[](?:[^)\]]*\b(?:USA|US|NTSC-U|North America)\b[^)\]]*|[JEB]*U[JEB]*)[)\]]""")
 
 /**
+ * The market a dump was released in, from its name alone: North America first ("(USA, Europe)" is a US release),
+ * then Europe, then Japan. "(World)" and a name without a tag are US. It decides the proportions of the case a game
+ * is shown in and which region's art is offered first (ADR 0029); nothing else may ask for it.
+ */
+enum class Market(val code: String, val artRegions: List<String>) {
+    US("us", listOf("us", "wor", "ss")), EU("eu", listOf("uk", "eu", "wor", "ss")), JP("jp", listOf("jp", "wor", "ss"));
+    companion object {
+        fun of(title: String) = when {
+            releasedInNorthAmerica(title) -> US
+            EUROPE.containsMatchIn(title) -> EU
+            JAPAN.containsMatchIn(title) -> JP
+            else -> US
+        }
+    }
+}
+private val EUROPE = Regex("""[(\[](?:[^)\]]*\b(?:Europe|EUR|EU|UK|PAL|Germany|France|Spain|Italy|Netherlands|Sweden|Australia|Scandinavia|Nordic)\b[^)\]]*|[JB]*E[JB]*)[)\]]""", RegexOption.IGNORE_CASE)
+private val JAPAN = Regex("""[(\[](?:[^)\]]*\b(?:Japan|JPN|JP|NTSC-J)\b[^)\]]*|J)[)\]]""", RegexOption.IGNORE_CASE)
+
+/**
  * A console file only its owner can supply; never bundled or downloaded. [file] is the private name the pinned
  * core looks for, and [md5] lists the dumps it is known to accept.
  */
@@ -314,6 +333,11 @@ enum class GameSystem(
         2L shl 30, setOf("gamecube", "gc", "ngc", "nintendogamecube"), bundle = true, fingerprint = false);
 
     val provider = provider ?: title
+    /** The console's number at ScreenScraper (`systemeid`), the default artwork source. Every console needs one. */
+    val screenScraper: Int get() = when (this) {
+        GBA -> 12; GB -> 9; GBC -> 10; PS1 -> 57; SNES -> 4; NES -> 3; GENESIS -> 1; SMS -> 2; GG -> 21
+        SATURN -> 22; DREAMCAST -> 23; PS2 -> 58; GAMECUBE -> 13
+    }
     /** The object one game is shown as: the console's, or its North American shape for a dump named as that release. */
     fun media(title: String) = northAmerican?.takeIf { releasedInNorthAmerica(title) } ?: media
     val coreFile get() = core.file

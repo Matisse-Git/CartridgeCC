@@ -98,6 +98,9 @@ class ConsoleShell(
     /** Where the shader library is installed and updated (ADR 0027): `library` inside it is what presets come from. */
     private val shaderBase: File = File(context.filesDir, "shaders"),
     private val shaderUpdater: ShaderLibraryUpdater = ShaderLibrary.updater(context, shaderBase),
+    /** Where artwork comes from and the owner's ScreenScraper login (ADR 0029); none in tests of the shell alone. */
+    internal val artwork: dev.cartridge.scraping.ArtworkSettings? = null,
+    internal val autoScraper: dev.cartridge.scraping.AutoScraper? = null,
 ) {
     val stack = mutableStateListOf<Destination>()
     val top get() = stack.lastOrNull()
@@ -458,13 +461,38 @@ class ConsoleShell(
     fun type(character: Char) {
         val limit = spec?.limit ?: return
         if (text.length >= limit) return
-        text += if (shift) character.uppercaseChar() else character.lowercaseChar()
+        text += if (shift) shifted(character) else character.lowercaseChar()
         shift = spec?.titleCase == true && character == ' '
     }
     fun backspace() { if (text.isNotEmpty()) text = text.dropLast(1); if (text.isEmpty() && spec?.titleCase == true) shift = true }
     /** Touch or a hardware keyboard edits the same value through the visible text field. */
     fun replaceText(value: String) { spec?.let { if (value.length <= it.limit) text = value } }
-    fun finishText() { val current = spec ?: return; val value = text.trim(); pop(); current.done(value) }
+    fun finishText() { val current = spec ?: return; val value = if (current.secret) text else text.trim(); pop(); current.done(value) }
+
+    // ---- Artwork (ADR 0029) -----------------------------------------------------------------------------
+
+    /** Bumped when an artwork setting changes, so Settings reads them again. */
+    var artworkRevision by mutableIntStateOf(0); private set
+    fun changeArtworkSource(source: dev.cartridge.scraping.ArtworkSource) { artwork?.source = source; artworkRevision++ }
+    /** One field of the ScreenScraper login. Passwords are typed hidden and never shown again. */
+    fun editLogin(field: String) {
+        val settings = artwork ?: return
+        val login = settings.login
+        val (title, hint, initial) = when (field) {
+            "user" -> Triple("ScreenScraper user name", "As you sign in on screenscraper.fr", login.user)
+            "password" -> Triple("ScreenScraper password", "Your ScreenScraper password", "")
+            "devId" -> Triple("Developer ID", "The developer ID ScreenScraper gave you", login.devId)
+            else -> Triple("Developer password", "The password that came with the developer ID", "")
+        }
+        push(Destination.TextEntry(TextSpec(title, hint, initial, 120, "login-$field", secret = field.endsWith("assword")) { value ->
+            val now = settings.login
+            settings.login = when (field) {
+                "user" -> now.copy(user = value); "password" -> now.copy(password = value)
+                "devId" -> now.copy(devId = value); else -> now.copy(devPassword = value)
+            }
+            artworkRevision++
+        }))
+    }
 
     // ---- Preferences ------------------------------------------------------------------------------------
 
@@ -646,6 +674,7 @@ class ConsoleShell(
         if (!state.loaded || state.busy || state.screen != CollectionScreen.Library) return
         if (!quiet) { home(); import = ImportFlow.Looking(null, first); push(Destination.Import) }
         coordinator.scanDirectory { _ ->
+            val known = repository.initialize().slots.mapNotNull { it?.id }.toSet()
             try {
                 val directories = checkNotNull(repository as? DirectoryRepository) { "Folder import is unavailable" }
                 if (target != null) host.persistFolder(target)
@@ -672,6 +701,7 @@ class ConsoleShell(
                 }
                 val result = checkNotNull(total)
                 lastScan = result; scansFinished++
+                if (result.added > 0) coordinator.onAdded(repository.initialize().slots.mapNotNull { it?.id }.filterNot { it in known })
                 refreshRoots(); refreshStorage()
                 val setup = result.addedSystems.filterValues { it > 0 }.keys.map { it.core }.distinct().filter { it.firmware.isNotEmpty() && !firmwareAdded(it) }
                 if (quiet) return@scanDirectory if (result.added > 0) importHeadline(result) else ""
@@ -682,6 +712,8 @@ class ConsoleShell(
                 } else { import = ImportFlow.Done(result, targets.size, setup, first); "" }
             } catch (failure: CancellationException) {
                 if (!quiet) { stack.remove(Destination.Import); import = null; host.inputChanged() }
+                // Games added before the scan was stopped still get their artwork.
+                withContext(NonCancellable) { coordinator.onAdded(repository.initialize().slots.mapNotNull { it?.id }.filterNot { it in known }) }
                 refreshRoots(); throw failure
             } catch (failure: Exception) {
                 if (quiet) "" else { import = ImportFlow.Failed(plain(failure.message), first); "" }
@@ -890,6 +922,8 @@ class ConsoleShell(
         const val KEY_COLUMNS = 10
         /** The last row is the wide keys: shift, space, delete, done. */
         val KEY_ROWS = listOf("1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm,.-", "")
+        /** With Shift, letters are capitals and the punctuation keys give what a login needs. */
+        fun shifted(character: Char) = when (character) { '\'' -> '!'; ',' -> '_'; '.' -> '@'; '-' -> '+'; else -> character.uppercaseChar() }
         /** Hints retire on their own once this many games have been started. */
         const val LEARNED_AFTER = 5
         const val RECORD_TIMEOUT_MS = 5_000L
