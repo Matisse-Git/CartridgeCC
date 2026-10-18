@@ -169,7 +169,8 @@ are read from the import summary instead of a status string).
 | Rewind, fast-forward, aspect and integer scaling | Adapter work (the wrapper exposes frame speed and viewport) |
 | Light theme, background styles, display scale, animation speed | Design and implementation; deliberately not faked |
 | Interface sounds beyond insert/eject | Original audio assets |
-| Automatic artwork on import | A product decision: today artwork is always reviewed |
+| Automatic artwork on import | Decided and built in ADR 0029 (automatic apply); see the next row for what is still unchecked |
+| Cases on the owner's library (ADR 0029, merged 2026-10-18) | Unchecked: live ScreenScraper with the owner's login, how real `box-texture` art lines up on each case (the jewel case's back/spine split above all), and the owner's games shown in their cases. The owner runs *Scrape all* on the main library |
 | Quiet scan on open locks library input while it runs, and re-hashes CUE tracks | Making scans non-blocking changes session serialization (ADR 0018, "Not decided here") |
 | Every game is copied into private storage | A storage-design change (ADR 0003, 0017). The interface states it and shows the cost |
 | Exit animations for sheets | Enter is animated; leaving is a cut |

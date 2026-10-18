@@ -29,18 +29,18 @@ try {
     Invoke-DeviceAdb -Arguments @('install', '-r', $appApk)
     Invoke-DeviceAdb -Arguments @('install', '-r', $testApk)
     Invoke-DeviceAdb -Arguments @('push', '.tools/probe/cartridge-probe.gba', '/data/local/tmp/cartridge-probe.gba')
-    Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge.boxes', 'cp', '/data/local/tmp/cartridge-probe.gba', 'files/cartridge-probe.gba')
+    Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', '/data/local/tmp/cartridge-probe.gba', 'files/cartridge-probe.gba')
     if ($Suite -in @('Battery', 'All')) {
         & (Join-Path $PSScriptRoot 'Build-Probe.ps1') -Sdk $Sdk -Probe Battery
         Invoke-DeviceAdb -Arguments @('push', '.tools/probe/battery-probe.gba', '/data/local/tmp/battery-probe.gba')
-        Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge.boxes', 'cp', '/data/local/tmp/battery-probe.gba', 'files/battery-probe.gba')
+        Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', '/data/local/tmp/battery-probe.gba', 'files/battery-probe.gba')
     }
     if ($Suite -in @('Systems', 'Environment', 'Recovery', 'Tour', 'Saves', 'All')) {
         python (Join-Path $PSScriptRoot 'probe/generate_gb_probe.py')
         if ($LASTEXITCODE -ne 0) { throw 'GB probe generation failed' }
         foreach ($extension in @('gb', 'gbc')) {
             Invoke-DeviceAdb -Arguments @('push', ".tools/probe/cartridge-probe.$extension", "/data/local/tmp/cartridge-probe.$extension")
-            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge.boxes', 'cp', "/data/local/tmp/cartridge-probe.$extension", "files/cartridge-probe.$extension")
+            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', "/data/local/tmp/cartridge-probe.$extension", "files/cartridge-probe.$extension")
         }
     }
     if ($Suite -in @('Cores', 'All')) {
@@ -48,7 +48,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Console probe generation failed' }
         foreach ($extension in @('sfc', 'nes', 'md', 'sms', 'gg')) {
             Invoke-DeviceAdb -Arguments @('push', ".tools/probe/cartridge-probe.$extension", "/data/local/tmp/cartridge-probe.$extension")
-            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge.boxes', 'cp', "/data/local/tmp/cartridge-probe.$extension", "files/cartridge-probe.$extension")
+            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', "/data/local/tmp/cartridge-probe.$extension", "files/cartridge-probe.$extension")
         }
     }
     if ($Suite -in @('Saturn', 'All')) {
@@ -56,7 +56,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Saturn probe generation failed' }
         foreach ($file in @(@('boot.bin', 'cartridge-probe-saturn-boot.bin'), @('saturn.cue', 'cartridge-probe-saturn.cue'), @('saturn.bin', 'cartridge-probe-saturn.bin'))) {
             Invoke-DeviceAdb -Arguments @('push', ".tools/probe/saturn/$($file[0])", "/data/local/tmp/$($file[1])")
-            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge.boxes', 'cp', "/data/local/tmp/$($file[1])", "files/$($file[1])")
+            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', "/data/local/tmp/$($file[1])", "files/$($file[1])")
         }
     }
     # The three consoles whose cores draw for themselves: one original program each.
@@ -66,14 +66,14 @@ try {
             python (Join-Path $PSScriptRoot "probe/$($probe[1])")
             if ($LASTEXITCODE -ne 0) { throw "$($probe[0]) probe generation failed" }
             Invoke-DeviceAdb -Arguments @('push', ".tools/probe/$($probe[2])", "/data/local/tmp/$($probe[2])")
-            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge.boxes', 'cp', "/data/local/tmp/$($probe[2])", "files/$($probe[2])")
+            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', "/data/local/tmp/$($probe[2])", "files/$($probe[2])")
         }
     }
     if ($Suite -in @('Dreamcast', 'All')) {
         # The same program as a GD-ROM image: a sheet and its three tracks.
         foreach ($file in @('disc.gdi', 'track01.iso', 'track02.raw', 'track03.iso')) {
             Invoke-DeviceAdb -Arguments @('push', ".tools/probe/dreamcast/$file", "/data/local/tmp/cartridge-probe-dreamcast-$file")
-            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge.boxes', 'cp', "/data/local/tmp/cartridge-probe-dreamcast-$file", "files/cartridge-probe-dreamcast-$file")
+            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', "/data/local/tmp/cartridge-probe-dreamcast-$file", "files/cartridge-probe-dreamcast-$file")
         }
     }
     if ($Suite -in @('PS2', 'All')) {
@@ -81,7 +81,7 @@ try {
         # its BIOS, which is the owner's: they read it from files/m1-owner-firmware/pcsx2/bios/ps2-bios.bin in the
         # app's private storage and are skipped where it is missing (docs/TESTING).
         Invoke-DeviceAdb -Arguments @('push', '.tools/probe/cartridge-probe-ps2.iso', '/data/local/tmp/cartridge-probe-ps2.iso')
-        Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge.boxes', 'cp', '/data/local/tmp/cartridge-probe-ps2.iso', 'files/cartridge-probe-ps2.iso')
+        Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', '/data/local/tmp/cartridge-probe-ps2.iso', 'files/cartridge-probe-ps2.iso')
     }
     Invoke-DeviceAdb -Arguments @('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
     if ($Suite -in @('PS1', 'Options', 'All')) {
@@ -89,7 +89,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'PS1 probe generation failed' }
         foreach ($extension in @('exe', 'iso', 'chd', 'cue', 'bin')) {
             Invoke-DeviceAdb -Arguments @('push', ".tools/probe/ps1/probe.$extension", "/data/local/tmp/cartridge-probe.$extension")
-            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge.boxes', 'cp', "/data/local/tmp/cartridge-probe.$extension", "files/cartridge-probe.$extension")
+            Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', "/data/local/tmp/cartridge-probe.$extension", "files/cartridge-probe.$extension")
         }
     }
     $testClass = switch ($Suite) {
@@ -139,10 +139,10 @@ try {
     }
     $expectedTests = switch ($Suite) { 'Surface' { 1 }; 'Collection' { 2 }; 'Scrape' { 5 }; 'Library' { 4 }; 'Battery' { 2 }; 'Render' { 2 }; 'Manage' { 2 }; 'Review' { 4 }; 'Pack' { 2 }; 'Layout' { 2 }; 'Systems' { 2 }; 'PS1' { 3 }; 'Environment' { 3 }; 'Recovery' { 1 }; 'Backup' { 4 }; 'Live' { 1 }; 'Options' { 2 }; 'Tour' { 1 }; 'Browse' { 1 }; 'Launch' { 4 }; 'Pacing' { 1 }; 'Apps' { 4 }; 'Cores' { 1 }; 'Saturn' { 2 }; 'Dreamcast' { 2 }; 'PS2' { 3 }; 'GameCube' { 1 }; 'Discs' { 1 }; 'Shaders' { 4 }; 'Saves' { 1 }; 'All' { 64 } }
     $result = Invoke-DeviceAdb -Arguments @('shell', 'am', 'instrument', '-w', '-r', '-e', 'cycles', "$Cycles", '-e', 'liveProvider', "$($Suite -eq 'Live')".ToLowerInvariant(), '-e', 'class',
-        $testClass, 'dev.cartridge.boxes.test/androidx.test.runner.AndroidJUnitRunner')
+        $testClass, 'dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner')
     $result | Set-Content -LiteralPath '.tools/device-test.log'
     $result
     # am instrument can exit zero even when a JUnit assertion fails. Check its result explicitly.
     if ($result -notmatch "(?m)^OK \($expectedTests tests?\)\s*$") { throw 'Device test failed; see .tools/device-test.log.' }
-    Invoke-DeviceAdb -Arguments @('shell', 'am', 'start', '-n', 'dev.cartridge.boxes/dev.cartridge.MainActivity')
+    Invoke-DeviceAdb -Arguments @('shell', 'am', 'start', '-n', 'dev.cartridge/dev.cartridge.MainActivity')
 } finally { Pop-Location }

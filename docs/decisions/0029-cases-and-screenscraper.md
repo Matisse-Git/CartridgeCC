@@ -1,6 +1,6 @@
 # ADR 0029: Cases wrapped in ScreenScraper art
 
-Date: 2026-10-17. Status: accepted; being built on branch `feature/box-cases`, increment by increment.
+Date: 2026-10-17. Status: accepted; built on branch `feature/box-cases` and merged into master on 2026-10-18.
 Steps 1 to 3 are implemented and run on the RP5 with original fixtures: every console is shown in its
 case, and the seven cartridge and disc models are no longer packaged. Not run yet: the live ScreenScraper
 path, because no login is on the device, and the owner's own games, because the branch app's library is
@@ -23,7 +23,9 @@ they contradict.
    fixture providers are named after the application ID so both debug builds can be installed together.
    The branch merges into master only when the owner says so. Merging puts back `dev.cartridge` and
    *Cartridge*. Accepted cartridge and disc labels stay stored but are no longer drawn; the owner runs
-   *Scrape all* on the main library afterwards.
+   *Scrape all* on the main library afterwards. Merged on 2026-10-18 at the owner's word: the build is
+   `dev.cartridge` again and installs over the main app and its library, with no change to the
+   database schema.
 
 ### Artwork source
 

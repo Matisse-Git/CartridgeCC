@@ -1,5 +1,18 @@
 # Tests and actual results
 
+## Box cases merged into master — 2026-10-18 (ADR 0029)
+
+Host: both APKs build, lint has 0 errors, `tools/test_assets.py` passes (4), and 138 JVM tests pass. The
+application ID is `dev.cartridge` again; the device scripts and the commands below use it.
+
+On the RP5 (Android 13, serial bb28de36): the merged build was installed over the owner's `dev.cartridge`
+(`adb install -r`, same debug key, no database schema change). It opened the owner's library in its cases
+with typeset labels until *Scrape all* is run. One Saturn game played only in the branch app had its states,
+backup RAM and play time moved into the main app by hand while the app was stopped, the main app's own
+copies kept as a state, its previous quick save and a copy of its backup RAM in `files/before-merge-2026-10-18`.
+The game started from the moved quick save and its Save States page listed every state as loadable. No
+device test suite was run on this build; the branch's last suite results above stand for the same code.
+
 ## Game buttons per console — 2026-10-18 (ADR 0030)
 
 Host: both APKs build, lint passes, `tools/test_assets.py` passes (4), and 138 JVM tests pass.
@@ -363,11 +376,11 @@ BIOS must be in the test folder (it is not taken from your library):
 ```bash
 adb push <your BIOS> /data/local/tmp/ps2-bios.bin
 adb shell chmod 644 /data/local/tmp/ps2-bios.bin
-adb shell run-as dev.cartridge.boxes mkdir -p files/m1-owner-firmware/pcsx2/bios
-adb shell run-as dev.cartridge.boxes cp /data/local/tmp/ps2-bios.bin files/m1-owner-firmware/pcsx2/bios/ps2-bios.bin
+adb shell run-as dev.cartridge mkdir -p files/m1-owner-firmware/pcsx2/bios
+adb shell run-as dev.cartridge cp /data/local/tmp/ps2-bios.bin files/m1-owner-firmware/pcsx2/bios/ps2-bios.bin
 adb shell am instrument -w -r -e class dev.cartridge.RealGameCheck -e game PS2 -e pick 0 \
   -e seconds 60 -e every 10 -e keys 20:BUTTON_START,26:BUTTON_A -e sleep 40 \
-  dev.cartridge.boxes.test/androidx.test.runner.AndroidJUnitRunner
+  dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner
 adb logcat -d -s "CartridgeCheck:*" "TestRunner:*"
 ```
 
@@ -455,7 +468,7 @@ ordinary way); nothing about it is written to the repository.
 ```bash
 adb shell am instrument -w -r -e class dev.cartridge.RealGameCheck -e game GAMECUBE -e pick 0 \
   -e seconds 60 -e every 10 -e keys 20:BUTTON_START,26:BUTTON_A -e sleep 40 \
-  dev.cartridge.boxes.test/androidx.test.runner.AndroidJUnitRunner
+  dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner
 adb logcat -d -s "CartridgeCheck:*" "TestRunner:*"
 ```
 
@@ -783,7 +796,7 @@ Notes for whoever runs these next:
   the script stops at its first `adb push` (stderr progress becomes a terminating error); the runs
   above used the same `am instrument` command through adb directly. PowerShell 7 is unaffected.
 - `UxTourTest` writes `files/ux-tour/*.png` on the device:
-  `adb exec-out run-as dev.cartridge.boxes cat files/ux-tour/01-welcome.png > 01-welcome.png`.
+  `adb exec-out run-as dev.cartridge cat files/ux-tour/01-welcome.png > 01-welcome.png`.
 
 PS1 increment, 2026-10-10: the source-built arm64 PCSX core, scoped disc imports and actual native
 video/audio/card/state/recreation tests run on the connected RP5. Both APKs build, 48 host tests and
@@ -930,7 +943,7 @@ Equivalent individual commands:
 .\tools\Build-Probe.ps1 -Sdk "$env:ANDROID_HOME"
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb push .tools/probe/cartridge-probe.gba /data/local/tmp/cartridge-probe.gba
-adb shell run-as dev.cartridge.boxes cp /data/local/tmp/cartridge-probe.gba files/cartridge-probe.gba
+adb shell run-as dev.cartridge cp /data/local/tmp/cartridge-probe.gba files/cartridge-probe.gba
 adb shell input keyevent KEYCODE_WAKEUP
 .\gradlew.bat :app:connectedDebugAndroidTest --console=plain
 ```
@@ -940,7 +953,7 @@ multiple devices are attached; keep actual serials out of committed scripts):
 
 ```powershell
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb shell am instrument -w -r -e cycles 50 -e class dev.cartridge.SurfaceHandoffTest dev.cartridge.boxes.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w -r -e cycles 50 -e class dev.cartridge.SurfaceHandoffTest dev.cartridge.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 If this workspace's local SDK is used, omit `-Sdk` to use `.tools/sdk`. On another OS, assemble the

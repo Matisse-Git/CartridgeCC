@@ -8,7 +8,7 @@ label/media/metadata choices and accepted provenance. M3 adds selected scopes, p
 fill-missing, faster reviewed batches and undo. Private Cartridge v1 packs are implemented; multi-console scopes remain future work. Offline
 ROM launching is independent.
 
-## Cases and automatic apply (2026-10-17, ADR 0029, branch `feature/box-cases`)
+## Cases and automatic apply (2026-10-17, ADR 0029, merged 2026-10-18)
 
 This supersedes parts of what follows. Games are shown in their retail case, and case art is
 `box-texture` (the whole cover) or `box-2D` (the front). A flat `support-texture` label is kept as extra

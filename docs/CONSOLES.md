@@ -39,7 +39,7 @@ games the owner had imported on 2026-10-12, one observation each; nothing is kno
 game until it is tried. PlayStation 2 is playable only once the owner has added the console's BIOS:
 without it the console says what it needs, as Saturn does.
 
-**What each console's games look like (ADR 0029, branch `feature/box-cases`).** A game is shown in
+**What each console's games look like (ADR 0029, merged 2026-10-18).** A game is shown in
 its retail case, wrapped in its ScreenScraper cover. The case comes from the market its file is named
 for: US first (`(USA, Europe)` is US), then Europe, then Japan; `(World)` and an untagged name are US.
 

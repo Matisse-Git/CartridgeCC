@@ -1,6 +1,6 @@
 # Cartridge asset pipeline
 
-## Cases (2026-10-17, ADR 0029, branch `feature/box-cases`)
+## Cases (2026-10-17, ADR 0029, merged 2026-10-18)
 
 Games are shown in their retail case. No usable case model could be downloaded without an account, so
 the cases are generated. This is ADR 0029's one exception to the no-generator rule:
