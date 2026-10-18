@@ -32,6 +32,7 @@ import dev.cartridge.environment.OptionStore
 import dev.cartridge.input.ButtonCombo
 import dev.cartridge.input.ButtonListener
 import dev.cartridge.input.ComboListener
+import dev.cartridge.input.QuickCombo
 import dev.cartridge.input.InputMode
 import dev.cartridge.library.*
 import dev.cartridge.scraping.ScrapeCoordinator
@@ -226,8 +227,8 @@ class ConsoleShell(
             is Destination.TextEntry -> { text = destination.spec.initial; shift = destination.spec.titleCase && text.isEmpty(); key = KEY_COLUMNS }
             Destination.SaveStates -> playingId?.let(::loadSlots)
             is Destination.RecordCombo -> {
-                recorder = ComboListener(if (destination.quickLoad) controls.quickSave else controls.quickLoad)
-                listenFor { comboKept(destination.quickLoad) }
+                recorder = ComboListener((controls.combos - destination.action).values)
+                listenFor { comboKept(destination.action) }
             }
             is Destination.RecordButton -> { buttonRecorder = ButtonListener(); listenFor { buttonKept(destination) } }
             Destination.Apps -> {
@@ -275,6 +276,8 @@ class ConsoleShell(
         !state.loaded || state.busy -> InputMode.Locked
         state.screen == CollectionScreen.LabelPreview -> InputMode.Menu
         status.state == SessionState.Running -> InputMode.Gameplay
+        // A frozen game has no menu: its buttons are the combos', and the game hears none of them (ADR 0031).
+        status.state == SessionState.Paused && status.frozen -> InputMode.Gameplay
         status.state == SessionState.Paused -> InputMode.Menu
         state.screen == CollectionScreen.Library -> InputMode.Library
         else -> InputMode.Locked
@@ -895,7 +898,7 @@ class ConsoleShell(
         }
     }
     fun newSlot() = coordinator.saveSlot { saved -> focus["states"] = "slot:$saved" }
-    fun recordCombo(quickLoad: Boolean) = push(Destination.RecordCombo(quickLoad))
+    fun recordCombo(action: QuickCombo) = push(Destination.RecordCombo(action))
     /** Every controller button while a combo is recorded. Letting go of the first one finishes it. */
     fun recordKey(code: Int, down: Boolean) {
         (top as? Destination.RecordButton)?.let { return recordButtonKey(it, code, down) }
@@ -903,11 +906,11 @@ class ConsoleShell(
         val destination = top as? Destination.RecordCombo ?: return
         val combo = listener.key(code, down)
         recordTick++
-        listenFor { comboKept(destination.quickLoad) }
+        listenFor { comboKept(destination.action) }
         if (combo != null) {
             pop()
-            changeControls(if (destination.quickLoad) controls.copy(quickLoad = combo) else controls.copy(quickSave = combo))
-            coordinator.notify("${if (destination.quickLoad) "Quick load" else "Quick save"}: ${ButtonCombo.title(combo)}")
+            changeControls(controls.withCombo(destination.action, combo))
+            coordinator.notify("${destination.action.title}: ${ButtonCombo.title(combo)}")
         }
     }
     /** Five seconds with no button pressed keep the combo or button that was there. */
@@ -921,7 +924,7 @@ class ConsoleShell(
             }
         }
     }
-    private fun comboKept(quickLoad: Boolean) = "Kept ${ButtonCombo.title(if (quickLoad) controls.quickLoad else controls.quickSave)}"
+    private fun comboKept(action: QuickCombo) = "Kept ${ButtonCombo.title(controls.combo(action))}"
     private fun buttonKept(destination: Destination.RecordButton) =
         "Kept ${controls.buttons(destination.system).getValue(destination.button).title} for ${padName(destination.system, destination.button)}"
     private fun padName(system: GameSystem, key: PadKey) = system.pad.first { it.key == key }.name
@@ -951,8 +954,8 @@ class ConsoleShell(
         coordinator.notify("${system.title} uses its default buttons")
     }
     fun resetQuickButtons() {
-        changeControls(controls.copy(quickSave = ButtonCombo.QUICK_SAVE, quickLoad = ButtonCombo.QUICK_LOAD))
-        coordinator.notify("Quick save ${ButtonCombo.title(ButtonCombo.QUICK_SAVE)} · quick load ${ButtonCombo.title(ButtonCombo.QUICK_LOAD)}")
+        changeControls(controls.copy(combos = ButtonCombo.DEFAULTS))
+        coordinator.notify(QuickCombo.entries.joinToString(" · ") { "${it.title} ${ButtonCombo.title(it.default)}" })
     }
 
     companion object {

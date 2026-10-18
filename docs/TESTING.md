@@ -1,5 +1,41 @@
 # Tests and actual results
 
+## Freeze and fast-forward — 2026-10-18 (ADR 0031)
+
+Host: both APKs build, lint has 0 errors and no new warnings, `tools/test_assets.py` passes, and 145 JVM
+tests pass (7 new). `ButtonComboTest` covers the L3 + B / L3 + A defaults and every combo checked against
+every other. `ConsoleSettingsTest` covers the 2×–8× speeds. `CoordinatorTest` covers a freeze that keeps
+its speed and is not play time, the pause menu opened over a freeze at normal speed, the freeze combo not
+closing the menu, quick save keeping a game frozen, quick load ending a freeze, and fast-forward refused
+on Dreamcast with freeze still allowed. `ShellNavigationTest` covers a frozen game with no page in gameplay
+input mode, recording a freeze combo (L3 + Y refused as the quick save's), the speed row, and Reset quick
+buttons.
+
+On the RP5 (Android 13, serial bb28de36): `SaveStatesDeviceTest` and `UxTourTest`, OK (2 tests). The tour
+now presses L3 + A and L3 + B during play; `20c-fast-forward` and `20d-frozen` show the badge, and
+`13-settings-controls` the new rows. Looked at.
+
+`RealGameCheck -e fast 8` with one of the owner's games per console. Fast-forward ran exactly twice the core
+frames on Game Boy, Game Boy Color, Game Boy Advance, Super Nintendo, PlayStation and Saturn (for example
+60 → 120 a second, PlayStation's opening 15 → 30). A 3-second freeze let only the 8–12 frames around the
+two presses run, against 180 running. Every game went on at its old rate afterwards. Dreamcast,
+PlayStation 2 and GameCube said *Fast-forward isn't available for …*, stayed at normal speed and froze
+cleanly. The first Saturn run failed in the check itself: the core's frame counter was read from the test
+thread, where that engine is not found. It is now read on the game's own thread, and the Saturn run passes.
+
+Screenshots of a running real game taken by the check (`takeScreenshot`) or by `adb screencap` come out
+black even at normal speed, while PixelCopy of the same moment shows the game. So the fast badge was seen
+over a running game only in the tour's capture. The frozen badge was seen over the owner's Saturn game.
+
+Real sleep (`-e sleep 10 -e sleepWith fast|frozen`, the device's own sleep and wake). A Game Boy Advance game
+put down fast-forwarding came back from its checkpoint at normal speed and ran on. A GameCube game
+(`snapshots = Never`) put down frozen stayed loaded, came back paused behind the menu, not frozen, and ran on
+(677 → 772 core runs). The check's own frame count after a restore now reads the core's frames: it read
+the shim's counters, which only the three self-drawing engines have, so it had always failed for the others.
+
+Not run: NES, Genesis, Master System and Game Gear with the owner's games, because the library holds none.
+Their cores have `fastForward`, but none of them was run faster on the device.
+
 ## Box cases merged into master — 2026-10-18 (ADR 0029)
 
 Host: both APKs build, lint has 0 errors, `tools/test_assets.py` passes (4), and 138 JVM tests pass. The

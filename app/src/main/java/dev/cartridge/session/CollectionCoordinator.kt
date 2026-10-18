@@ -439,9 +439,28 @@ class CollectionCoordinator(
         mutableState.value = state.value.copy(curtain = true)
         if (!state.value.reducedMotion) delay(dev.cartridge.domain.MediaMotion.CURTAIN_MS.toLong())
     }
+    /** The pause menu: over a running game, or over a frozen one, which then keeps its frame. Either is at normal speed after. */
     fun pause() {
-        if (engine.status.value.state != SessionState.Running) return
+        val status = engine.status.value
+        if (status.state == SessionState.Paused && status.frozen) return runAction { engine.pause() }
+        if (status.state != SessionState.Running) return
         runAction { playJob?.cancel(); savePlay(false); playActive = false; engine.pause() }
+    }
+    /** The freeze combo (ADR 0031): a running game stops where it is with no menu, and a frozen one goes on at its speed. */
+    fun toggleFreeze() {
+        val status = engine.status.value
+        when {
+            status.state == SessionState.Running -> runAction { playJob?.cancel(); savePlay(false); playActive = false; engine.freeze() }
+            status.state == SessionState.Paused && status.frozen -> runAction { engine.resume() }
+        }
+    }
+    /** The fast-forward combo: between normal speed and [frames], on a running game whose core allows it. */
+    fun toggleFastForward(frames: Int) {
+        val status = engine.status.value
+        if (status.state != SessionState.Running) return
+        val system = playingId?.let { id -> state.value.allGames.firstOrNull { it.id == id } }?.system ?: return
+        if (!system.core.fastForward) return notify("Fast-forward isn't available for ${system.title}")
+        runAction { engine.speed(if (status.speed > 1) 1 else frames) }
     }
     /** 0 resume · 1 save state · 2 load state · 3 eject. Positions are a stable contract for the pause menu. */
     fun menuAction(index: Int) {
@@ -460,7 +479,8 @@ class CollectionCoordinator(
      * is done, as the owner's After Quick Save setting asks; a running game simply keeps running.
      */
     fun quickSave(resume: Boolean = false) = stateAction("Quick saved", resume) { engine.saveState() }
-    fun quickLoad(resume: Boolean = false) = stateAction("Quick loaded", resume) { engine.loadState() }
+    /** A frozen game goes on from what it loads: the frame it was frozen on is no longer the game's. */
+    fun quickLoad(resume: Boolean = false) = stateAction("Quick loaded", resume || engine.status.value.frozen) { engine.loadState() }
     /** One of the paused game's listed states. Saving into the list keeps the menu open; loading follows [resume]. */
     fun saveSlot(replacing: String? = null, saved: (String) -> Unit = {}) {
         if (engine.status.value.state != SessionState.Paused) return
@@ -656,8 +676,10 @@ class CollectionCoordinator(
                     if (sessionStore == null) eject("Session ended when the app left the foreground.", animate = false)
                     else if (keptWhileAway()) {
                         // Nothing to bring this game back from: it stays loaded, paused behind its pause menu, for as
-                        // long as Android keeps the app. Its battery save is written by the pause, as at any pause.
+                        // long as Android keeps the app. Its battery save is written by the pause, as at any pause. A
+                        // frozen game comes back to the menu too, at normal speed.
                         if (engine.status.value.state == SessionState.Running) { playJob?.cancel(); savePlay(false); playActive = false; engine.pause() }
+                        else if (engine.status.value.frozen) engine.pause()
                     }
                     else {
                         var checkpointFailure: Exception? = null

@@ -4,6 +4,7 @@ import android.view.KeyEvent
 import dev.cartridge.domain.pictureBounds
 import dev.cartridge.input.ButtonCombo
 import dev.cartridge.input.ComboListener
+import dev.cartridge.input.QuickCombo
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -33,6 +34,17 @@ class ButtonComboTest {
         assertEquals(ButtonCombo.QUICK_SAVE, ButtonCombo.decode("${KeyEvent.KEYCODE_BUTTON_A}", ButtonCombo.QUICK_SAVE))
         assertEquals(ButtonCombo.QUICK_SAVE, ButtonCombo.decode("${KeyEvent.KEYCODE_HOME},${KeyEvent.KEYCODE_BUTTON_A}", ButtonCombo.QUICK_SAVE))
         assertEquals(ButtonCombo.QUICK_SAVE, ButtonCombo.decode("nonsense", ButtonCombo.QUICK_SAVE))
+    }
+
+    @Test fun freezeAndFastForwardDefaultToL3WithBAndAAndNoTwoCombosPressEachOther() {
+        assertEquals("L3 + B", ButtonCombo.title(QuickCombo.Freeze.default))
+        assertEquals("L3 + A", ButtonCombo.title(QuickCombo.FastForward.default))
+        assertNull(ButtonCombo.conflict(ButtonCombo.DEFAULTS))
+        // A combo is checked against every other one, not only its pair.
+        assertNotNull(ButtonCombo.problem(ButtonCombo.QUICK_SAVE, listOf(QuickCombo.Freeze.default, ButtonCombo.QUICK_SAVE)))
+        assertNull(ButtonCombo.problem(setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_R1), ButtonCombo.DEFAULTS.values))
+        assertEquals(QuickCombo.Save, ButtonCombo.conflict(ButtonCombo.DEFAULTS + (QuickCombo.FastForward to ButtonCombo.QUICK_SAVE)))
+        assertNotNull(ButtonCombo.conflict(ButtonCombo.DEFAULTS + (QuickCombo.Freeze to setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_THUMBR))))
     }
 
     @Test fun everyButtonHeldUntilTheFirstIsReleasedMakesTheCombo() {

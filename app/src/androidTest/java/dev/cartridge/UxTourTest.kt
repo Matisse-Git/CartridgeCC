@@ -304,6 +304,20 @@ class UxTourTest {
                 key(scenario, KeyEvent.KEYCODE_DPAD_DOWN); key(scenario, KeyEvent.KEYCODE_BUTTON_A)
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message == "Quick saved" && it.engine.status.value.state == SessionState.Running }
                 shot("20b-quick-saved")
+                // L3 + A and L3 + B during play (ADR 0031): the badge in the corner says how fast, or that the game is frozen.
+                fun combo(second: Int, done: (DebugCollectionActivity) -> Boolean) {
+                    scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_THUMBL)); it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, second)) }
+                    await(scenario) { !it.coordinator.state.value.busy && done(it) }
+                    scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, second)); it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_THUMBL)) }
+                }
+                combo(KeyEvent.KEYCODE_BUTTON_A) { it.engine.status.value.speed == 2 && it.engine.status.value.state == SessionState.Running }
+                Thread.sleep(1600) // The quick save's notice has gone.
+                shot("20c-fast-forward")
+                combo(KeyEvent.KEYCODE_BUTTON_B) { it.engine.status.value.frozen }
+                scenario.onActivity { assertNull("A frozen game has no menu", it.shell.page()); assertEquals(2, it.engine.status.value.speed) }
+                shot("20d-frozen")
+                combo(KeyEvent.KEYCODE_BUTTON_B) { it.engine.status.value.state == SessionState.Running && it.engine.status.value.speed == 2 }
+                combo(KeyEvent.KEYCODE_BUTTON_A) { it.engine.status.value.speed == 1 }
                 pauseChord()
                 key(scenario, KeyEvent.KEYCODE_DPAD_UP, 6)
                 shot("21-pause-menu")

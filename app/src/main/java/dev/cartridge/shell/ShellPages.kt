@@ -11,6 +11,7 @@ import dev.cartridge.emulation.EngineStatus
 import dev.cartridge.environment.ConsoleSettings
 import dev.cartridge.environment.GameOptions
 import dev.cartridge.input.ButtonCombo
+import dev.cartridge.input.QuickCombo
 import dev.cartridge.library.LabelFit
 import dev.cartridge.library.LibraryGame
 import dev.cartridge.library.LibrarySort
@@ -44,7 +45,7 @@ internal fun ConsoleShell.buildPage(state: CollectionState, status: EngineStatus
     return when (destination) {
         null -> when {
             state.screen == CollectionScreen.LabelPreview -> labelPage(state)
-            paused -> pausePage(state)
+            paused && !status.frozen -> pausePage(state)
             else -> null
         }
         Destination.SystemMenu -> systemMenu(state)
@@ -282,12 +283,15 @@ internal fun ConsoleShell.controlRows(state: CollectionState): List<MenuRow> {
         MenuRow("stick", "Stick sensitivity", RowKind.Choice, value = sensitivity.minBy { kotlin.math.abs(it.first - controls.deadZone) }.second, tag = "controls-stick",
             adjust = { delta -> changeControls(controls.copy(deadZone = sensitivity.map { it.first }.step(sensitivity.minBy { kotlin.math.abs(it.first - controls.deadZone) }.first, delta))) }),
         flip("Pause shortcut", "pause", state.alternateShortcut, "L3 + R3", "Start + Select", tag = "shortcut-setting") { setPauseShortcut(it) },
-        MenuRow("quick-save", "Quick save buttons", RowKind.Link, value = ButtonCombo.title(controls.quickSave), note = "Hold them together during a game. Choose to press new ones.",
-            tag = "controls-quick-save") { recordCombo(quickLoad = false) },
-        MenuRow("quick-load", "Quick load buttons", RowKind.Link, value = ButtonCombo.title(controls.quickLoad), note = "Hold them together during a game. Choose to press new ones.",
-            tag = "controls-quick-load") { recordCombo(quickLoad = true) },
-        MenuRow("quick-reset", "Reset quick buttons", note = "${ButtonCombo.title(ButtonCombo.QUICK_SAVE)} saves, ${ButtonCombo.title(ButtonCombo.QUICK_LOAD)} loads",
-            enabled = controls.quickSave != ButtonCombo.QUICK_SAVE || controls.quickLoad != ButtonCombo.QUICK_LOAD, tag = "controls-quick-reset") { resetQuickButtons() },
+        comboRow(QuickCombo.Save, "quick-save", "Hold them together during a game. Choose to press new ones."),
+        comboRow(QuickCombo.Load, "quick-load", "Hold them together during a game. Choose to press new ones."),
+        comboRow(QuickCombo.Freeze, "freeze", "Stops the game where it is, with no menu. Again to go on."),
+        comboRow(QuickCombo.FastForward, "fast-forward", "Again for normal speed. The sound is off while it is fast." +
+            GameSystem.entries.filter { !it.core.fastForward }.takeIf { it.isNotEmpty() }?.joinToString(", ", " Not on ", " yet.") { it.title }.orEmpty()),
+        MenuRow("fast-forward-speed", "Fast-forward speed", RowKind.Choice, value = "${controls.fastForwardSpeed}×", tag = "controls-fast-forward-speed",
+            adjust = { delta -> changeControls(controls.copy(fastForwardSpeed = (controls.fastForwardSpeed + delta).coerceIn(ConsoleSettings.SPEEDS))) }),
+        MenuRow("quick-reset", "Reset quick buttons", note = QuickCombo.entries.joinToString(" · ") { "${ButtonCombo.title(it.default)} ${it.title.lowercase()}" },
+            enabled = QuickCombo.entries.any { controls.combo(it) != it.default }, tag = "controls-quick-reset") { resetQuickButtons() },
         flip("After Quick Save, Quick Load or Load", "after", !controls.returnToGame, "Return to game", "Stay in menu", tag = "controls-after") {
             changeControls(controls.copy(returnToGame = !it)) }) +
         // One row per console in the registry's order, whether or not it has games yet.
@@ -628,12 +632,15 @@ private fun ConsoleShell.confirmPage(destination: Destination.ConfirmSlot, state
         MenuRow("cancel", "Cancel", tag = "slot-cancel") { pop() }), PageStyle.Dialog, body = body)
 }
 
+private fun ConsoleShell.comboRow(action: QuickCombo, id: String, note: String) =
+    MenuRow(id, "${action.title} buttons", RowKind.Link, value = ButtonCombo.title(controls.combo(action)), note = note, tag = "controls-$id") { recordCombo(action) }
+
 private fun ConsoleShell.recordPage(destination: Destination.RecordCombo): Page {
     recordTick // Follows each button pressed.
     val listener = recorder
     val held = listener?.captured.orEmpty()
-    val current = if (destination.quickLoad) controls.quickLoad else controls.quickSave
-    return Page("record", if (destination.quickLoad) "Quick load buttons" else "Quick save buttons",
+    val current = controls.combo(destination.action)
+    return Page("record", "${destination.action.title} buttons",
         listOf(MenuRow("cancel", "Cancel", tag = "record-cancel") { pop() }), PageStyle.Dialog,
         if (held.isEmpty()) "Now ${ButtonCombo.title(current)}" else "Holding ${ButtonCombo.title(held)}",
         listener?.problem ?: "Hold the buttons together, then let go. Wait five seconds to keep the ones you have.")

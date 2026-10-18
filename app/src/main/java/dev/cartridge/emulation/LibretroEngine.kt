@@ -70,11 +70,15 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     private val pressed = mutableSetOf<Int>()
     private var ownsNative = false
     private var coreReady = false
+    /** Paused by the freeze combo: no menu, and the speed is kept for when it goes on (ADR 0031). */
+    private var frozen = false
+    private var speed = 1
 
     private fun transition(next: SessionState, error: String? = null) {
         machine.transition(next)
-        mutableStatus.value = EngineStatus(next, error,
-            if (next in setOf(SessionState.Running, SessionState.Paused)) status.value.saveWarning else null)
+        val live = next in setOf(SessionState.Running, SessionState.Paused)
+        mutableStatus.value = EngineStatus(next, error, if (live) status.value.saveWarning else null,
+            frozen = frozen && next == SessionState.Paused, speed = if (live) speed else 1)
     }
 
     override suspend fun prepare(game: GameRequest) = withContext(Dispatchers.Main.immediate) {
@@ -251,16 +255,50 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
 
     override suspend fun pause() = withContext(Dispatchers.Main.immediate) {
         mutex.withLock {
+            // The menu opens over the frame a freeze already holds; the game was written when it froze.
+            if (machine.state == SessionState.Paused && frozen) {
+                frozen = false; applySpeed(1)
+                mutableStatus.value = status.value.copy(frozen = false, speed = 1)
+                return@withLock
+            }
             if (machine.state != SessionState.Running) return@withLock
-            releaseInput()
-            // GLSurfaceView releases its buffers on pause. Retain an actual presented frame for
-            // the custom menu, rather than keeping an active emulator render loop behind it.
-            mutableFrozenFrame.value = capturePresentedFrame()
-            // ON_PAUSE waits for GLSurfaceView's GL thread before pausing native audio.
-            owner!!.registry.currentState = Lifecycle.State.STARTED
-            transition(SessionState.Paused)
-            checkpointWithWarning()
+            applySpeed(1)
+            halt()
         }
+    }
+    override suspend fun freeze() = withContext(Dispatchers.Main.immediate) {
+        mutex.withLock {
+            if (machine.state != SessionState.Running) return@withLock
+            frozen = true
+            halt()
+        }
+    }
+    /** A pause, menu or not: it is what writes the save, so the picture it keeps is optional. */
+    private suspend fun halt() {
+        releaseInput()
+        // GLSurfaceView releases its buffers on pause. Retain an actual presented frame for
+        // the custom menu, rather than keeping an active emulator render loop behind it.
+        mutableFrozenFrame.value = capturePresentedFrame()
+        // ON_PAUSE waits for GLSurfaceView's GL thread before pausing native audio.
+        owner!!.registry.currentState = Lifecycle.State.STARTED
+        transition(SessionState.Paused)
+        checkpointWithWarning()
+    }
+    override suspend fun speed(frames: Int) = withContext(Dispatchers.Main.immediate) {
+        mutex.withLock {
+            require(frames >= 1) { "Invalid speed" }
+            if (machine.state != SessionState.Running) return@withLock
+            val current = checkNotNull(game)
+            check(frames == 1 || current.system.core.fastForward) { "Fast-forward isn't available for ${current.system.title}" }
+            applySpeed(frames)
+            mutableStatus.value = status.value.copy(speed = frames)
+        }
+    }
+    /** The host runs the core [frames] times per frame shown. Sound would be a pitch-shifted blur, so it is off above 1. */
+    private fun applySpeed(frames: Int) {
+        if (speed == frames) return
+        speed = frames
+        mutableSurface.value?.let { view -> view.frameSpeed = frames; view.audioEnabled = frames == 1 }
     }
     private suspend fun capturePresentedFrame(): Bitmap? {
         val view = mutableSurface.value ?: return null
@@ -287,6 +325,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
             if (machine.state != SessionState.Paused) return@withLock
             owner!!.registry.currentState = Lifecycle.State.RESUMED
             mutableFrozenFrame.value = null
+            frozen = false
             transition(SessionState.Running)
         }
     }
@@ -525,6 +564,8 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
         mutableFrozenFrame.value = null
         owner = null
         coreReady = false
+        // A new view starts the host at normal speed with its sound on.
+        frozen = false; speed = 1
         game = null; lastWrittenRam = null; lastWrittenRtc = null
         if (ownsNative) nativeClaim.set(false)
         ownsNative = false

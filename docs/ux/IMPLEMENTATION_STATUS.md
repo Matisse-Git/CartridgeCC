@@ -166,7 +166,7 @@ are read from the import summary instead of a status string).
 |---|---|
 | Multi-disc games, `.m3u`, in-game disc change | Importer and adapter work; the wrapper already exposes disk control |
 | Analog / DualShock on PlayStation, D-pad, stick and per-game remapping, touch gameplay controls | Adapter and input work (each console's game buttons are remappable since ADR 0030) |
-| Rewind, fast-forward, aspect and integer scaling | Adapter work (the wrapper exposes frame speed and viewport) |
+| Rewind, aspect and integer scaling | Adapter work (the wrapper exposes viewport). Fast-forward is built (ADR 0031) except on the three self-drawing engines |
 | Light theme, background styles, display scale, animation speed | Design and implementation; deliberately not faked |
 | Interface sounds beyond insert/eject | Original audio assets |
 | Automatic artwork on import | Decided and built in ADR 0029 (automatic apply); see the next row for what is still unchecked |

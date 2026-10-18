@@ -118,6 +118,11 @@ enum class Core(
     val draws: Boolean = false,
     /** False for an engine that takes a disc as one image and cannot read a CUE sheet: it is started from the sheet's first track. */
     val sheets: Boolean = true,
+    /**
+     * The host may run it several times per frame shown (ADR 0031). An engine that draws for itself is timed by its own
+     * sound in the shim and has not been run faster on the device: it is offered only once a game shows it works.
+     */
+    val fastForward: Boolean = !draws,
 ) {
     Mgba("libmgba_libretro.so", "mgba-0.10.5-cartridge-memory-2", "Game Boy · Color · Advance", "mGBA 0.10.5", stateEnvelope = false),
     Pcsx("libpcsx_rearmed_libretro.so", "pcsx-c8816799-cartridge-1", "PlayStation", "PCSX ReARMed c8816799",

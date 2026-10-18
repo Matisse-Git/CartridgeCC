@@ -192,7 +192,10 @@ is in the app's private `files/shaders/library`.
 | Pause shortcut | L3 + R3 · Start + Select | `alternateShortcut` |
 | Quick save buttons | a recorded combo, L3 + Y by default: hold the buttons together, let go of one | `quickSaveCombo` (key codes) |
 | Quick load buttons | a recorded combo, L3 + X by default | `quickLoadCombo` |
-| Reset quick buttons | command: L3 + Y and L3 + X again | |
+| Freeze buttons | a recorded combo, L3 + B by default: the game stops where it is, with no menu (ADR 0031) | `freezeCombo` |
+| Fast-forward buttons | a recorded combo, L3 + A by default; the note names the consoles without it | `fastForwardCombo` |
+| Fast-forward speed | 2× … 8×, 2× by default; one speed for every console | `fastForwardSpeed` |
+| Reset quick buttons | command: all four combos to their defaults; the speed stays | |
 | After Quick Save, Quick Load or Load | Return to game · Stay in menu | `returnToGame` |
 | Game buttons › one row per console (›) | *Default* / *Custom*; opens that console's page | `buttons.<GameSystem>` |
 | Reset controls | command; also resets the quick buttons, the row above and every console's game buttons | |
@@ -260,7 +263,7 @@ section offered. Pause › Game Options also has *<console> buttons*, the paused
 |---|---|
 | Light / automatic theme, background style, display scale, animation speed | Not implemented; a switch would do nothing |
 | Aspect ratio, integer scaling | The emulator view exposes no control for them in this integration |
-| Rewind, fast-forward | Not integrated in the adapter |
+| Rewind; fast-forward on Dreamcast, PlayStation 2 and GameCube | Rewind is not integrated; those three engines are not offered fast-forward until a game shows it works (ADR 0031) |
 | Core selection | One embedded core per console |
 | Remapping the D-pad or sticks, per-game buttons, turbo buttons, touch controls | Not implemented (game buttons are per console, ADR 0030) |
 | UI sounds, music, latency | One sound exists |

@@ -32,10 +32,12 @@ import java.util.concurrent.TimeUnit
  *
  *   -e class dev.cartridge.RealGameCheck -e game <hash prefix | PS2 | DREAMCAST | GAMECUBE> [-e pick 0]
  *   [-e seconds 30] [-e every 5] [-e keys 12:BUTTON_START,15:BUTTON_A] [-e stacks 20,21] [-e sleep 20]
- *   [-e shader crt/crt-royale.glslp] [-e check 10:crt/crt-royale.glslp] [-e full true]
+ *   [-e shader crt/crt-royale.glslp] [-e check 10:crt/crt-royale.glslp] [-e full true] [-e fast 10] [-e sleepWith fast|frozen]
  *
  * `shader` starts the game with a preset from the installed shader library (ADR 0027); `check` pauses the
- * game at that second, checks a preset in its own GL context as Settings will, and resumes it.
+ * game at that second, checks a preset in its own GL context as Settings will, and resumes it. `fast` counts the
+ * core's frames for three seconds at normal speed, then with L3 + A held for fast-forward, then frozen with L3 + B,
+ * and puts it back (ADR 0031); a screenshot of each, badge included, goes beside the pictures.
  *
  * Pictures go to files/diagnostics/<tag>-<second>.png and one line of counters per second to the log. The
  * owner's library, play history and saved sessions are not touched; the game's own memory card is the one it
@@ -76,6 +78,14 @@ class RealGameCheck {
         return try { result.get(5, TimeUnit.SECONDS) } catch (failure: Exception) { LongArray(0) }
     }
 
+    /** The core's video frames, counted on the game's own thread as the engine counts them: a core may not be found from another. */
+    private fun frames(scenario: ActivityScenario<DebugCollectionActivity>, core: String): Long {
+        val result = CompletableFuture<Long>()
+        scenario.onActivity { activity -> activity.engine.surface.value?.queueEvent { result.complete(try { SaveBridge.frameCount(core) } catch (failure: Throwable) { -1L }) }
+            ?: result.complete(-1L) }
+        return result.get(5, TimeUnit.SECONDS).also { check(it >= 0) { "The core's frames could not be counted" } }
+    }
+
     @Test fun runsAnImportedGameAndRecordsWhatItShows() {
         val arguments = InstrumentationRegistry.getArguments()
         val wanted = arguments.getString("game").orEmpty()
@@ -92,6 +102,7 @@ class RealGameCheck {
         val checkPreset = arguments.getString("check")?.substringAfter(':')
         // A second at which the quick save combo is held during play, and three seconds later the quick load combo (ADR 0028).
         val quick = arguments.getString("quick")?.toInt()
+        val fast = arguments.getString("fast")?.toInt()
         val roms = File(context.filesDir, "roms")
         val system = GameSystem.entries.firstOrNull { it.name.equals(wanted, ignoreCase = true) }
         // Games, not this project's own probes: those are a few hundred kilobytes at most. A game named by its hash
@@ -200,14 +211,68 @@ class RealGameCheck {
                         val said = combo(KeyEvent.KEYCODE_BUTTON_X, listOf("Quick loaded", "Can't save states"))
                         if (said != "Quick loaded") check(console.core.snapshots == dev.cartridge.domain.Snapshots.Never) { "${console.title} refused a quick load: $said" }
                     }
+                    /** L3 with [code], held until [done], as the freeze and fast-forward combos are pressed (ADR 0031). */
+                    fun hold(code: Int, done: (DebugCollectionActivity) -> Boolean) {
+                        scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_THUMBL)) }; Thread.sleep(40)
+                        scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code)) }
+                        await(scenario, 60_000) { !it.coordinator.state.value.busy && done(it) }
+                        scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code)); it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_THUMBL)) }
+                        beat.set(System.nanoTime())
+                    }
+                    if (second == fast) {
+                        fun frames() = frames(scenario, core)
+                        fun rate(label: String): Long {
+                            val from = frames(); Thread.sleep(3000); beat.set(System.nanoTime())
+                            return ((frames() - from) / 3).also { android.util.Log.i(TAG, "$tag $label: $it core frames a second") }
+                        }
+                        fun screen(name: String) = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()?.let { shot ->
+                            File(shots, "$tag-$name.png").outputStream().use { shot.compress(Bitmap.CompressFormat.PNG, 100, it) }; shot.recycle()
+                        }
+                        val normal = rate("normal speed")
+                        var speed = 1; var said: String? = null
+                        if (console.core.fastForward) {
+                            hold(KeyEvent.KEYCODE_BUTTON_A) { it.engine.status.value.speed > 1 }
+                            scenario.onActivity { speed = it.engine.status.value.speed }
+                            val faster = rate("fast-forward ${speed}x")
+                            screen("fast")
+                            android.util.Log.i(TAG, "$tag fast-forward ${speed}x ran ${"%.2f".format(faster.toDouble() / normal.coerceAtLeast(1))} times as many frames")
+                            check(faster > normal) { "Fast-forward did not run the game faster: $normal then $faster frames a second" }
+                        } else {
+                            hold(KeyEvent.KEYCODE_BUTTON_A) { it.coordinator.state.value.message?.startsWith("Fast-forward isn't available") == true }
+                            scenario.onActivity { speed = it.engine.status.value.speed; said = it.coordinator.state.value.message }
+                            check(speed == 1) { "${console.title} was run faster" }
+                            android.util.Log.i(TAG, "$tag fast-forward refused: $said")
+                        }
+                        // A frozen game's thread takes no work until it goes on: count just before the freeze and just after it.
+                        val before = frames()
+                        hold(KeyEvent.KEYCODE_BUTTON_B) { it.engine.status.value.frozen }
+                        var menu: Any? = null; scenario.onActivity { menu = it.shell.page() }
+                        check(menu == null) { "A frozen game showed a menu" }
+                        Thread.sleep(3000); beat.set(System.nanoTime())
+                        screen("frozen")
+                        hold(KeyEvent.KEYCODE_BUTTON_B) { it.engine.status.value.state == SessionState.Running && it.engine.status.value.speed == speed }
+                        val frozen = frames() - before
+                        android.util.Log.i(TAG, "$tag frozen for 3 s: $frozen core frames from just before the freeze to just after it")
+                        check(frozen < normal) { "A frozen game ran $frozen frames in 3 s" }
+                        if (speed > 1) hold(KeyEvent.KEYCODE_BUTTON_A) { it.engine.status.value.speed == 1 }
+                        val again = rate("normal speed again")
+                        check(again > 0) { "The game did not go on after the freeze" }
+                        last = stats(scenario, core)
+                    }
                     if (second == sleep) {
                         val before = stats(scenario, core)
+                        // -e sleepWith fast|frozen: the game is put down fast-forwarding or frozen, and must come back at normal speed.
+                        when (arguments.getString("sleepWith")) {
+                            "fast" -> if (console.core.fastForward) hold(KeyEvent.KEYCODE_BUTTON_A) { it.engine.status.value.speed > 1 }
+                            "frozen" -> hold(KeyEvent.KEYCODE_BUTTON_B) { it.engine.status.value.frozen }
+                        }
                         val shell = InstrumentationRegistry.getInstrumentation().uiAutomation
                         shell.executeShellCommand("input keyevent KEYCODE_SLEEP").close(); Thread.sleep(5000); beat.set(System.nanoTime())
                         shell.executeShellCommand("input keyevent KEYCODE_WAKEUP").close(); Thread.sleep(2500); beat.set(System.nanoTime())
                         var after = SessionState.Idle; var kept = false
                         scenario.onActivity { after = it.engine.status.value.state; kept = it.engine.surface.value != null }
                         android.util.Log.i(TAG, "$tag t=$second slept for 5 s and woke: $after, game still loaded=$kept, ${console.core.snapshots}")
+                        if (kept) scenario.onActivity { check(!it.engine.status.value.frozen && it.engine.status.value.speed == 1) { "The game came back frozen or fast: ${it.engine.status.value}" } }
                         if (console.core.snapshots == dev.cartridge.domain.Snapshots.Never) {
                             // Nothing to restore from: the same loaded game has to be there, paused, and carry on when asked.
                             check(after == SessionState.Paused && kept) { "The game did not survive sleep: $after" }
@@ -230,9 +295,13 @@ class RealGameCheck {
                             }
                             ui.onNodeWithTag("menu-0").performClick()
                             await(scenario, 30_000) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Running }
+                            // Frames rather than the shim's counters, which only the engines that draw for themselves have.
+                            val from = frames(scenario, core)
                             Thread.sleep(1500); beat.set(System.nanoTime())
+                            val to = frames(scenario, core)
+                            check(to > from + 30) { "The restored game is not running: $from then $to frames" }
                             last = stats(scenario, core)
-                            check(last.isNotEmpty() && last[1] > 30) { "The restored game is not running" }
+                            scenario.onActivity { check(it.engine.status.value.speed == 1) { "The restored game is fast: ${it.engine.status.value}" } }
                             android.util.Log.i(TAG, "$tag was restored from its checkpoint after sleep and carried on")
                         }
                     }

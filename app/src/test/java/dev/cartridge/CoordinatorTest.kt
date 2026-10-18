@@ -74,8 +74,11 @@ class CoordinatorTest {
             prepareGate?.await()
             status.value = EngineStatus(SessionState.Running)
         }
-        override suspend fun pause() { if (status.value.state == SessionState.Running) status.value = EngineStatus(SessionState.Paused) }
-        override suspend fun resume() { status.value = EngineStatus(SessionState.Running) }
+        // As the real engine: the menu opens over a running or a frozen game at normal speed; a freeze and a resume keep the speed.
+        override suspend fun pause() { if (status.value.state == SessionState.Running || status.value.frozen) status.value = EngineStatus(SessionState.Paused) }
+        override suspend fun freeze() { if (status.value.state == SessionState.Running) status.value = status.value.copy(state = SessionState.Paused, frozen = true) }
+        override suspend fun speed(frames: Int) { if (status.value.state == SessionState.Running) status.value = status.value.copy(speed = frames) }
+        override suspend fun resume() { status.value = EngineStatus(SessionState.Running, speed = status.value.speed) }
         override suspend fun stop() { stops++; status.value = EngineStatus() }
         override suspend fun saveState() { saveGate?.await(); saves++ }
         override suspend fun loadState() { check(!missingState) { "There is no saved state" } }
@@ -313,6 +316,65 @@ class CoordinatorTest {
         assertEquals(2, coordinator.state.value.allGames.size)
         coordinator.query(LibraryQuery()); runCurrent()
         assertEquals(library.one.id, coordinator.state.value.selectedGame!!.id)
+        coordinator.destroy()
+    }
+    @Test fun aFreezeStopsTheGameWithNoMenuKeepsItsSpeedAndIsNotPlayTime() = runTest {
+        val library = Library(); val engine = Engine(); var now = 0L
+        val coordinator = CollectionCoordinator(engine, library, Surfaces(), backgroundScope, reducedMotion = true, monotonicMillis = { now })
+        runCurrent(); coordinator.rendererReady(0); coordinator.insert(); runCurrent()
+        coordinator.toggleFastForward(3); runCurrent()
+        assertEquals(3, engine.status.value.speed)
+        now = 1000; coordinator.toggleFreeze(); runCurrent()
+        assertEquals(SessionState.Paused, engine.status.value.state); assertTrue(engine.status.value.frozen)
+        assertEquals(1000L, library.played)
+        // Only the combos work on a frozen game, and fast-forward is not one of them.
+        coordinator.toggleFastForward(3); runCurrent()
+        assertTrue(engine.status.value.frozen); assertEquals(3, engine.status.value.speed)
+        now = 60_000; coordinator.toggleFreeze(); runCurrent()
+        assertEquals(SessionState.Running, engine.status.value.state); assertFalse(engine.status.value.frozen)
+        assertEquals("It goes on at the speed it had", 3, engine.status.value.speed)
+        now = 60_500; coordinator.toggleFastForward(3); runCurrent()
+        assertEquals(1, engine.status.value.speed)
+        coordinator.pause(); runCurrent()
+        assertEquals("Frozen time is not play time; fast time is", 1500L, library.played)
+        coordinator.menuAction(0); runCurrent()
+        // The pause menu over a frozen game: the same frame, no freeze, normal speed.
+        coordinator.toggleFastForward(2); runCurrent(); coordinator.toggleFreeze(); runCurrent()
+        coordinator.pause(); runCurrent()
+        assertEquals(SessionState.Paused, engine.status.value.state); assertFalse(engine.status.value.frozen); assertEquals(1, engine.status.value.speed)
+        // The freeze combo does not close the menu, and Resume goes on at normal speed.
+        coordinator.toggleFreeze(); runCurrent()
+        assertEquals(SessionState.Paused, engine.status.value.state); assertFalse(engine.status.value.frozen)
+        coordinator.menuAction(0); runCurrent()
+        assertEquals(SessionState.Running, engine.status.value.state); assertEquals(1, engine.status.value.speed)
+        coordinator.destroy()
+    }
+    @Test fun aQuickSaveKeepsAGameFrozenAndAQuickLoadLetsItGoOn() = runTest {
+        val engine = Engine()
+        val coordinator = CollectionCoordinator(engine, Library(), Surfaces(), backgroundScope, reducedMotion = true)
+        runCurrent(); coordinator.rendererReady(0); coordinator.insert(); runCurrent()
+        coordinator.toggleFreeze(); runCurrent()
+        coordinator.quickSave(); runCurrent()
+        assertEquals(1, engine.saves); assertTrue(engine.status.value.frozen); assertEquals("Quick saved", coordinator.state.value.message)
+        coordinator.quickLoad(); runCurrent()
+        assertEquals(SessionState.Running, engine.status.value.state); assertFalse(engine.status.value.frozen)
+        // From the pause menu a load still follows the owner's setting.
+        coordinator.pause(); runCurrent(); coordinator.quickLoad(resume = false); runCurrent()
+        assertEquals(SessionState.Paused, engine.status.value.state)
+        coordinator.destroy()
+    }
+    @Test fun fastForwardIsNotOfferedWhereItsEngineHasNotBeenRunFaster() = runTest {
+        val library = Library(); val engine = Engine()
+        val dreamcast = LibraryGame("d".repeat(64), "Disc", "content://disc", system = GameSystem.DREAMCAST)
+        library.snapshots.value = LibrarySnapshot(listOf(library.one, dreamcast), 1)
+        val coordinator = CollectionCoordinator(engine, library, Surfaces(), backgroundScope, reducedMotion = true)
+        runCurrent(); coordinator.rendererReady(0); coordinator.insert(); runCurrent()
+        coordinator.toggleFastForward(2); runCurrent()
+        assertEquals(1, engine.status.value.speed); assertEquals("Fast-forward isn't available for Dreamcast", coordinator.state.value.message)
+        // Freezing is for every console.
+        coordinator.toggleFreeze(); runCurrent()
+        assertTrue(engine.status.value.frozen)
+        assertEquals(listOf(GameSystem.DREAMCAST, GameSystem.PS2, GameSystem.GAMECUBE), GameSystem.entries.filter { !it.core.fastForward })
         coordinator.destroy()
     }
     @Test fun historyExcludesPauseAndFinishesBeforeEjection() = runTest {

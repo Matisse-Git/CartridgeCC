@@ -56,6 +56,7 @@ import dev.cartridge.environment.HomeRegistration
 import dev.cartridge.input.ControllerRouter
 import dev.cartridge.input.GameButtons
 import dev.cartridge.input.MediaSound
+import dev.cartridge.input.QuickCombo
 import dev.cartridge.library.*
 import dev.cartridge.rendering.CartridgeSurface
 import dev.cartridge.rendering.CollectionAssets
@@ -201,7 +202,14 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
             gameKey = engine::key, gameMotion = engine::motion, adjust = shell::adjust, alternate = shell::alternate, secondary = shell::secondary,
             shoulder = shell::shoulder, menu = shell::menu, cancelOperation = coordinator::cancelScan, navigateLibrary = coordinator::navigateSpatial,
             inspect = ::inspect, systemBack = shell::systemBack, gameAnalog = engine::analog,
-            quickSave = { coordinator.quickSave() }, quickLoad = { coordinator.quickLoad() }, record = shell::recordKey)
+            quick = { action ->
+                when (action) {
+                    QuickCombo.Save -> coordinator.quickSave()
+                    QuickCombo.Load -> coordinator.quickLoad()
+                    QuickCombo.Freeze -> coordinator.toggleFreeze()
+                    QuickCombo.FastForward -> coordinator.toggleFastForward(shell.controls.fastForwardSpeed)
+                }
+            }, record = shell::recordKey)
         inputChanged()
         getSystemService(InputManager::class.java).registerInputDeviceListener(this, null)
         lifecycleScope.launch {
@@ -232,7 +240,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         val system = coordinator.state.value.selectedGame?.system
         input.swapMenuButtons = controls.swapMenuButtons
         input.gameButtons = system?.let { GameButtons.routes(controls.buttons(it)) } ?: GameButtons.IDENTITY
-        input.quickSaveShortcut = controls.quickSave; input.quickLoadShortcut = controls.quickLoad
+        input.combos = QuickCombo.entries.associateWith(controls::combo)
         input.analogGameplay = system?.core?.analog == true
         if (input.deadZone != controls.deadZone) input.deadZone = controls.deadZone
     }
@@ -328,6 +336,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                     // No chrome rests on a running game. The top corner and Android's Back both open the pause menu for touch.
                     if (status.state == SessionState.Running) Box(Modifier.align(Alignment.TopEnd).size(72.dp).tap("pause") { coordinator.pause() })
                     if (status.state == SessionState.Paused) frozenFrame?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
+                    if (state.screen == CollectionScreen.Emulator) GameBadge(status, Modifier.align(Alignment.TopEnd))
                 }
                 ShellOverlays(shell, state, status, device, confirm, back)
                 if (scrape.visible) ScrapePanel(scrape, scraper, confirm, back)

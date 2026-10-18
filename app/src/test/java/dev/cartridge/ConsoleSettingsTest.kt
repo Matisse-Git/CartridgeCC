@@ -22,6 +22,12 @@ class ConsoleSettingsTest {
         for (skip in listOf(-1, 3)) assertThrows(IllegalArgumentException::class.java) { ConsoleSettings(frameSkip = skip) }
     }
 
+    @Test fun fastForwardRunsAWholeNumberOfFramesFromTwoToEight() {
+        assertEquals(2, ConsoleSettings().fastForwardSpeed)
+        for (speed in listOf(1, 0, 9)) assertThrows(IllegalArgumentException::class.java) { ConsoleSettings(fastForwardSpeed = speed) }
+        assertEquals(8, ConsoleSettings(fastForwardSpeed = 8).fastForwardSpeed)
+    }
+
     @Test fun everyConsoleHasItsOwnPadAndItsDefaultIsWhatItsGamesWereAlwaysSent() {
         for (system in GameSystem.entries) {
             val pad = system.pad

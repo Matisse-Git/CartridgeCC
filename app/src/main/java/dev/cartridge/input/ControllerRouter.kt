@@ -39,9 +39,8 @@ class ControllerRouter(
     private val systemBack: () -> Unit = back,
     /** A stick of a game whose console has them: 0 left, 1 right, -1..1 per axis with a small dead zone removed. */
     private val gameAnalog: (Int, Float, Float) -> Unit = { _, _, _ -> },
-    /** The quick save and quick load combos, held during a game. */
-    private val quickSave: () -> Unit = {},
-    private val quickLoad: () -> Unit = {},
+    /** A [QuickCombo] held during a game: quick save, quick load, freeze, fast-forward. */
+    private val quick: (QuickCombo) -> Unit = {},
     /** A button going down (true) or up while a combo is being recorded. */
     private val record: (Int, Boolean) -> Unit = { _, _ -> },
 ) {
@@ -49,8 +48,7 @@ class ControllerRouter(
         // A shortcut's buttons are still down while its operation locks input; they stay its own until let go.
         set(value) { if (field != value) reset(keepShortcut = true); field = value }
     var pauseShortcut = setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_THUMBR)
-    var quickSaveShortcut = ButtonCombo.QUICK_SAVE
-    var quickLoadShortcut = ButtonCombo.QUICK_LOAD
+    var combos: Map<QuickCombo, Set<Int>> = ButtonCombo.DEFAULTS
     var swapMenuButtons = false
     /**
      * The running console's buttons (ButtonMap): a physical button's key code to the one its game is sent. A button
@@ -112,7 +110,7 @@ class ControllerRouter(
             // Each button of a shortcut reaches the game until the last one completes it. The game is then told every
             // button it holds is up, and hears nothing more until the shortcut's buttons are let go.
             val shortcut = if (latched.isNotEmpty() || !down || event.repeatCount != 0) null else
-                listOf(pauseShortcut to pause, quickSaveShortcut to quickSave, quickLoadShortcut to quickLoad)
+                (listOf(pauseShortcut to pause) + combos.map { (action, keys) -> keys to { quick(action) } })
                     .firstOrNull { (keys, _) -> keys.isNotEmpty() && code in keys && held.containsAll(keys) }
             if (shortcut != null) {
                 latched.clear(); latched.addAll(shortcut.first)

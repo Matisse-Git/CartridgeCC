@@ -14,6 +14,7 @@ import dev.cartridge.emulation.EngineStatus
 import dev.cartridge.emulation.GameRequest
 import dev.cartridge.environment.ConsolePreferences
 import dev.cartridge.input.InputMode
+import dev.cartridge.input.QuickCombo
 import dev.cartridge.library.*
 import dev.cartridge.scraping.ArtworkCandidate
 import dev.cartridge.scraping.ArtworkProvider
@@ -125,8 +126,11 @@ class ShellNavigationTest {
         override val status = MutableStateFlow(EngineStatus())
         val keys = mutableListOf<Int>()
         override suspend fun prepare(game: GameRequest) { status.value = EngineStatus(SessionState.Running) }
-        override suspend fun pause() { if (status.value.state == SessionState.Running) status.value = EngineStatus(SessionState.Paused) }
-        override suspend fun resume() { status.value = EngineStatus(SessionState.Running) }
+        // As the real engine: the menu opens over a running or a frozen game at normal speed; a freeze and a resume keep the speed.
+        override suspend fun pause() { if (status.value.state == SessionState.Running || status.value.frozen) status.value = EngineStatus(SessionState.Paused) }
+        override suspend fun freeze() { if (status.value.state == SessionState.Running) status.value = status.value.copy(state = SessionState.Paused, frozen = true) }
+        override suspend fun speed(frames: Int) { if (status.value.state == SessionState.Running) status.value = status.value.copy(speed = frames) }
+        override suspend fun resume() { status.value = EngineStatus(SessionState.Running, speed = status.value.speed) }
         override suspend fun stop() { status.value = EngineStatus() }
         override fun key(action: Int, androidKeyCode: Int) { keys += androidKeyCode }
         override fun motion(x: Float, y: Float) = Unit
@@ -239,6 +243,44 @@ class ShellNavigationTest {
         shell.openApps(); assertNull(shell.top)
         shell.back(); runCurrent()
         assertEquals(SessionState.Running, console.engine.status.value.state); assertNull(shell.top)
+        console.coordinator.destroy()
+    }
+
+    @Test fun aFrozenGameHasNoMenuAndItsButtonsStayTheCombos() = runTest {
+        val console = Console(this); val shell = console.shell
+        console.coordinator.insert(); runCurrent()
+        console.coordinator.toggleFreeze(); runCurrent()
+        assertTrue(console.engine.status.value.frozen)
+        // No pause page is drawn over it and the router keeps the game's mode, where only the combos and Back mean anything.
+        assertNull(shell.page()); assertNull(shell.top); assertEquals(InputMode.Gameplay, shell.inputMode())
+        // Back opens the pause menu over the same frame.
+        console.coordinator.pause(); runCurrent()
+        assertEquals("pause", shell.page()?.key); assertEquals(InputMode.Menu, shell.inputMode())
+        console.coordinator.destroy()
+    }
+
+    @Test fun fourCombosAreRecordedAndNoneMayPressAnother() = runTest {
+        val console = Console(this); val shell = console.shell
+        assertEquals(QuickCombo.entries.associateWith { it.default }, shell.controls.combos)
+        shell.recordCombo(QuickCombo.Freeze); assertEquals(InputMode.Record, shell.inputMode())
+        // L3 + Y is the quick save's: refused, and still listening.
+        shell.recordKey(KeyEvent.KEYCODE_BUTTON_THUMBL, true); shell.recordKey(KeyEvent.KEYCODE_BUTTON_Y, true); shell.recordKey(KeyEvent.KEYCODE_BUTTON_THUMBL, false)
+        assertTrue(shell.top is Destination.RecordCombo); assertNotNull(shell.recorder?.problem)
+        shell.recordKey(KeyEvent.KEYCODE_BUTTON_Y, false)
+        shell.recordKey(KeyEvent.KEYCODE_BUTTON_SELECT, true); shell.recordKey(KeyEvent.KEYCODE_BUTTON_L1, true); shell.recordKey(KeyEvent.KEYCODE_BUTTON_SELECT, false)
+        assertNull(shell.top)
+        val freeze = setOf(KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_BUTTON_L1)
+        assertEquals(freeze, shell.controls.combo(QuickCombo.Freeze))
+        assertEquals(freeze, ConsolePreferences(console.preferences).read().combo(QuickCombo.Freeze))
+        assertEquals("Freeze: L1 + Select", console.state.message)
+        // The speed steps within 2x to 8x and is kept; Reset quick buttons gives all four combos back and leaves the speed.
+        fun speed() = shell.controlRows(console.state).first { it.id == "fast-forward-speed" }
+        assertEquals("2×", speed().value)
+        speed().adjust!!(-1); assertEquals(2, shell.controls.fastForwardSpeed)
+        repeat(9) { speed().adjust!!(1) }
+        assertEquals(8, shell.controls.fastForwardSpeed); assertEquals(8, ConsolePreferences(console.preferences).read().fastForwardSpeed)
+        shell.resetQuickButtons()
+        assertEquals(QuickCombo.entries.associateWith { it.default }, shell.controls.combos); assertEquals(8, shell.controls.fastForwardSpeed)
         console.coordinator.destroy()
     }
 

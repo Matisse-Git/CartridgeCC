@@ -4,12 +4,26 @@ import android.view.KeyEvent
 import dev.cartridge.domain.PadKey
 
 /**
- * Buttons held together during a game to quick save or quick load (docs/SAVE_RELIABILITY). Only gamepad buttons
- * can be part of one, never Home, Back or volume, and never fewer than two, so no single button is taken from a game.
+ * What a combo held during a game does (docs/SAVE_RELIABILITY, ADR 0031), with the buttons it has until the owner
+ * records others. Names are stored ids: append, never rename or reorder.
+ */
+enum class QuickCombo(val title: String, val default: Set<Int>, val key: String) {
+    Save("Quick save", setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_Y), "quickSaveCombo"),
+    Load("Quick load", setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_X), "quickLoadCombo"),
+    /** The game stops where it is, with no menu, and goes on when pressed again. */
+    Freeze("Freeze", setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_B), "freezeCombo"),
+    /** Between normal speed and the fast-forward speed of Settings. */
+    FastForward("Fast-forward", setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_A), "fastForwardCombo"),
+}
+
+/**
+ * Buttons held together during a game ([QuickCombo]). Only gamepad buttons can be part of one, never Home, Back or
+ * volume, and never fewer than two, so no single button is taken from a game.
  */
 object ButtonCombo {
-    val QUICK_SAVE = setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_Y)
-    val QUICK_LOAD = setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_X)
+    val QUICK_SAVE = QuickCombo.Save.default
+    val QUICK_LOAD = QuickCombo.Load.default
+    val DEFAULTS = QuickCombo.entries.associateWith { it.default }
     /** Both pause shortcuts Settings offers; a quick combo may not overlap either, whichever is chosen today. */
     val PAUSES = listOf(setOf(KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_THUMBR),
         setOf(KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_BUTTON_SELECT))
@@ -24,14 +38,18 @@ object ButtonCombo {
 
     fun title(combo: Set<Int>): String = if (combo.isEmpty()) "None" else names.keys.filter { it in combo }.joinToString(" + ") { names.getValue(it) }
 
-    /** Why [combo] cannot be used for one action while [other] is the other action's, or null when it can. */
-    fun problem(combo: Set<Int>, other: Set<Int>): String? = when {
+    /** Why [combo] cannot be used for one action while [others] are the other actions', or null when it can. */
+    fun problem(combo: Set<Int>, others: Collection<Set<Int>>): String? = when {
         combo.any { it !in allowed } -> "Only controller buttons can be used"
         combo.size < 2 -> "Hold at least two buttons, so no button is taken from your games"
-        overlaps(combo, other) -> "That would also press the other quick button combo (${title(other)})"
+        others.any { overlaps(combo, it) } -> "That would also press another quick button combo (${title(others.first { overlaps(combo, it) })})"
         PAUSES.any { overlaps(combo, it) } -> "That would also press a pause shortcut (${title(PAUSES.first { overlaps(combo, it) })})"
         else -> null
     }
+    fun problem(combo: Set<Int>, other: Set<Int>) = problem(combo, listOf(other))
+    /** The first combo of [combos] that another of them, or a pause shortcut, would press. */
+    fun conflict(combos: Map<QuickCombo, Set<Int>>): QuickCombo? =
+        combos.keys.firstOrNull { action -> problem(combos.getValue(action), (combos - action).values) != null }
     /** Holding one would complete the other: equal, or one contains the other. */
     private fun overlaps(first: Set<Int>, second: Set<Int>) = second.isNotEmpty() && (first.containsAll(second) || second.containsAll(first))
 
@@ -61,7 +79,8 @@ class ButtonListener {
  * Listens for a new combo. Every button pressed while at least one is held joins it; letting go of the first one
  * ends it. A combo the rules refuse is reported and listening starts over.
  */
-class ComboListener(private val other: Set<Int>) {
+class ComboListener(private val others: Collection<Set<Int>>) {
+    constructor(other: Set<Int>) : this(listOf(other))
     private val held = mutableSetOf<Int>()
     var captured: Set<Int> = emptySet(); private set
     var problem: String? = null; private set
@@ -75,7 +94,7 @@ class ComboListener(private val other: Set<Int>) {
         if (code !in held) return null
         held.clear()
         val combo = captured
-        problem = ButtonCombo.problem(combo, other)
+        problem = ButtonCombo.problem(combo, others)
         if (problem != null) { captured = emptySet(); return null }
         return combo
     }

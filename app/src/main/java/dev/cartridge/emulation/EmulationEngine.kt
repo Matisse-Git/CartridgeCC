@@ -5,14 +5,23 @@ import dev.cartridge.domain.GameSystem
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
 
-/** [notice] is something about this start worth telling the player once; it is gone at the next state change. */
-data class EngineStatus(val state: SessionState = SessionState.Idle, val error: String? = null, val saveWarning: String? = null, val notice: String? = null)
+/**
+ * [notice] is something about this start worth telling the player once; it is gone at the next state change. [frozen] is a
+ * pause with no menu, from the freeze combo (ADR 0031). [speed] is how many frames run for each one shown, 1 normally.
+ */
+data class EngineStatus(val state: SessionState = SessionState.Idle, val error: String? = null, val saveWarning: String? = null, val notice: String? = null,
+    val frozen: Boolean = false, val speed: Int = 1)
 data class GameRequest(val rom: File, val id: String, val system: GameSystem = GameSystem.GBA, val resumeState: ByteArray? = null)
 
 interface EmulationEngine {
     val status: StateFlow<EngineStatus>
     suspend fun prepare(game: GameRequest)
+    /** Opens the pause menu: a running game stops, a frozen one keeps its frame; both are back at normal speed. */
     suspend fun pause()
+    /** A running game stops where it is, at the speed it had, with no menu (ADR 0031). [resume] continues it. */
+    suspend fun freeze(): Unit = error("Freezing is not available")
+    /** A running game runs [frames] frames for each one shown, with no sound above 1, where its core allows it. */
+    suspend fun speed(frames: Int): Unit = error("Fast-forward is not available")
     suspend fun resume()
     suspend fun stop()
     fun key(action: Int, androidKeyCode: Int)

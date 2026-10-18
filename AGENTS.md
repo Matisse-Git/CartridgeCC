@@ -173,6 +173,13 @@
   device's power button does and `moveToState` only approximates; the USB link drops after one, so
   read the result from the device's log.
 
+- Freeze and fast-forward (ADR 0031) are combos like the quick ones (`QuickCombo`): a freeze is a pause with
+  no menu (`EngineStatus.frozen`), fast-forward is the host's whole-number `frameSpeed` with the sound off and
+  only where `Core.fastForward` says so. The pause menu, sleep, leaving and ending a game return to normal
+  speed, unfrozen. Nothing but `ui/GameBadge` rests on a game. Re-run `-Suite Saves`, the tour and
+  `RealGameCheck -e fast N` after a change to them, and turn `fastForward` on for an engine only after
+  one of the owner's games shows it.
+
 - Shader presets (ADR 0027) are optional and never stop a game: a preset that is missing, unreadable or
   refused by the GPU gives the normal picture and one notice, and the choice stays saved. A preset is
   checked in its own GL context before it is saved. Pass sources keep their meaning: the ways `link`

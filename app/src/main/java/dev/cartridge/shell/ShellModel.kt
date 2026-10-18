@@ -93,8 +93,8 @@ sealed class Destination(val key: String, val opaque: Boolean = false) {
     data class SlotActions(val name: String) : Destination("slot")
     /** Load, Overwrite and Delete ask once before they replace progress or a save. */
     data class ConfirmSlot(val action: SlotAction, val name: String) : Destination("confirm")
-    /** Listening for a new quick save or quick load combo; every controller button goes to it. */
-    data class RecordCombo(val quickLoad: Boolean) : Destination("record")
+    /** Listening for new buttons for one of the combos held during a game; every controller button goes to it. */
+    data class RecordCombo(val action: dev.cartridge.input.QuickCombo) : Destination("record")
     /** One console's game buttons: which physical button presses each of its own (ButtonMap). */
     data class ConsoleButtons(val system: GameSystem) : Destination("buttons:${system.name}", true)
     /** Listening for the physical button [button] of [system] is to be pressed with; every controller button goes to it. */

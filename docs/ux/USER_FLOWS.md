@@ -87,6 +87,10 @@ and every suite that starts a game with the library's own touch target.
 | 4 | A on a save, A on Load, A | "Load this save?" answered: the game, running from that moment |
 
 During play **L3 + Y** quick saves and **L3 + X** quick loads, with a short notice and no pause.
+**L3 + B** freezes the game where it is, with no menu and a pause badge in the top-right corner. L3 + B
+again goes on. **L3 + A** switches fast-forward on and off; the corner shows the speed (2× unless Settings
+says otherwise) and the sound is off while it is fast. Dreamcast, PlayStation 2 and GameCube say fast-forward
+isn't available. The pause menu, sleep and leaving a game always return to normal speed, unfrozen (ADR 0031).
 Return to Library is the last row, set apart. Quick Load is unavailable until a quick save exists.
 Quick Save, Quick Load and Load return to the game unless Settings › Controls › *After Quick Save,
 Quick Load or Load* says *Stay in menu*. New save and Overwrite keep the page open. The quick save and
