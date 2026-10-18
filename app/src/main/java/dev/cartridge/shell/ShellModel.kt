@@ -95,6 +95,10 @@ sealed class Destination(val key: String, val opaque: Boolean = false) {
     data class ConfirmSlot(val action: SlotAction, val name: String) : Destination("confirm")
     /** Listening for a new quick save or quick load combo; every controller button goes to it. */
     data class RecordCombo(val quickLoad: Boolean) : Destination("record")
+    /** One console's game buttons: which physical button presses each of its own (ButtonMap). */
+    data class ConsoleButtons(val system: GameSystem) : Destination("buttons:${system.name}", true)
+    /** Listening for the physical button [button] of [system] is to be pressed with; every controller button goes to it. */
+    data class RecordButton(val system: GameSystem, val button: dev.cartridge.domain.PadKey) : Destination("record-button")
 }
 
 enum class SlotAction { Load, Overwrite, Delete }

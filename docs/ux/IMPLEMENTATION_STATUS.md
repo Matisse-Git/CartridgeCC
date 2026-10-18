@@ -165,7 +165,7 @@ are read from the import summary instead of a status string).
 | Item | Needs |
 |---|---|
 | Multi-disc games, `.m3u`, in-game disc change | Importer and adapter work; the wrapper already exposes disk control |
-| Analog / DualShock, per-button remapping, touch gameplay controls | Adapter and input work |
+| Analog / DualShock on PlayStation, D-pad, stick and per-game remapping, touch gameplay controls | Adapter and input work (each console's game buttons are remappable since ADR 0030) |
 | Rewind, fast-forward, aspect and integer scaling | Adapter work (the wrapper exposes frame speed and viewport) |
 | Light theme, background styles, display scale, animation speed | Design and implementation; deliberately not faked |
 | Interface sounds beyond insert/eject | Original audio assets |

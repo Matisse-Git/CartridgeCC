@@ -6,6 +6,12 @@ their explicit PCSX revision. Automatic session records carry their own system r
 state bytes also include a revision envelope checked before native unserialization. Memory-card bytes
 use the existing bounded 128 KiB SRAM entry. Disc bundles, BIOS and SAF grants remain excluded.
 
+Console game buttons (ADR 0030): `settings` may carry a `buttons` object, `{"<GameSystem>": "A=B,B=A,…"}`, one
+entry per console whose buttons differ from its default. Each must name exactly that console's buttons, each with
+a different physical button, or the backup is refused. Restoring sets the consoles it names and leaves the others.
+The every-console `swapGameButtons` and `swapShoulders` of older backups are accepted and ignored; newer backups
+do not write them.
+
 Shader choices (ADR 0027): `settings` may carry a `shaders` object, `{"global": …, "consoles": {"<GameSystem>": …},
 "games": {"<content id>": …}}`, each value `off` or `preset:<path in the shader library>`; known consoles,
 hexadecimal ids and plain preset paths only, at most 10,000 games. It is restored with the other settings when

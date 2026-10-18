@@ -367,6 +367,12 @@ enum class GameSystem(
         GBA -> 12; GB -> 9; GBC -> 10; PS1 -> 57; SNES -> 4; NES -> 3; GENESIS -> 1; SMS -> 2; GG -> 21
         SATURN -> 22; DREAMCAST -> 23; PS2 -> 58; GAMECUBE -> 13
     }
+    /** The buttons of the console's own pad, in the order its Controls page lists them (ButtonMap). */
+    val pad: List<PadButton> get() = when (this) {
+        GB, GBC -> Pads.GAME_BOY; GBA -> Pads.GAME_BOY_ADVANCE; PS1 -> Pads.PLAYSTATION; SNES -> Pads.SUPER_NINTENDO; NES -> Pads.NES
+        GENESIS -> Pads.GENESIS; SMS -> Pads.MASTER_SYSTEM; GG -> Pads.GAME_GEAR; SATURN -> Pads.SATURN; DREAMCAST -> Pads.DREAMCAST
+        PS2 -> Pads.PLAYSTATION_2; GAMECUBE -> Pads.GAMECUBE
+    }
     /**
      * The case one game is shown in, from the [Market] its file is named for. Presentation only.
      */

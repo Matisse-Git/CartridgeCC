@@ -187,23 +187,33 @@ is in the app's private `files/shaders/library`.
 
 | Row | Choices | Stored |
 |---|---|---|
-| Confirm button | A · B goes back / B · A goes back | `swapMenuButtons` |
-| In-game A and B | As labelled · Swapped | `swapGameButtons` |
-| In-game L and R | As labelled · Swapped | `swapShoulders` |
+| Confirm button | A · B goes back / B · A goes back. Menus only, every console | `swapMenuButtons` |
 | Stick sensitivity | Low · Medium · High (dead zone 50%, 35%, 20%) | `deadZone` |
 | Pause shortcut | L3 + R3 · Start + Select | `alternateShortcut` |
 | Quick save buttons | a recorded combo, L3 + Y by default: hold the buttons together, let go of one | `quickSaveCombo` (key codes) |
 | Quick load buttons | a recorded combo, L3 + X by default | `quickLoadCombo` |
 | Reset quick buttons | command: L3 + Y and L3 + X again | |
 | After Quick Save, Quick Load or Load | Return to game · Stay in menu | `returnToGame` |
-| Reset controls | command; also resets the quick buttons and the row above | |
+| Game buttons › one row per console (›) | *Default* / *Custom*; opens that console's page | `buttons.<GameSystem>` |
+| Reset controls | command; also resets the quick buttons, the row above and every console's game buttons | |
+
+**A console's game buttons** (ADR 0030) are a page of its own pad's buttons, each by its name on that
+console (Saturn A, B, C, X, Y, Z, L, R, Start; PlayStation Cross, Circle, …), with the physical button
+that presses it. Choosing a row listens for one button, assigned when let go. A D-pad direction is
+refused, and five quiet seconds keep the old one. Left/right steps through A, B, X, Y, L1, R1, L2, R2,
+L3, R3, Start, Select. A physical button another of the console's buttons has trades places with it.
+*Use default buttons* (its help line lists the default) forgets the console's map. The defaults are
+what each core was always sent (docs/CONSOLES). A physical button no console button uses sends nothing
+in that console's games. The D-pad, the sticks, the pause shortcut and the quick buttons are not part
+of it. A change reaches a paused game when it resumes. Stored as `buttons.<GameSystem>` = `A=B,B=A,…`
+only while it differs from the default, and part of a backup's settings (`buttons`).
 
 A combo needs two or more gamepad buttons and may not equal, contain or sit inside the other combo or
 either pause shortcut; the recorder says why it refused one and keeps listening, and five quiet seconds
 keep the old one (ADR 0028). None of these four rows is part of a backup's settings.
 
 Also reachable while paused (Pause › Game Options › Controls), where it is the only settings
-section offered.
+section offered. Pause › Game Options also has *<console> buttons*, the paused console's page.
 
 ## System
 
@@ -252,7 +262,7 @@ section offered.
 | Aspect ratio, integer scaling | The emulator view exposes no control for them in this integration |
 | Rewind, fast-forward | Not integrated in the adapter |
 | Core selection | One embedded core per console |
-| Per-button remapping, per-console controls, touch controls | Not implemented |
+| Remapping the D-pad or sticks, per-game buttons, turbo buttons, touch controls | Not implemented (game buttons are per console, ADR 0030) |
 | UI sounds, music, latency | One sound exists |
 | Debug logs, cache management, database maintenance | No user-facing implementation |
 | Search within settings | About thirty rows in six sections; not warranted |

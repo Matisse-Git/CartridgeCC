@@ -15,10 +15,12 @@ import dev.cartridge.apps.AppEntry
 import dev.cartridge.apps.AppLibrary
 import dev.cartridge.apps.AppSource
 import dev.cartridge.apps.InstalledApps
+import dev.cartridge.domain.ButtonMap
 import dev.cartridge.domain.CollectionLayout
 import dev.cartridge.domain.Core
 import dev.cartridge.domain.GameSystem
 import dev.cartridge.domain.LaunchTransition
+import dev.cartridge.domain.PadKey
 import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.EmulationEngine
 import dev.cartridge.emulation.EngineStatus
@@ -28,6 +30,7 @@ import dev.cartridge.environment.GameOption
 import dev.cartridge.environment.GameOptions
 import dev.cartridge.environment.OptionStore
 import dev.cartridge.input.ButtonCombo
+import dev.cartridge.input.ButtonListener
 import dev.cartridge.input.ComboListener
 import dev.cartridge.input.InputMode
 import dev.cartridge.library.*
@@ -137,6 +140,8 @@ class ConsoleShell(
     private val slots get() = StateSlots(File(context.filesDir, "saves"))
     /** The combo being recorded and what it has heard so far; [recordTick] makes its dialog follow each button. */
     var recorder by mutableStateOf<ComboListener?>(null); private set
+    /** The physical button being chosen for one of a console's buttons, shown by the same dialog's tick. */
+    var buttonRecorder by mutableStateOf<ButtonListener?>(null); private set
     var recordTick by mutableIntStateOf(0); private set
     private var recordJob: Job? = null
     val options = OptionStore(preferences)
@@ -222,8 +227,9 @@ class ConsoleShell(
             Destination.SaveStates -> playingId?.let(::loadSlots)
             is Destination.RecordCombo -> {
                 recorder = ComboListener(if (destination.quickLoad) controls.quickSave else controls.quickLoad)
-                listenFor(destination.quickLoad)
+                listenFor { comboKept(destination.quickLoad) }
             }
+            is Destination.RecordButton -> { buttonRecorder = ButtonListener(); listenFor { buttonKept(destination) } }
             Destination.Apps -> {
                 apps.open()
                 if (appsOpened < LEARNED_AFTER) { appsOpened++; preferences.edit { putInt("appsOpened", appsOpened) } }
@@ -239,6 +245,7 @@ class ConsoleShell(
             Destination.Import -> finishImport()
             Destination.Apps -> { apps.search(""); rememberApp() }
             is Destination.RecordCombo -> { recordJob?.cancel(); recordJob = null; recorder = null }
+            is Destination.RecordButton -> { recordJob?.cancel(); recordJob = null; buttonRecorder = null }
             else -> Unit
         }
         host.inputChanged()
@@ -263,7 +270,7 @@ class ConsoleShell(
     fun enterRows() { pane = 1 }
 
     fun inputMode(): InputMode = when {
-        top is Destination.RecordCombo -> InputMode.Record
+        top is Destination.RecordCombo || top is Destination.RecordButton -> InputMode.Record
         scraper.state.value.visible || top != null -> InputMode.Menu
         !state.loaded || state.busy -> InputMode.Locked
         state.screen == CollectionScreen.LabelPreview -> InputMode.Menu
@@ -891,27 +898,57 @@ class ConsoleShell(
     fun recordCombo(quickLoad: Boolean) = push(Destination.RecordCombo(quickLoad))
     /** Every controller button while a combo is recorded. Letting go of the first one finishes it. */
     fun recordKey(code: Int, down: Boolean) {
+        (top as? Destination.RecordButton)?.let { return recordButtonKey(it, code, down) }
         val listener = recorder ?: return
         val destination = top as? Destination.RecordCombo ?: return
         val combo = listener.key(code, down)
         recordTick++
-        listenFor(destination.quickLoad)
+        listenFor { comboKept(destination.quickLoad) }
         if (combo != null) {
             pop()
             changeControls(if (destination.quickLoad) controls.copy(quickLoad = combo) else controls.copy(quickSave = combo))
             coordinator.notify("${if (destination.quickLoad) "Quick load" else "Quick save"}: ${ButtonCombo.title(combo)}")
         }
     }
-    /** Five seconds with no button pressed keep the combo that was there. */
-    private fun listenFor(quickLoad: Boolean) {
+    /** Five seconds with no button pressed keep the combo or button that was there. */
+    private fun listenFor(kept: () -> String) {
         recordJob?.cancel()
         recordJob = scope.launch {
             delay(RECORD_TIMEOUT_MS)
-            if (top is Destination.RecordCombo) {
+            if (top is Destination.RecordCombo || top is Destination.RecordButton) {
                 pop()
-                coordinator.notify("Kept ${ButtonCombo.title(if (quickLoad) controls.quickLoad else controls.quickSave)}")
+                coordinator.notify(kept())
             }
         }
+    }
+    private fun comboKept(quickLoad: Boolean) = "Kept ${ButtonCombo.title(if (quickLoad) controls.quickLoad else controls.quickSave)}"
+    private fun buttonKept(destination: Destination.RecordButton) =
+        "Kept ${controls.buttons(destination.system).getValue(destination.button).title} for ${padName(destination.system, destination.button)}"
+    private fun padName(system: GameSystem, key: PadKey) = system.pad.first { it.key == key }.name
+
+    // ---- Console buttons (ButtonMap) ----------------------------------------------------------------------
+
+    fun recordButton(system: GameSystem, button: PadKey) = push(Destination.RecordButton(system, button))
+    /** Every controller button while a console's button is being assigned. Letting go of the first one assigns it. */
+    private fun recordButtonKey(destination: Destination.RecordButton, code: Int, down: Boolean) {
+        val listener = buttonRecorder ?: return
+        val physical = listener.key(code, down)
+        recordTick++
+        listenFor { buttonKept(destination) }
+        if (physical != null) { pop(); assignButton(destination.system, destination.button, physical) }
+    }
+    /** [button] is pressed with [physical] from now on, in this console's games; the button that had it trades places. */
+    fun assignButton(system: GameSystem, button: PadKey, physical: PadKey) {
+        val before = controls.buttons(system)
+        val holder = before.entries.firstOrNull { it.value == physical && it.key != button }?.key
+        changeButtons(system, ButtonMap.assign(before, button, physical))
+        coordinator.notify("${system.title} ${padName(system, button)}: ${physical.title}" +
+            (holder?.let { " · ${padName(system, it)} moves to ${before.getValue(button).title}" } ?: ""))
+    }
+    fun changeButtons(system: GameSystem, map: Map<PadKey, PadKey>) = changeControls(controls.withButtons(system, map))
+    fun resetButtons(system: GameSystem) {
+        changeControls(controls.copy(buttons = controls.buttons - system))
+        coordinator.notify("${system.title} uses its default buttons")
     }
     fun resetQuickButtons() {
         changeControls(controls.copy(quickSave = ButtonCombo.QUICK_SAVE, quickLoad = ButtonCombo.QUICK_LOAD))

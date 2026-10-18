@@ -132,7 +132,7 @@ See [LABEL_SCRAPING.md](LABEL_SCRAPING.md) for the complete required workflow an
 ## Explicitly deferred
 
 Manual final art direction and broader lighting calibration, full gameplay touch controls,
-per-button remapping, expanded additional-artwork presentation, scheduled unattended scraping, vertical/grid layouts, additional systems,
+remapping the D-pad, sticks or one game's buttons (each console has its own game buttons, ADR 0030), expanded additional-artwork presentation, scheduled unattended scraping, vertical/grid layouts, additional systems,
 HOME launcher mode and backup. Backgrounding currently ends the session after persisting RAM;
 the app does not claim seamless resume of a lost EGL context.
 

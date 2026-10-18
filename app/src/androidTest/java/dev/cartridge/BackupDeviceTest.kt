@@ -14,7 +14,10 @@ import androidx.test.espresso.intent.Intents
 import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.cartridge.domain.ButtonMap
 import dev.cartridge.domain.GameSystem
+import dev.cartridge.domain.PadKey
+import dev.cartridge.environment.ConsolePreferences
 import dev.cartridge.library.*
 import dev.cartridge.storage.*
 import kotlinx.coroutines.runBlocking
@@ -61,7 +64,10 @@ class BackupDeviceTest {
             first.setFavorite(id, true); first.recordPlay(id, 42000, 321)
             val saves = SaveStore(File(directory, "saves")); saves.write(id, "sram", byteArrayOf(67, 1)); saves.write(id, "rtc", byteArrayOf(35)); saves.write(id, "state", byteArrayOf(1, 2, 3))
             val session = SessionStore(File(directory, "session")); session.write(id, GameSystem.GB, byteArrayOf(4, 5, 6), 456)
-            preferences.edit().putBoolean("swapGameButtons", true).putString("layout", "Grid").commit()
+            // Saturn's own A on the X button: one console's game buttons, stored only because they differ from its default.
+            val saturn = ButtonMap.encode(ButtonMap.assign(ButtonMap.default(GameSystem.SATURN), PadKey.B, PadKey.X))
+            val saturnKey = ConsolePreferences.buttonsKey(GameSystem.SATURN)
+            preferences.edit().putString(saturnKey, saturn).putString("layout", "Grid").commit()
             // Shader choices travel by name; the library itself is not part of a backup (ADR 0027).
             val shaders = dev.cartridge.shaders.ShaderChoices(preferences)
             val gameTarget = dev.cartridge.shaders.ShaderTarget.Game(id, GameSystem.GB, "Original probe")
@@ -80,11 +86,20 @@ class BackupDeviceTest {
                 assertEquals("Grid", review.preferences.getString("layout"))
                 // A backup made before shader choices existed still restores.
                 BackupPreferences.validate(org.json.JSONObject(review.preferences.toString()).apply { remove("shaders") })
-                preferences.edit().putBoolean("swapGameButtons", false).commit()
+                assertEquals(saturn, review.preferences.getJSONObject("buttons").getString("SATURN"))
+                assertFalse(review.preferences.has("swapGameButtons") || review.preferences.has("swapShoulders"))
+                preferences.edit().remove(saturnKey).commit()
                 shaders.resetConsoles(); shaders.set(gameTarget, dev.cartridge.shaders.ShaderChoice.Inherit)
-                assertFalse(preferences.getBoolean("swapGameButtons", false)) // Optional preferences are not silently applied.
+                assertNull(preferences.getString(saturnKey, null)) // Optional preferences are not silently applied.
                 assertEquals(dev.cartridge.shaders.ResolvedShader(null, dev.cartridge.shaders.ShaderLevel.None), shaders.resolve(GameSystem.GB, id))
-                BackupPreferences.restore(preferences, review.preferences); assertTrue(preferences.getBoolean("swapGameButtons", false))
+                BackupPreferences.restore(preferences, review.preferences); assertEquals(saturn, preferences.getString(saturnKey, null))
+                // A backup from before console buttons carries the every-console swaps they replaced: it restores, they are
+                // ignored, and a console it says nothing about keeps the buttons it has.
+                val legacy = org.json.JSONObject(review.preferences.toString()).apply { remove("shaders"); remove("buttons"); put("swapGameButtons", true); put("swapShoulders", true) }
+                BackupPreferences.restore(preferences, legacy)
+                assertFalse(preferences.contains("swapGameButtons") || preferences.contains("swapShoulders")); assertEquals(saturn, preferences.getString(saturnKey, null))
+                assertThrows(IllegalArgumentException::class.java) {
+                    BackupPreferences.validate(org.json.JSONObject(review.preferences.toString()).apply { put("buttons", org.json.JSONObject().put("SATURN", "B=X")) }) }
                 assertEquals(dev.cartridge.shaders.ResolvedShader("handheld/gb-dot-matrix-DMG.glslp", dev.cartridge.shaders.ShaderLevel.Game), shaders.resolve(GameSystem.GB, id))
                 assertEquals(dev.cartridge.shaders.ResolvedShader(null, dev.cartridge.shaders.ShaderLevel.Console), shaders.resolve(GameSystem.GB, null))
                 assertEquals(dev.cartridge.shaders.ResolvedShader("crt/crt-royale.glslp", dev.cartridge.shaders.ShaderLevel.Global), shaders.resolve(GameSystem.GBA, null))

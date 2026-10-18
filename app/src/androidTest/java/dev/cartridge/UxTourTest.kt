@@ -248,6 +248,11 @@ class UxTourTest {
                     it.shell.shaderChoices.resetConsoles()
                 }
                 key(scenario, KeyEvent.KEYCODE_BUTTON_R1); shot("13-settings-controls")
+                // A console's own game buttons, by their names on that console (ADR 0030).
+                scenario.onActivity { it.shell.push(Destination.ConsoleButtons(GameSystem.SATURN)) }
+                shot("13b-saturn-buttons")
+                key(scenario, KeyEvent.KEYCODE_BUTTON_B)
+                scenario.onActivity { assertEquals(Destination.Settings, it.shell.top) }
                 key(scenario, KeyEvent.KEYCODE_BUTTON_R1); shot("14-settings-system")
                 key(scenario, KeyEvent.KEYCODE_BUTTON_B, 3)
                 scenario.onActivity { assertNull(it.shell.top) }

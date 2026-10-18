@@ -410,8 +410,8 @@ same letter; each core then maps that pad to its console. Read from the pinned s
 |---|---|---|---|---|---|
 | A | A | A | C | 2 | B |
 | B | B | B | B | 1 | A |
-| X | X | A (rapid) | Y | — | Y |
-| Y | Y | B (rapid) | A | — | X |
+| X | X | — (turbo A, off in the core) | Y | — | Y |
+| Y | Y | — (turbo B, off in the core) | A | — | X |
 | L1 | L | — | X | — | Z |
 | R1 | R | — | Z | — | C |
 | L2, R2 | — | — | — | — | L, R |
@@ -436,9 +436,11 @@ same letter; each core then maps that pad to its console. Read from the pinned s
 On those three the D-pad is the console's D-pad and the sticks are the console's sticks; on every
 other console the D-pad and the left stick are both the console's directions. Game Boy, Game Boy
 Advance and PlayStation are as they were ([PS1_PROGRESS](PS1_PROGRESS.md)). Which physical button sends which
-key code is the Retroid Pocket 5's own button-layout setting, not Cartridge's; Settings › Controls
-› In-game A and B / In-game L and R swap them for every console, and per-console remapping is not
-offered. L3 + R3 is the pause shortcut on every console and reaches a game first if pressed one
+key code is the Retroid Pocket 5's own button-layout setting, not Cartridge's. These tables are each
+console's default game buttons. Settings › Controls › Game buttons (ADR 0030) gives each console's
+own buttons to other physical buttons, by the names they have on that console (`GameSystem.pad`);
+the D-pad and sticks stay as above. FCEUmm's turbo A and B (X, Y) stay off because the core option
+that enables them is not set, so they are not offered. Its A+B button is on L3. L3 + R3 is the pause shortcut on every console and reaches a game first if pressed one
 after the other; on the NES the first of them is that core's A+B button. L3 + Y quick saves and
 L3 + X quick loads during play on every console that can make a state (ADR 0028), with the same
 pass-through; on Dreamcast the engine stops for the moment of the capture. GameCube and PlayStation 2

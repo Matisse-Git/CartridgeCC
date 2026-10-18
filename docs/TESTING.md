@@ -1,5 +1,33 @@
 # Tests and actual results
 
+## Game buttons per console — 2026-10-18 (ADR 0030)
+
+Host: both APKs build, lint passes, `tools/test_assets.py` passes (4), and 138 JVM tests pass.
+`ConsoleSettingsTest` covers every console's pad (distinct buttons and names, a default that sends each
+key from its own button, Saturn's two rows, GB/GBA and Genesis/Master System apart), trading places,
+stepping, an unused physical button sending nothing, and stored maps that no longer fit falling back to
+the default. `ShellNavigationTest.eachConsoleKeepsItsOwnGameButtonsAndTheMenusKeepTheirs` drives the
+real shell. It checks that Controls lists every console, that a D-pad direction is refused, that a
+button is assigned when let go and trades places, and that left/right step. It also checks that the
+confirm swap leaves game buttons alone, that the old swap keys are dropped, and that *Use default
+buttons*, the five-second time-out and *Reset controls* work. The FCEUmm, Genesis Plus GX and Beetle
+Saturn tables were read again from the pinned sources: FCEUmm's turbo X/Y are off by default, so they
+are not offered, and its A+B is on L3.
+
+On the RP5 (Android 13, serial bb28de36), branch app `dev.cartridge.boxes`, 2026-10-18:
+`ConsoleEnvironmentTest` (3), `BackupDeviceTest` (4), `SaveStatesDeviceTest` (1), `AppsLibraryTest` (4) and
+`GameOptionsDeviceTest` (2): OK (14 tests). `ConsoleEnvironmentTest` now sets Game Boy's own A to the B
+button on its page, by pressing the button in the recorder. In the mGBA probe the physical A button then
+reaches the game as B, and the logical A that changes its battery byte comes from the B button. It also
+gives Saturn's A to the X button and reads both rows back from the page. Both maps survive Activity
+recreation. `BackupDeviceTest` round-trips a Saturn map and checks that an older backup's
+`swapGameButtons`/`swapShoulders` restore and are ignored. `UxTourTest` passed. `13-settings-controls`,
+the new `13b-saturn-buttons` and `22-pause-game-options` were looked at and replace their screenshots.
+
+Not run: a real Saturn game (the probe does not read the pad), any other console's game with a changed
+map, and the owner's own games. Which physical position sends which key code is still the Retroid's
+layout setting; the page shows the key code a button sends.
+
 ## Cases, step 3: every console's case — 2026-10-17 (ADR 0029)
 
 `tools/generate_cases.py` adds ten cases: the Japanese Game Boy box, the Game Gear, NES, Famicom, SNES and

@@ -1,6 +1,7 @@
 package dev.cartridge.input
 
 import android.view.KeyEvent
+import dev.cartridge.domain.PadKey
 
 /**
  * Buttons held together during a game to quick save or quick load (docs/SAVE_RELIABILITY). Only gamepad buttons
@@ -38,6 +39,22 @@ object ButtonCombo {
     /** A stored combo that no longer passes the rules falls back to its default. */
     fun decode(value: String?, default: Set<Int>): Set<Int> =
         value?.split(',')?.mapNotNull { it.trim().toIntOrNull() }?.toSet()?.takeIf { it.size >= 2 && it.all { code -> code in allowed } } ?: default
+}
+
+/**
+ * Listens for the one physical button a console's button is to be pressed with. The first button pressed is it, once
+ * it is let go; a D-pad direction is refused, since the D-pad stays the console's directions.
+ */
+class ButtonListener {
+    private var held: Int? = null
+    var captured: Int? = null; private set
+    var problem: String? = null; private set
+    fun key(code: Int, down: Boolean): PadKey? {
+        if (down) { if (held == null) { held = code; captured = code; problem = null }; return null }
+        if (code != held) return null
+        held = null
+        return GameButtons.key(code).also { if (it == null) { captured = null; problem = "The D-pad stays this console's directions. Press a button." } }
+    }
 }
 
 /**

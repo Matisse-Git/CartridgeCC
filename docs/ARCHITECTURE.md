@@ -104,6 +104,15 @@ list and latches the fired one until its buttons are up, across the busy lock's 
 `InputMode.Record` hands every button to `ConsoleShell.recordKey` while a combo is recorded
 (`input/ButtonCombo`, `ComboListener`).
 
+Game buttons (ADR 0030): `GameSystem.pad` lists each console's own buttons and the key its core reads
+each as (`domain/PadKey`). `ButtonMap` keeps one physical button per console button and trades places
+on a conflict. `ConsoleSettings.buttons` holds only the consoles that differ from their default, stored
+as `buttons.<GameSystem>`. `MainActivity.inputChanged` gives `ControllerRouter.gameButtons` the
+selected game's map as key codes (`input/GameButtons.routes`). In gameplay a physical button is sent as
+the key its console button reads, or not at all, after the shortcuts are checked. The D-pad passes
+unchanged. `InputMode.Record` also serves the one-button listener (`ButtonListener`) behind a console
+page's rows.
+
 ## Console shell (2026-10-10 redesign)
 
 The interface layer was replaced; emulation, rendering ownership, persistence and import mechanics

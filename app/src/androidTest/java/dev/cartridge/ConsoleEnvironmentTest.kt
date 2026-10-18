@@ -18,8 +18,11 @@ import androidx.test.espresso.intent.Intents
 import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.cartridge.domain.GameSystem
+import dev.cartridge.domain.PadKey
 import dev.cartridge.domain.SessionState
 import dev.cartridge.environment.*
+import dev.cartridge.shell.Destination
 import dev.cartridge.storage.SaveStore
 import org.junit.Assert.*
 import org.junit.Rule
@@ -70,9 +73,20 @@ class ConsoleEnvironmentTest {
                 // An empty library is the welcome: one sentence and one action, with the menu still reachable.
                 ui.onNodeWithTag("welcome").assertIsDisplayed(); ui.onNodeWithTag("welcome-add").assertIsDisplayed()
                 ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-controls").performClick()
-                row("controls-confirm"); row("controls-ab"); row("controls-stick"); row("controls-stick"); row("shortcut-setting"); ui.home()
+                row("controls-confirm"); row("controls-stick"); row("controls-stick"); row("shortcut-setting")
+                // Game Boy's own A is pressed with the B button from now on; its B trades places. No other console changes.
+                row("controls-console-gb"); row("buttons-a"); scenario.onActivity { assertTrue(it.shell.top is Destination.RecordButton) }
+                press(scenario, KeyEvent.KEYCODE_BUTTON_B); scenario.onActivity { assertEquals(Destination.ConsoleButtons(GameSystem.GB), it.shell.top) }
+                // Saturn's A onto the X button, read back from its page: its Y, which had X, trades places.
+                scenario.onActivity { it.shell.pop() }; row("controls-console-saturn"); row("buttons-b")
+                press(scenario, KeyEvent.KEYCODE_BUTTON_X); ui.waitForIdle()
+                ui.onNodeWithTag("buttons-b").assertTextContains("X", substring = true); ui.onNodeWithTag("buttons-x").assertTextContains("B", substring = true)
+                ui.home()
                 val selected = ConsolePreferences(preferences).read()
-                assertTrue(selected.swapMenuButtons); assertTrue(selected.swapGameButtons); assertEquals(.5f, selected.deadZone)
+                assertTrue(selected.swapMenuButtons); assertEquals(.5f, selected.deadZone)
+                assertEquals(PadKey.B, selected.buttons(GameSystem.GB)[PadKey.A]); assertEquals(PadKey.A, selected.buttons(GameSystem.GB)[PadKey.B])
+                assertEquals(PadKey.X, selected.buttons(GameSystem.SATURN)[PadKey.B]); assertEquals(PadKey.B, selected.buttons(GameSystem.SATURN)[PadKey.X])
+                assertEquals(setOf(GameSystem.GB, GameSystem.SATURN), selected.buttons.keys)
                 assertTrue(preferences.getBoolean("alternateShortcut", false))
                 scenario.recreate(); await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 assertEquals(selected, ConsolePreferences(preferences).read())

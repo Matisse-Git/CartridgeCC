@@ -52,8 +52,11 @@ class ControllerRouter(
     var quickSaveShortcut = ButtonCombo.QUICK_SAVE
     var quickLoadShortcut = ButtonCombo.QUICK_LOAD
     var swapMenuButtons = false
-    var swapGameButtons = false
-    var swapShoulders = false
+    /**
+     * The running console's buttons (ButtonMap): a physical button's key code to the one its game is sent. A button
+     * not in it sends nothing; the D-pad always goes through as it is.
+     */
+    var gameButtons: Map<Int, Int> = GameButtons.IDENTITY
     /** The running game reads the sticks themselves. Otherwise the left stick is its D-pad, as on a console without one. */
     var analogGameplay = false
         set(value) { if (field != value) reset(); field = value }
@@ -116,15 +119,11 @@ class ControllerRouter(
                 forwarded.forEach { gameKey(KeyEvent.ACTION_UP, it) }; forwarded.clear()
                 shortcut.second()
             } else if (latched.isEmpty() && code in gameplayKeys) {
-                val mapped = when {
-                    swapGameButtons && code == KeyEvent.KEYCODE_BUTTON_A -> KeyEvent.KEYCODE_BUTTON_B
-                    swapGameButtons && code == KeyEvent.KEYCODE_BUTTON_B -> KeyEvent.KEYCODE_BUTTON_A
-                    swapShoulders && code == KeyEvent.KEYCODE_BUTTON_L1 -> KeyEvent.KEYCODE_BUTTON_R1
-                    swapShoulders && code == KeyEvent.KEYCODE_BUTTON_R1 -> KeyEvent.KEYCODE_BUTTON_L1
-                    else -> code
+                val mapped = if (code in directions) code else gameButtons[code]
+                if (mapped != null) {
+                    if (down) forwarded.add(mapped) else forwarded.remove(mapped)
+                    gameKey(event.action, mapped)
                 }
-                if (down) forwarded.add(mapped) else forwarded.remove(mapped)
-                gameKey(event.action, mapped)
             }
             else if (code == KeyEvent.KEYCODE_BACK && down && event.repeatCount == 0) pause()
             return true

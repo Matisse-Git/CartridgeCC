@@ -1,6 +1,7 @@
 package dev.cartridge.shell
 
 import android.text.format.DateUtils
+import dev.cartridge.domain.ButtonMap
 import dev.cartridge.domain.CollectionLayout
 import dev.cartridge.domain.Core
 import dev.cartridge.domain.GameSystem
@@ -48,7 +49,7 @@ internal fun ConsoleShell.buildPage(state: CollectionState, status: EngineStatus
         }
         Destination.SystemMenu -> systemMenu(state)
         Destination.Settings -> Page("settings:${category.name}", "Settings", settingsRows(state, category, status), PageStyle.Settings)
-        Destination.Controls -> Page("controls", "Controls", controlRows(state), PageStyle.Page, "Menus and games keep separate button choices.")
+        Destination.Controls -> Page("controls", "Controls", controlRows(state), PageStyle.Page, "Menu buttons are the same everywhere. Each console has its own game buttons.")
         is Destination.Folder -> folderPage(destination.uri)
         Destination.Hidden -> Page("hidden", "Hidden games", hidden.map { entry ->
             MenuRow("hidden:${entry.id}", entry.title, value = "Restore", note = entry.system.title, enabled = !state.busy) {
@@ -82,6 +83,8 @@ internal fun ConsoleShell.buildPage(state: CollectionState, status: EngineStatus
         is Destination.SlotActions -> game?.let { slotPage(it, destination.name, state) }
         is Destination.ConfirmSlot -> confirmPage(destination, state)
         is Destination.RecordCombo -> recordPage(destination)
+        is Destination.ConsoleButtons -> buttonsPage(destination)
+        is Destination.RecordButton -> recordButtonPage(destination)
     }
 }
 
@@ -191,7 +194,11 @@ private fun ConsoleShell.optionsPage(game: LibraryGame, paused: Boolean): Page {
             note = shaderNote(shader, shaderChoices.get(target) != ShaderChoice.Inherit) + if (paused) " · shows when the game resumes" else "",
             warn = shaderMissing(shader.path), tag = "option-shader") { openShaderPicker(target) })
         add(MenuRow("reset", "Use console settings", enabled = overrides.isNotEmpty(), tag = "option-reset") { clearGameOptions(game) })
-        if (paused) add(MenuRow("controls", "Controls", RowKind.Link, tag = "option-controls") { push(Destination.Controls) })
+        if (paused) {
+            add(MenuRow("buttons", "${game.system.title} buttons", RowKind.Link, value = buttonsValue(game.system), tag = "option-buttons") {
+                push(Destination.ConsoleButtons(game.system)) })
+            add(MenuRow("controls", "Controls", RowKind.Link, tag = "option-controls") { push(Destination.Controls) })
+        }
     }, PageStyle.Sheet, "${game.title} · ${family.title}")
 }
 
@@ -272,8 +279,6 @@ internal fun ConsoleShell.controlRows(state: CollectionState): List<MenuRow> {
         MenuRow(id, title, RowKind.Choice, value = if (on) onTitle else off, tag = tag, adjust = { set(!on) })
     return listOf(
         flip("Confirm button", "confirm", controls.swapMenuButtons, "A  ·  B goes back", "B  ·  A goes back") { changeControls(controls.copy(swapMenuButtons = it)) },
-        flip("In-game A and B", "ab", controls.swapGameButtons, "As labelled", "Swapped") { changeControls(controls.copy(swapGameButtons = it)) },
-        flip("In-game L and R", "lr", controls.swapShoulders, "As labelled", "Swapped") { changeControls(controls.copy(swapShoulders = it)) },
         MenuRow("stick", "Stick sensitivity", RowKind.Choice, value = sensitivity.minBy { kotlin.math.abs(it.first - controls.deadZone) }.second, tag = "controls-stick",
             adjust = { delta -> changeControls(controls.copy(deadZone = sensitivity.map { it.first }.step(sensitivity.minBy { kotlin.math.abs(it.first - controls.deadZone) }.first, delta))) }),
         flip("Pause shortcut", "pause", state.alternateShortcut, "L3 + R3", "Start + Select", tag = "shortcut-setting") { setPauseShortcut(it) },
@@ -284,8 +289,47 @@ internal fun ConsoleShell.controlRows(state: CollectionState): List<MenuRow> {
         MenuRow("quick-reset", "Reset quick buttons", note = "${ButtonCombo.title(ButtonCombo.QUICK_SAVE)} saves, ${ButtonCombo.title(ButtonCombo.QUICK_LOAD)} loads",
             enabled = controls.quickSave != ButtonCombo.QUICK_SAVE || controls.quickLoad != ButtonCombo.QUICK_LOAD, tag = "controls-quick-reset") { resetQuickButtons() },
         flip("After Quick Save, Quick Load or Load", "after", !controls.returnToGame, "Return to game", "Stay in menu", tag = "controls-after") {
-            changeControls(controls.copy(returnToGame = !it)) },
-        MenuRow("reset", "Reset controls", tag = "controls-reset") { changeControls(ConsoleSettings(audioFilter = controls.audioFilter, frameSkip = controls.frameSkip)); setPauseShortcut(false) })
+            changeControls(controls.copy(returnToGame = !it)) }) +
+        // One row per console in the registry's order, whether or not it has games yet.
+        MenuRow("header:consoles", "Game buttons", RowKind.Header) +
+        GameSystem.entries.map { system ->
+            MenuRow("console:${system.name}", system.title, RowKind.Link, value = buttonsValue(system), tag = "controls-console-${system.name.lowercase()}") {
+                push(Destination.ConsoleButtons(system)) }
+        } +
+        MenuRow("reset", "Reset controls", note = "Also gives every console its default game buttons", tag = "controls-reset") {
+            changeControls(ConsoleSettings(audioFilter = controls.audioFilter, frameSkip = controls.frameSkip)); setPauseShortcut(false) }
+}
+
+private fun ConsoleShell.buttonsValue(system: GameSystem) = if (system in controls.buttons) "Custom" else "Default"
+
+/** Every button of the console's own pad and the physical button that presses it. Choosing a row listens for a new one. */
+private fun ConsoleShell.buttonsPage(destination: Destination.ConsoleButtons): Page {
+    val system = destination.system
+    val map = controls.buttons(system)
+    return Page(destination.key, "${system.title} buttons", buildList {
+        system.pad.forEach { button ->
+            add(MenuRow("button:${button.key.name}", button.name, RowKind.Choice, value = map.getValue(button.key).title,
+                tag = "buttons-${button.key.name.lowercase()}", adjust = { delta -> changeButtons(system, ButtonMap.step(map, button.key, delta)) }) {
+                recordButton(system, button.key) })
+        }
+        add(MenuRow("default", "Use default buttons", note = ButtonMap.default(system).entries.joinToString(" · ") { (key, physical) ->
+            "${system.pad.first { it.key == key }.name} ${physical.title}" }, enabled = system in controls.buttons, tag = "buttons-default") { resetButtons(system) })
+    }, PageStyle.Page, buttonsValue(system),
+        "Choose a button, then press the one you want for it. Left and right step through them; two buttons never share one, so the other one " +
+            "trades places. A button that is not listed does nothing in ${system.title} games.\n\n" +
+            "The D-pad and sticks stay the console's. The pause shortcut and the quick save and load buttons are not changed by this page.")
+}
+
+private fun ConsoleShell.recordButtonPage(destination: Destination.RecordButton): Page {
+    recordTick // Follows each button pressed.
+    val listener = buttonRecorder
+    val name = destination.system.pad.first { it.key == destination.button }.name
+    val current = controls.buttons(destination.system).getValue(destination.button)
+    val held = listener?.captured?.let { dev.cartridge.input.GameButtons.key(it) }
+    return Page("record-button", "${destination.system.title} $name",
+        listOf(MenuRow("cancel", "Cancel", tag = "record-cancel") { pop() }), PageStyle.Dialog,
+        if (held == null) "Now ${current.title}" else "Pressing ${held.title}",
+        listener?.problem ?: "Press the button you want for $name, then let go. Wait five seconds to keep ${current.title}.")
 }
 
 internal fun ConsoleShell.settingsRows(state: CollectionState, category: SettingsCategory, status: EngineStatus): List<MenuRow> {

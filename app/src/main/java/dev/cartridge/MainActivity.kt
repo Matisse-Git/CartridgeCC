@@ -54,6 +54,7 @@ import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.LibretroEngine
 import dev.cartridge.environment.HomeRegistration
 import dev.cartridge.input.ControllerRouter
+import dev.cartridge.input.GameButtons
 import dev.cartridge.input.MediaSound
 import dev.cartridge.library.*
 import dev.cartridge.rendering.CartridgeSurface
@@ -228,10 +229,11 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         if (!::input.isInitialized) return
         input.mode = shell.inputMode()
         val controls = shell.controls
-        input.swapMenuButtons = controls.swapMenuButtons; input.swapGameButtons = controls.swapGameButtons
-        input.swapShoulders = controls.swapShoulders
+        val system = coordinator.state.value.selectedGame?.system
+        input.swapMenuButtons = controls.swapMenuButtons
+        input.gameButtons = system?.let { GameButtons.routes(controls.buttons(it)) } ?: GameButtons.IDENTITY
         input.quickSaveShortcut = controls.quickSave; input.quickLoadShortcut = controls.quickLoad
-        input.analogGameplay = coordinator.state.value.selectedGame?.system?.core?.analog == true
+        input.analogGameplay = system?.core?.analog == true
         if (input.deadZone != controls.deadZone) input.deadZone = controls.deadZone
     }
     private val libraryIdle get() = coordinator.state.value.let { !it.busy && it.screen == CollectionScreen.Library }

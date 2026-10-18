@@ -3,12 +3,16 @@ package dev.cartridge
 import android.content.ContextWrapper
 import android.content.SharedPreferences
 import android.net.Uri
+import android.view.KeyEvent
 import dev.cartridge.apps.AppLibrary
+import dev.cartridge.domain.ButtonMap
 import dev.cartridge.domain.GameSystem
+import dev.cartridge.domain.PadKey
 import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.EmulationEngine
 import dev.cartridge.emulation.EngineStatus
 import dev.cartridge.emulation.GameRequest
+import dev.cartridge.environment.ConsolePreferences
 import dev.cartridge.input.InputMode
 import dev.cartridge.library.*
 import dev.cartridge.scraping.ArtworkCandidate
@@ -22,6 +26,9 @@ import dev.cartridge.session.RendererHandoff
 import dev.cartridge.shell.ConsoleShell
 import dev.cartridge.shell.Destination
 import dev.cartridge.shell.HintMode
+import dev.cartridge.shell.Page
+import dev.cartridge.shell.PageStyle
+import dev.cartridge.shell.controlRows
 import dev.cartridge.shell.ShellHost
 import dev.cartridge.storage.LabelStore
 import dev.cartridge.storage.SessionStore
@@ -31,6 +38,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -336,5 +344,52 @@ class ShellNavigationTest {
         shell.back(); coordinator.rendererReady(0); coordinator.navigate(1); runCurrent()
         assertNull(shell.top)
         coordinator.destroy()
+    }
+
+    @Test fun eachConsoleKeepsItsOwnGameButtonsAndTheMenusKeepTheirs() = runTest {
+        val preferences = Preferences()
+        val console = Console(this, preferences); val shell = console.shell
+        fun stored() = ConsolePreferences(preferences).read()
+        // Controls lists every console of the registry, each on its default; the every-console swaps are gone.
+        val rows = shell.controlRows(console.state)
+        assertEquals(GameSystem.entries.map { "console:${it.name}" }, rows.filter { it.id.startsWith("console:") }.map { it.id })
+        assertTrue(rows.none { it.id == "ab" || it.id == "lr" }); assertTrue(rows.filter { it.id.startsWith("console:") }.all { it.value == "Default" })
+        shell.push(Destination.ConsoleButtons(GameSystem.SATURN))
+        val page = shell.page()!!
+        assertEquals(GameSystem.SATURN.pad.map { it.name }, page.rows.filter { it.id.startsWith("button:") }.map { it.title })
+        assertFalse(page.rows.first { it.id == "default" }.enabled)
+        // Choosing Saturn A listens for one physical button, and every controller button goes to the listener.
+        shell.activate(page, page.rows.first { it.id == "button:B" })
+        assertTrue(shell.top is Destination.RecordButton); assertEquals(InputMode.Record, shell.inputMode())
+        shell.recordKey(KeyEvent.KEYCODE_DPAD_UP, true); shell.recordKey(KeyEvent.KEYCODE_DPAD_UP, false)
+        assertNotNull(shell.buttonRecorder?.problem); assertTrue(shell.top is Destination.RecordButton)
+        shell.recordKey(KeyEvent.KEYCODE_BUTTON_X, true); assertTrue("It is assigned when let go", shell.top is Destination.RecordButton)
+        shell.recordKey(KeyEvent.KEYCODE_BUTTON_X, false)
+        assertEquals(Destination.ConsoleButtons(GameSystem.SATURN), shell.top)
+        // Saturn Y, which had the X button, trades places with A. No other console is touched.
+        var saturn = stored().buttons(GameSystem.SATURN)
+        assertEquals(PadKey.X, saturn[PadKey.B]); assertEquals(PadKey.B, saturn[PadKey.X])
+        assertEquals(setOf(GameSystem.SATURN), stored().buttons.keys); assertEquals(ButtonMap.default(GameSystem.GBA), stored().buttons(GameSystem.GBA))
+        assertEquals("Custom", shell.controlRows(console.state).first { it.id == "console:SATURN" }.value)
+        // Right on the focused row steps A on to the next button, trading again; no two buttons ever share one.
+        shell.adjust(1); saturn = stored().buttons(GameSystem.SATURN)
+        assertEquals(PadKey.Y, saturn[PadKey.B]); assertEquals(saturn.size, saturn.values.toSet().size)
+        // The menus' confirm button is its own setting and leaves every console's game buttons as they are.
+        shell.changeControls(shell.controls.copy(swapMenuButtons = true)); assertEquals(saturn, stored().buttons(GameSystem.SATURN))
+        // The swaps these replaced are dropped, not converted.
+        preferences.values["swapGameButtons"] = true; preferences.values["swapShoulders"] = true
+        shell.changeControls(shell.controls); assertFalse("swapGameButtons" in preferences.values || "swapShoulders" in preferences.values)
+        // Use default buttons forgets the console's map; the console then follows its default.
+        shell.activate(shell.page()!!, shell.page()!!.rows.first { it.id == "default" })
+        assertNull(preferences.getString(ConsolePreferences.buttonsKey(GameSystem.SATURN), null)); assertTrue(stored().buttons.isEmpty())
+        // Five quiet seconds keep the button that was there.
+        shell.recordButton(GameSystem.GB, PadKey.A); assertTrue(shell.top is Destination.RecordButton)
+        advanceTimeBy(ConsoleShell.RECORD_TIMEOUT_MS + 1); runCurrent()
+        assertEquals(Destination.ConsoleButtons(GameSystem.SATURN), shell.top); assertTrue(stored().buttons.isEmpty())
+        // Reset controls gives every console its defaults again.
+        shell.assignButton(GameSystem.GENESIS, PadKey.Y, PadKey.B); assertEquals(setOf(GameSystem.GENESIS), stored().buttons.keys)
+        shell.home(); shell.activate(Page("controls", "Controls", shell.controlRows(console.state), PageStyle.Page), shell.controlRows(console.state).first { it.id == "reset" })
+        assertTrue(stored().buttons.isEmpty())
+        console.coordinator.destroy()
     }
 }
