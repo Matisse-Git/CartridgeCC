@@ -99,6 +99,10 @@ sealed class Destination(val key: String, val opaque: Boolean = false) {
     data class ConsoleButtons(val system: GameSystem) : Destination("buttons:${system.name}", true)
     /** Listening for the physical button [button] of [system] is to be pressed with; every controller button goes to it. */
     data class RecordButton(val system: GameSystem, val button: dev.cartridge.domain.PadKey) : Destination("record-button")
+    /** The paused game's discs, for putting another in the drive (ADR 0032). */
+    data object Discs : Destination("discs")
+    /** The games of one disc on the focused game's console, one of which joins it as a disc. */
+    data object AddDisc : Destination("add-disc", true)
 }
 
 enum class SlotAction { Load, Overwrite, Delete }
@@ -144,6 +148,6 @@ internal fun importNotes(result: ScanResult): List<String> = buildList {
     if (result.otherConsoles.isNotEmpty()) add("${plural(result.otherConsoles.values.sum(), "file")} for consoles Cartridge can't play yet: " +
         result.otherConsoles.entries.sortedByDescending { it.value }.take(4).joinToString { it.key })
     if (result.archives > 0) add("${plural(result.archives, "compressed file")} skipped. Extract .zip and .7z files first.")
-    if (result.playlists > 0) add("Multi-disc playlists (.m3u) aren't supported yet. Each disc was added on its own.")
+    if (result.playlists > 0) add("${plural(result.playlists, "playlist")} (.m3u) named discs that weren't found beside it. Those discs were added on their own.")
     if (!result.complete && result.failed == 0) add("Part of this folder could not be read. Refresh the library to try again.")
 }

@@ -10,7 +10,7 @@ sealed interface FoundFile {
     data class OtherConsole(val console: String) : FoundFile
     /** .zip/.7z/.rar: the importers need the uncompressed game. */
     data object Archive : FoundFile
-    /** .m3u: multi-disc playlists are not supported; each CUE is still imported as its own disc. */
+    /** .m3u: a list of one game's discs, read when its folder is scanned to put them together (ADR 0032). Never a game itself. */
     data object Playlist : FoundFile
     data object Ignored : FoundFile
 }

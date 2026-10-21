@@ -42,7 +42,7 @@ class CoordinatorTest {
             labelWrites++
             snapshots.value = snapshots.value.copy(slots = snapshots.value.slots.map { if (it?.id == gameId) it.copy(label = label) else it })
         }
-        override suspend fun gameRequest(game: LibraryGame): GameRequest {
+        override suspend fun gameRequest(game: LibraryGame, disc: Int?): GameRequest {
             check(!requestFailure) { "Missing game" }
             return GameRequest(File("${game.id}.gba"), game.id)
         }

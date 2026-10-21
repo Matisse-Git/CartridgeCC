@@ -116,8 +116,8 @@ Kotlin paths above are relative to `app/src/main/java/dev/cartridge/`; tests are
 
 No broad commercial-title, PAL protected-title, BIOS-backed audio/latency or long-duration performance
 claim. The diagnostic uses HLE; importing a real BIOS still requires owner validation. PBP loading uses
-upstream but has no container-specific device proof yet. Initial scope excludes M3U/disc swapping,
-analog-required games, multitap, rumble, WAV CUE tracks and CUE references to other directories.
+upstream but has no container-specific device proof yet. Initial scope excluded M3U/disc swapping, added
+on 2026-10-20 (ADR 0032, CONSOLES). It still excludes analog-required games, multitap, rumble, WAV CUE tracks and CUE references to other directories.
 Multi-disc PBP is not a complete multi-disc gameplay workflow. CHD diagnostics do not establish every
 codec/game combination. Different encodings/discs have different hashes. BIOS/grants/disc copies are
 excluded from portable backup; reauthorize folders after transfer. Accepted saves/art remain independent.

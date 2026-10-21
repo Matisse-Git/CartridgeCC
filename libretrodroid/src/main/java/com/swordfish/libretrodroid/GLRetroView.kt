@@ -380,6 +380,8 @@ class GLRetroView(
     }
 
     private fun loadGameFromPath(gameFilePath: String) {
+        // Cartridge (ADR 0032): a playlist starts on its chosen disc. A core that cannot be told starts on the first.
+        data.initialDiskPath?.let { LibretroDroid.setInitialDisk(data.initialDisk, it) }
         LibretroDroid.loadGameFromPath(gameFilePath)
     }
 

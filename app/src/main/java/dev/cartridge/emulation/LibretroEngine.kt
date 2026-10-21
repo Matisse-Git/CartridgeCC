@@ -73,12 +73,16 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     /** Paused by the freeze combo: no menu, and the speed is kept for when it goes on (ADR 0031). */
     private var frozen = false
     private var speed = 1
+    /** The disc in the drive and how many the engine can change between (ADR 0032); 0 where it cannot. */
+    private var disc = 0
+    private var discs = 0
 
     private fun transition(next: SessionState, error: String? = null) {
         machine.transition(next)
         val live = next in setOf(SessionState.Running, SessionState.Paused)
         mutableStatus.value = EngineStatus(next, error, if (live) status.value.saveWarning else null,
-            frozen = frozen && next == SessionState.Paused, speed = if (live) speed else 1)
+            frozen = frozen && next == SessionState.Paused, speed = if (live) speed else 1,
+            disc = if (live) disc else 0, discs = if (live) discs else 0)
     }
 
     override suspend fun prepare(game: GameRequest) = withContext(Dispatchers.Main.immediate) {
@@ -128,12 +132,17 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 game.system.core.data?.let { (archive, folder) ->
                     withContext(Dispatchers.IO) { dev.cartridge.storage.CoreData.unpack(context.assets, archive, File(systemDirectory, folder), game.system.core.revision) }
                 }
+                // A game of several discs on an engine that changes them is started from a playlist of all of them, on the
+                // disc asked for (ADR 0032). Elsewhere the disc asked for is the game file.
+                val playlist = if (game.discs.size > 1 && game.system.core.discs) withContext(Dispatchers.IO) { writePlaylist(game) } else null
                 val data = GLRetroViewData(context).apply {
                     coreFilePath = core.absolutePath
                     // An engine that takes a disc as one image is started from the sheet's first track, which holds the game.
                     // The path with no link in it: an engine that works out a program's folder for itself resolves
                     // links on the way, and then no longer recognises the path it was given as the same file.
-                    gameFilePath = (if (!game.system.core.sheets && game.rom.extension == "cue") File(game.rom.parentFile, "track-00.bin") else game.rom).canonicalPath
+                    gameFilePath = playlist?.first?.path
+                        ?: (if (!game.system.core.sheets && game.rom.extension == "cue") File(game.rom.parentFile, "track-00.bin") else game.rom).canonicalPath
+                    if (playlist != null) { initialDisk = game.disc; initialDiskPath = playlist.second[game.disc] }
                     systemDirectory = this@LibretroEngine.systemDirectory.apply { mkdirs() }.path
                     savesDirectory = ownFiles.path
                     rumbleEventsEnabled = false
@@ -208,6 +217,13 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                     setControllerType(0, RETRO_DEVICE_JOYPAD)
                     for (port in 1..3) setControllerType(port, RETRO_DEVICE_NONE)
                 }
+                // What is in the drive. One file that holds several discs starts on its disc here, before any frame runs.
+                if (game.system.core.discs) {
+                    discs = onGl { getAvailableDisks(false) }.coerceAtLeast(0)
+                    if (playlist == null && game.disc in 1 until discs) onGl { changeDisk(game.disc, false) }
+                    readDisc()
+                    if (discs < 2) discs = 0
+                }
                 suspend fun restoreBattery() {
                     if (savedRam != null && savedRam.isNotEmpty()) {
                         check(onGl {
@@ -238,6 +254,8 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                     // saved last, so starting from a state never rolls an in-game save back.
                     restoreBattery()
                 }
+                // A state names the disc it was made on, and the engine puts that disc back as it loads it.
+                if (discs > 0) readDisc()
                 session.registry.currentState = Lifecycle.State.RESUMED
                 withTimeout(15_000) { ready.await() }
                 transition(SessionState.Running)
@@ -420,6 +438,46 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     private suspend fun apply(bytes: ByteArray) {
         val native = dev.cartridge.storage.ManualState.decode(checkNotNull(game).system, bytes)
         check(atRest { onGl { unserializeState(native, false) } }) { "The core rejected this saved state" }
+        if (discs > 0) readDisc()
+    }
+    /** The disc in the drive as the engine has it, into the status. Read on the core's thread. */
+    private suspend fun readDisc() {
+        disc = onGl { getCurrentDisk(false) }.coerceAtLeast(0)
+        mutableStatus.value = status.value.copy(disc = disc, discs = discs)
+    }
+    /**
+     * The playlist a game of several discs is started from: one absolute path per disc, written beside nothing the
+     * game owns, and the paths as the engine will name them, so the starting disc can be named the same way.
+     */
+    private fun writePlaylist(game: GameRequest): Pair<File, List<String>> {
+        val paths = game.discs.map { it.canonicalPath }
+        val folder = File(context.filesDir, "playlists").apply { check(isDirectory || mkdirs()) { "Cannot create the disc list" } }
+        val file = File(folder, "${game.id}.m3u")
+        val temporary = File.createTempFile("discs-", ".tmp", folder)
+        try {
+            java.io.FileOutputStream(temporary).use { it.write(dev.cartridge.domain.Playlist.write(paths).toByteArray()); it.fd.sync() }
+            check(temporary.renameTo(file)) { "Cannot write the disc list" }
+        } finally { temporary.delete() }
+        return file.canonicalFile to paths
+    }
+    override suspend fun changeDisc(disc: Int) = pausedOperation {
+        val current = checkNotNull(game)
+        check(current.system.core.discs && discs > 1) { "This game has one disc" }
+        require(disc in 0 until discs) { "There is no such disc" }
+        // The host opens the drive, puts the disc in and closes it; the console sees the lid open for a moment as it resumes.
+        onGl { changeDisk(disc, false) }
+        readDisc()
+        check(this.disc == disc) { "The disc could not be changed" }
+    }
+    override suspend fun loadDiscState(discId: String, name: String, disc: Int) = pausedOperation {
+        val current = checkNotNull(game)
+        val bytes = withContext(Dispatchers.IO) {
+            if (name == StateSlots.QUICK) saves.read(discId, "state") ?: error("There is no quick save for this disc") else slots.read(discId, current.system, name)
+        }
+        apply(bytes)
+        // Made when this disc was a game of its own, the state names the first disc; the disc it was made on goes back in.
+        if (discs > 1 && this.disc != disc) { onGl { changeDisk(disc, false) }; readDisc() }
+        checkpointWithWarning()
     }
     override suspend fun saveState() = liveOperation {
         val current = checkNotNull(game)
@@ -565,7 +623,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
         owner = null
         coreReady = false
         // A new view starts the host at normal speed with its sound on.
-        frozen = false; speed = 1
+        frozen = false; speed = 1; disc = 0; discs = 0
         game = null; lastWrittenRam = null; lastWrittenRtc = null
         if (ownsNative) nativeClaim.set(false)
         ownsNative = false

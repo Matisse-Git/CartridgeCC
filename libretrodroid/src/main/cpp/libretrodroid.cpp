@@ -110,6 +110,16 @@ int LibretroDroid::currentDisk() {
            : 0;
 }
 
+bool LibretroDroid::setInitialDisk(unsigned int index, const std::string& path) {
+    // Cartridge (ADR 0032): only between the core's creation and the game's load, and only through the extended interface.
+    auto* control = Environment::getInstance().getRetroDiskControlExtCallback();
+    if (control == nullptr || control->set_initial_image == nullptr) {
+        LOGE("This core cannot start a game on a chosen disc.");
+        return false;
+    }
+    return control->set_initial_image(index, path.c_str());
+}
+
 void LibretroDroid::changeDisk(unsigned int index) {
     if (Environment::getInstance().getRetroDiskControlCallback() == nullptr) {
         LOGE("Cannot swap disk. This platform does not support it.");

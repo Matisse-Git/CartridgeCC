@@ -336,7 +336,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                     // No chrome rests on a running game. The top corner and Android's Back both open the pause menu for touch.
                     if (status.state == SessionState.Running) Box(Modifier.align(Alignment.TopEnd).size(72.dp).tap("pause") { coordinator.pause() })
                     if (status.state == SessionState.Paused) frozenFrame?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
-                    if (state.screen == CollectionScreen.Emulator) GameBadge(status, Modifier.align(Alignment.TopEnd))
+                    if (state.screen == CollectionScreen.Emulator) GameBadge(status, Modifier.align(Alignment.TopEnd), state.discBadge)
                 }
                 ShellOverlays(shell, state, status, device, confirm, back)
                 if (scrape.visible) ScrapePanel(scrape, scraper, confirm, back)

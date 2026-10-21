@@ -138,6 +138,8 @@ class ConsoleShell(
     var backupAllStates by mutableStateOf(preferences.getBoolean("backupAllStates", false)); private set
     /** The paused game's states, keyed by its id so a stale list is never shown for another game. */
     var stateList by mutableStateOf<Pair<String, List<StateSlot>>?>(null); private set
+    /** States the paused game's other discs made while each was a game of its own (ADR 0032), keyed by the game's id. */
+    var discStates by mutableStateOf<Pair<String, List<Pair<GameDisc, StateSlot>>>?>(null); private set
     private val slots get() = StateSlots(File(context.filesDir, "saves"))
     /** The combo being recorded and what it has heard so far; [recordTick] makes its dialog follow each button. */
     var recorder by mutableStateOf<ComboListener?>(null); private set
@@ -219,7 +221,7 @@ class ConsoleShell(
         when (destination) {
             Destination.Settings -> { pane = 0; category = SettingsCategory.Library; refreshRoots(); refreshStorage(); homeEnabled = host.homeEnabled; refreshShaderVersion() }
             is Destination.ShaderPicker -> { refreshShaderVersion(); listShaders(destination.folder) }
-            Destination.Details -> state.selectedGame?.let { loadFacts(it.id) }
+            Destination.Details, Destination.Manage -> state.selectedGame?.let { loadFacts(it.id) }
             Destination.Hidden -> scope.launch { hidden = repository.hiddenGames() }
             Destination.About -> scope.launch { notices = withContext(Dispatchers.IO) { context.assets.list("licenses").orEmpty().sorted() } }
             is Destination.Notice -> { readerLine = 0; noticeText = ""; scope.launch {
@@ -354,10 +356,13 @@ class ConsoleShell(
         if (state.screen != CollectionScreen.Library || status.state != SessionState.Idle) return
         if (state.allGames.isEmpty()) addGames() else start()
     }
-    /** A console that needs its owner's file explains that here, instead of failing once the game has left the shelf. */
-    private fun start() {
+    /**
+     * A console that needs its owner's file explains that here, instead of failing once the game has left the shelf.
+     * [disc] starts a game of several discs on that one (ADR 0032); otherwise on the disc last in the drive.
+     */
+    private fun start(disc: Int? = null) {
         val core = state.selectedGame?.system?.core
-        if (core != null && !firmwareReady(core)) { home(); push(Destination.Setup(core)) } else coordinator.insert()
+        if (core != null && !firmwareReady(core)) { home(); push(Destination.Setup(core)) } else coordinator.insert(disc)
     }
     /** B. Whatever is open closes first; only the library's own root, with nothing to close, leads to Apps. */
     fun back() = dismiss(controller = true)
@@ -671,7 +676,8 @@ class ConsoleShell(
 
     fun addGames() { home(); host.pickFolder() }
     fun addSingleGame() { home(); pendingLocate = null; host.pickGame() }
-    fun locateGame() { val game = state.selectedGame ?: return; home(); pendingLocate = game.id; host.pickGame() }
+    /** [id] is the disc to find again, for a game of several; by default the game's own file. */
+    fun locateGame(id: String? = null) { val game = state.selectedGame ?: return; home(); pendingLocate = id ?: game.id; host.pickGame() }
     fun folderPicked(uri: Uri) = scan(uri)
     fun refreshLibrary(verify: Boolean = false) = scan(null, verify)
     /** Opening the console looks for new games without a dialog; only something new earns a notice. */
@@ -829,7 +835,7 @@ class ConsoleShell(
     fun search() = push(Destination.TextEntry(TextSpec("Search", "Title, developer or genre", state.query.search, 60, "library-search-text") { value ->
         home(); coordinator.query(state.query.copy(search = value))
     }))
-    fun play() { home(); start() }
+    fun play(disc: Int? = null) { home(); start(disc) }
     fun hide() { home(); coordinator.hideSelected() }
 
     // ---- Backup -----------------------------------------------------------------------------------------
@@ -884,13 +890,25 @@ class ConsoleShell(
     // ---- Saved states (docs/SAVE_RELIABILITY) ---------------------------------------------------------------
 
     fun loadSlots(gameId: String) {
-        val system = state.allGames.firstOrNull { it.id == gameId }?.system ?: state.selectedGame?.takeIf { it.id == gameId }?.system ?: return
-        scope.launch { runCatching { withContext(Dispatchers.IO) { slots.list(gameId, system) } }.onSuccess { stateList = gameId to it } }
+        val game = state.allGames.firstOrNull { it.id == gameId } ?: state.selectedGame?.takeIf { it.id == gameId } ?: return
+        scope.launch { runCatching { withContext(Dispatchers.IO) { slots.list(gameId, game.system) } }.onSuccess { stateList = gameId to it } }
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { game.discs.drop(1).flatMap { disc -> slots.list(disc.id, game.system).map { disc to it } } } }
+                .onSuccess { discStates = gameId to it }
+        }
     }
     /** The confirmed action, run once the dialog and the sheet it came from have closed. */
     fun confirmSlot(action: SlotAction, name: String) {
         val game = state.selectedGame ?: return
         while (top != null && top != Destination.SaveStates) pop()
+        val disc = name.takeIf { it.startsWith(DISC_STATE) }?.removePrefix(DISC_STATE)
+        if (disc != null) {
+            // A state one of the game's discs made as a game of its own is only ever loaded, never changed (ADR 0032).
+            val (discId, slot) = disc.split(':', limit = 2)
+            val index = game.discs.indexOfFirst { it.id == discId }
+            if (action == SlotAction.Load && index >= 0) coordinator.loadDiscState(discId, slot, index, resume = controls.returnToGame)
+            return
+        }
         when (action) {
             SlotAction.Load -> coordinator.loadSlot(name, resume = controls.returnToGame)
             SlotAction.Overwrite -> coordinator.saveSlot(name) { saved -> focus["states"] = "slot:$saved" }
@@ -899,6 +917,28 @@ class ConsoleShell(
     }
     fun newSlot() = coordinator.saveSlot { saved -> focus["states"] = "slot:$saved" }
     fun recordCombo(action: QuickCombo) = push(Destination.RecordCombo(action))
+
+    // ---- Memory cards of a game of several discs (ADR 0032) ---------------------------------------------------
+
+    private fun cards() = DiscCards(File(context.filesDir, "saves"))
+    /** The focused game uses [discId]'s card from now on; the one it had is kept. Only with no game running. */
+    fun useCard(discId: String) {
+        val game = state.selectedGame ?: return
+        val number = game.discs.firstOrNull { it.id == discId }?.number ?: return
+        coordinator.libraryOperation {
+            withContext(Dispatchers.IO) { cards().use(game.id, discId, game.system) }
+            loadFacts(game.id)
+            coordinator.notify("${game.title} now uses disc $number's memory card. The card it had is kept.")
+        }
+    }
+    fun restoreCard() {
+        val game = state.selectedGame ?: return
+        coordinator.libraryOperation {
+            withContext(Dispatchers.IO) { cards().restorePrevious(game.id, game.system) }
+            loadFacts(game.id)
+            coordinator.notify("The memory card from before is back. The one it replaced is kept.")
+        }
+    }
     /** Every controller button while a combo is recorded. Letting go of the first one finishes it. */
     fun recordKey(code: Int, down: Boolean) {
         (top as? Destination.RecordButton)?.let { return recordButtonKey(it, code, down) }
@@ -967,6 +1007,8 @@ class ConsoleShell(
         /** Hints retire on their own once this many games have been started. */
         const val LEARNED_AFTER = 5
         const val RECORD_TIMEOUT_MS = 5_000L
+        /** The name a state of another disc is confirmed under: `disc:<disc id>:<state name>`. */
+        const val DISC_STATE = "disc:"
 
         /** A folder that can no longer be read, as opposed to one that merely held a file Cartridge skipped. */
         fun unreachable(error: String?): String? = plain(error).takeIf { error != null && it != error && ("permission" in it || "can't be reached" in it) }

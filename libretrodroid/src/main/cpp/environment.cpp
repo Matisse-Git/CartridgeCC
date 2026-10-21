@@ -47,6 +47,8 @@ void Environment::deinitialize() {
     hw_context_destroy = nullptr;
 
     retro_disk_control_callback = nullptr;
+    retro_disk_control_ext_callback = nullptr;
+    disk_control_from_ext = {};
 
     savesDirectory = std::string();
     systemDirectory = std::string();
@@ -299,6 +301,30 @@ bool Environment::handle_callback_environment(unsigned cmd, void *data) {
             return true;
         }
 
+        // Cartridge (ADR 0032): the extended interface, which can also start a game on a chosen disc. Its first
+        // seven functions are the original interface, which everything else here keeps using.
+        case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: {
+            LOGD("Called RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION");
+            *static_cast<unsigned*>(data) = 1;
+            return true;
+        }
+
+        case RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE: {
+            LOGD("Called RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE");
+            retro_disk_control_ext_callback = static_cast<struct retro_disk_control_ext_callback*>(data);
+            disk_control_from_ext = {
+                retro_disk_control_ext_callback->set_eject_state,
+                retro_disk_control_ext_callback->get_eject_state,
+                retro_disk_control_ext_callback->get_image_index,
+                retro_disk_control_ext_callback->set_image_index,
+                retro_disk_control_ext_callback->get_num_images,
+                retro_disk_control_ext_callback->replace_image_index,
+                retro_disk_control_ext_callback->add_image_index,
+            };
+            retro_disk_control_callback = &disk_control_from_ext;
+            return true;
+        }
+
         case RETRO_ENVIRONMENT_GET_PERF_INTERFACE:
             LOGD("Called RETRO_ENVIRONMENT_GET_PERF_INTERFACE");
             return false;
@@ -377,6 +403,10 @@ retro_hw_context_reset_t Environment::getHwContextDestroy() const {
 
 struct retro_disk_control_callback* Environment::getRetroDiskControlCallback() const {
     return retro_disk_control_callback;
+}
+
+struct retro_disk_control_ext_callback* Environment::getRetroDiskControlExtCallback() const {
+    return retro_disk_control_ext_callback;
 }
 
 int Environment::getPixelFormat() const {

@@ -138,6 +138,8 @@ public class LibretroDroid {
     public static native int availableDisks();
     public static native int currentDisk();
     public static native void changeDisk(int index);
+    /** Cartridge (ADR 0032): the disc a playlist starts on. Only after create() and before the game is loaded. */
+    public static native boolean setInitialDisk(int index, String path);
 
     public static native void onMotionEvent(int port, int motionSource, float xAxis, float yAxis);
     public static native void onTouchEvent(float xAxis, float yAxis);

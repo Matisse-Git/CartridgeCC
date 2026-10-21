@@ -1,5 +1,6 @@
 package dev.cartridge.storage
 
+import dev.cartridge.domain.DiscNames
 import dev.cartridge.domain.GameSystem
 import dev.cartridge.library.*
 import org.json.JSONArray
@@ -70,7 +71,7 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
                 val file = File(temporary, "session.state").apply { writeBytes(sessions.read(it)) }
                 val path = "session/state.bin"; blobs.add(BackupBlob(path, hash(file), file.length(), it.id, "session")); files[path] = file
             }
-            val root = encodeLibrary(library).put("format", FORMAT).put("version", 1).put("core", SessionStore.CORE).put("settings", preferences)
+            val root = encodeLibrary(library).put("format", FORMAT).put("version", VERSION).put("core", SessionStore.CORE).put("settings", preferences)
                 .put("blobs", JSONArray(blobs.map { JSONObject().put("path", it.path).put("sha256", it.sha).put("bytes", it.bytes).put("id", it.id).put("kind", it.kind).put("core", it.core)
                     .apply { it.slot?.let { slot -> put("slot", slot) }; it.savedAt?.let { time -> put("savedAt", time) } } }))
             session?.let { root.put("session", JSONObject().put("id", it.id).put("system", it.system.name).put("savedAt", it.savedAt).put("core", it.system.coreRevision)) }
@@ -91,7 +92,8 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
             val task = currentCoroutineContext()
             val files = BoundedArchive.read(input, directory, LIMITS) { task.ensureActive() }
             val root = JSONObject(checkNotNull(files["backup.json"]) { "Not a Cartridge backup" }.readText(Charsets.UTF_8))
-            require(root.getString("format") == FORMAT && root.getInt("version") == 1) { "Unsupported backup version" }
+            // Version 2 added the discs of games made of several (ADR 0032); a version 1 backup restores each disc as a game.
+            require(root.getString("format") == FORMAT && root.getInt("version") in 1..VERSION) { "Unsupported backup version" }
             val library = decodeLibrary(root)
             val settings = root.getJSONObject("settings").also(BackupPreferences::validate)
             val array = root.getJSONArray("blobs"); require(array.length() < LIMITS.entries)
@@ -177,6 +179,7 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
     }
     companion object {
         const val FORMAT = "project-cartridge.backup"
+        const val VERSION = 2
         private val HASH = Regex("[a-f0-9]{64}")
         private val LIMITS = BoundedArchive.Limits(compressed = 1024L * 1024 * 1024, expanded = 1024L * 1024 * 1024,
             entries = 60_001, entry = SessionStore.MAX_STATE, manifestName = "backup.json", manifest = 32 * 1024 * 1024)
@@ -190,8 +193,11 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
             .put("label", game.labelAssetId).put("fit", game.labelFit).put("turns", game.labelQuarterTurns)
             .put("labelSource", game.labelSourceUri).put("labelProvenance", game.labelProvenance)
             .put("metadata", game.metadataJson).put("media", game.mediaJson).put("favorite", game.favorite)
-            .put("playMs", game.playMs).put("lastPlayed", game.lastPlayed) }))
+            .put("playMs", game.playMs).put("lastPlayed", game.lastPlayed).put("disc", game.disc).put("discCount", game.discCount) }))
             .put("order", JSONArray(library.order)).put("removed", JSONArray(library.removed.toList()))
+            .put("discs", JSONArray(library.discs.map { JSONObject().put("disc", it.discId).put("game", it.gameId).put("number", it.number)
+                .put("origin", it.origin).put("wasHidden", it.wasHidden) }))
+            .put("separated", JSONArray(library.separated.toList()))
             .put("collection", JSONObject().put("selected", library.state.selectedSlot).put("sort", library.state.sort)
                 .put("favorites", library.state.favoritesOnly).put("search", library.state.search))
         private fun decodeLibrary(root: JSONObject): LibraryBackup {
@@ -201,7 +207,8 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
                 GameRecord(json.getString("id"), json.getString("title"), json.getString("sourceUri"), optional(json, "label"),
                     json.getString("fit"), json.getInt("turns"), optional(json, "labelSource"), optional(json, "labelProvenance", 32768),
                     optional(json, "metadata", 256 * 1024), optional(json, "media", 256 * 1024), json.getBoolean("favorite"),
-                    json.getLong("playMs"), json.getLong("lastPlayed"), json.getString("system")).also { game ->
+                    json.getLong("playMs"), json.getLong("lastPlayed"), json.getString("system"), json.optInt("disc", 0), json.optInt("discCount", 0)).also { game ->
+                    require(game.disc in 0 until 100 && game.discCount in 0..100)
                     require(game.id.matches(HASH) && game.title.length in 1..1024 && game.sourceUri.length <= 4096 && game.sourceUri.startsWith("content://") && game.playMs >= 0 && game.lastPlayed >= 0)
                     GameSystem.valueOf(game.system); LabelFit.valueOf(game.labelFit); require(game.labelQuarterTurns in 0..3)
                     game.labelAssetId?.let { require(it.matches(HASH)) }
@@ -216,7 +223,22 @@ class BackupStore(private val repository: BackupRepository, private val labels: 
             val order = strings("order"); val removed = strings("removed").toSet(); require(order.none { it in removed })
             val state = root.getJSONObject("collection").let { CollectionRecord(selectedSlot = it.getInt("selected"), sort = it.getString("sort"), favoritesOnly = it.getBoolean("favorites"), search = it.getString("search")) }
             LibrarySort.valueOf(state.sort); require(state.selectedSlot in 0..(order.size - 1).coerceAtLeast(0) && state.search.length <= 160)
-            return LibraryBackup(games, order, removed, state)
+            // A game's discs: each disc once, the game among its own discs, two to eight of them, and never a disc on the shelf.
+            val discs = root.optJSONArray("discs")?.let { values ->
+                require(values.length() <= 10_000)
+                (0 until values.length()).map { index -> values.getJSONObject(index).let {
+                    DiscRecord(it.getString("disc"), it.getString("game"), it.getInt("number"), it.getString("origin"), it.optBoolean("wasHidden", false))
+                } }
+            }.orEmpty()
+            require(discs.map { it.discId }.toSet().size == discs.size && discs.all { it.discId in ids && it.gameId in ids && it.number in 1..99 &&
+                (it.origin == GameDisc.NAMES || it.origin == GameDisc.MANUAL || it.origin.startsWith(GameDisc.PLAYLIST) && it.origin.length <= 300) }) { "Invalid discs in backup" }
+            discs.groupBy { it.gameId }.forEach { (game, set) ->
+                require(set.size in 2..DiscNames.MAX && set.any { it.discId == game } && set.map { it.number }.distinct().size == set.size) { "Invalid discs in backup" }
+            }
+            require(discs.none { it.discId != it.gameId && (it.discId in order || it.discId in removed) }) { "Invalid discs in backup" }
+            val separated = root.optJSONArray("separated")?.let { values -> require(values.length() <= 10_000); (0 until values.length()).map(values::getString).toSet() }.orEmpty()
+            require(separated.all { it in ids }) { "Invalid discs in backup" }
+            return LibraryBackup(games, order, removed, state, discs, separated)
         }
     }
 }

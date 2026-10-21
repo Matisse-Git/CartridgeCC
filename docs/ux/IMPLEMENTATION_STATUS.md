@@ -125,7 +125,7 @@ touched (same size and timestamp before and after).
 | 8 | Adding a folder is simple | Met: START, A, choose |
 | 9 | New consoles need no configuration | Met for the four supported consoles |
 | 10 | Existing consoles accept more games without duplication | Met |
-| 11 | PS1 disc structures handled | Met for CUE+BIN, CHD, PBP, ISO. Multi-disc is not supported and the interface says so |
+| 11 | PS1 disc structures handled | Met for CUE+BIN, CHD, PBP, ISO, and several discs as one game with Change Disc (ADR 0032) |
 | 12 | Real time and battery | Met; broadcast-driven |
 | 13 | Settings comprehensive, organised, unobtrusive | Met for what the build can do; see "Not offered" in SETTINGS_STRUCTURE |
 | 14 | Usable entirely with a controller | Met, including text entry |
@@ -164,7 +164,7 @@ are read from the import summary instead of a status string).
 
 | Item | Needs |
 |---|---|
-| Multi-disc games, `.m3u`, in-game disc change | Importer and adapter work; the wrapper already exposes disk control |
+| Change Disc on Saturn, Dreamcast, PlayStation 2 and GameCube | A device check with one of the owner's sets each; grouping already applies to them (ADR 0032) |
 | Analog / DualShock on PlayStation, D-pad, stick and per-game remapping, touch gameplay controls | Adapter and input work (each console's game buttons are remappable since ADR 0030) |
 | Rewind, aspect and integer scaling | Adapter work (the wrapper exposes viewport). Fast-forward is built (ADR 0031) except on the three self-drawing engines |
 | Light theme, background styles, display scale, animation speed | Design and implementation; deliberately not faked |
@@ -195,5 +195,4 @@ are read from the import summary instead of a status string).
 ## Recommended next
 
 Commit this work in reviewable pieces (foundations; shell and UI; tests; docs), then take the
-first two rows of "Not done": multi-disc import with in-game disc change, since the wrapper already
-supports it and it is the largest gap in PlayStation library behaviour.
+first rows of "Not done". Multi-disc games and Change Disc on PlayStation were done on 2026-10-20 (ADR 0032).

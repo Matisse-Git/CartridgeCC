@@ -4,6 +4,7 @@ import android.text.format.DateUtils
 import dev.cartridge.domain.ButtonMap
 import dev.cartridge.domain.CollectionLayout
 import dev.cartridge.domain.Core
+import dev.cartridge.domain.DiscSets
 import dev.cartridge.domain.GameSystem
 import dev.cartridge.domain.LaunchTransition
 import dev.cartridge.domain.SessionState
@@ -12,6 +13,7 @@ import dev.cartridge.environment.ConsoleSettings
 import dev.cartridge.environment.GameOptions
 import dev.cartridge.input.ButtonCombo
 import dev.cartridge.input.QuickCombo
+import dev.cartridge.library.DiscFacts
 import dev.cartridge.library.LabelFit
 import dev.cartridge.library.LibraryGame
 import dev.cartridge.library.LibrarySort
@@ -45,7 +47,7 @@ internal fun ConsoleShell.buildPage(state: CollectionState, status: EngineStatus
     return when (destination) {
         null -> when {
             state.screen == CollectionScreen.LabelPreview -> labelPage(state)
-            paused && !status.frozen -> pausePage(state)
+            paused && !status.frozen -> pausePage(state, status)
             else -> null
         }
         Destination.SystemMenu -> systemMenu(state)
@@ -86,6 +88,8 @@ internal fun ConsoleShell.buildPage(state: CollectionState, status: EngineStatus
         is Destination.RecordCombo -> recordPage(destination)
         is Destination.ConsoleButtons -> buttonsPage(destination)
         is Destination.RecordButton -> recordButtonPage(destination)
+        Destination.Discs -> game?.let { discsPage(it, state, status) }
+        Destination.AddDisc -> game?.let { addDiscPage(it, state) }
     }
 }
 
@@ -107,7 +111,7 @@ private fun ConsoleShell.systemMenu(state: CollectionState): Page {
     }, PageStyle.Sheet, if (games.isEmpty()) null else "${plural(games.size, "game")} · ${plural(consoles, "console")}")
 }
 
-private fun ConsoleShell.pausePage(state: CollectionState): Page {
+private fun ConsoleShell.pausePage(state: CollectionState, status: EngineStatus): Page {
     val game = state.selectedGame
     val known = facts?.takeIf { it.first == game?.id }?.second
     val ready = !state.busy
@@ -122,6 +126,9 @@ private fun ConsoleShell.pausePage(state: CollectionState): Page {
             coordinator.quickLoad(resume = controls.returnToGame) } else null,
         if (states) MenuRow("states", "Save States", RowKind.Link, value = saved?.let { if (it == 0) null else plural(it, "save") }, enabled = ready, tag = "menu-5") {
             push(Destination.SaveStates) } else null,
+        // Only an engine that changes discs, with more than one to change between (ADR 0032).
+        if (game?.system?.core?.discs == true && status.discs > 1) MenuRow("disc", "Change Disc", RowKind.Link,
+            value = "Disc ${discNumber(game, status.disc)}", enabled = ready, tag = "menu-6") { push(Destination.Discs) } else null,
         MenuRow("options", "Game Options", RowKind.Link, enabled = ready, tag = "menu-4") { push(Destination.Options) },
         MenuRow("eject", "Return to Library", enabled = ready, tag = "menu-3") { coordinator.menuAction(3) }),
         PageStyle.Pause, game?.system?.title)
@@ -142,15 +149,43 @@ private fun ConsoleShell.labelPage(state: CollectionState): Page {
         PageStyle.Sheet, state.selectedGame?.title)
 }
 
+/** A disc's number as the player knows it, by its place in the game's discs or in what the engine counted. */
+private fun discNumber(game: LibraryGame?, disc: Int) = game?.discs?.getOrNull(disc)?.number ?: (disc + 1)
+private fun discSize(bytes: Long) = when {
+    bytes >= 1L shl 30 -> "%.1f GB".format(bytes / (1L shl 30).toDouble())
+    bytes >= 1L shl 20 -> "${bytes shr 20} MB"
+    else -> "${(bytes shr 10).coerceAtLeast(1)} KB"
+}
+/** One file as Details shows it (ADR 0032): where the owner keeps it, the console, the private copy's size and its tracks. */
+private fun fileNote(file: DiscFacts, game: LibraryGame) = listOfNotNull(file.file, game.system.title, discSize(file.bytes),
+    file.tracks.takeIf { it > 0 }?.let { plural(it, "track") }, game.discCount.takeIf { game.discs.isEmpty() && it > 1 }?.let { "$it discs" },
+    "original missing".takeIf { file.sourceMissing }).joinToString(" · ")
+
 private fun ConsoleShell.detailsPage(game: LibraryGame, state: CollectionState): Page {
     val known = facts?.takeIf { it.first == game.id }?.second
     val ready = !state.busy
     return Page("details", game.title, buildList {
-        if (known?.cachedRom == false) add(MenuRow("locate", "Reconnect game file", note = "Cartridge can't find this game's file. Choose the same file again.",
+        if (known?.cachedRom == false && game.discs.isEmpty()) add(MenuRow("locate", "Reconnect game file", note = "Cartridge can't find this game's file. Choose the same file again.",
             warn = true, enabled = ready, tag = "details-locate") { locateGame() })
         if (!firmwareReady(game.system.core)) add(MenuRow("setup", "Add ${game.system.core.title} BIOS", note = "Needed before this game can start",
             warn = true, enabled = ready, tag = "details-setup") { chooseFirmware(game.system.core) })
-        add(MenuRow("play", "Play", enabled = ready && state.rendererReady, tag = "details-play") { play() })
+        add(MenuRow("play", "Play", value = if (game.discTotal > 1) "Disc ${discNumber(game, game.disc)}" else null, enabled = ready && state.rendererReady, tag = "details-play") { play() })
+        if (game.discs.size > 1) {
+            // Each disc, in order, with the numbers a set skips as discs that were not found (ADR 0032). A disc starts the game on it.
+            add(MenuRow("header:discs", "Discs · ${game.discs.size}", RowKind.Header))
+            val listed = game.discs.mapIndexed { index, disc -> Triple(disc.number, index, disc) }
+            val gaps = DiscSets.missing(game.discs.map { it.number }).map { Triple(it, -1, null) }
+            (listed + gaps).sortedBy { it.first }.forEach { (number, index, disc) ->
+                if (disc == null) { add(MenuRow("missing:$number", "Disc $number", RowKind.Info, value = "Not found", note = "No file for this disc was found with the others")); return@forEach }
+                val file = known?.files?.firstOrNull { it.id == disc.id }
+                add(MenuRow("disc:${disc.id}", "Disc $number", value = if (index == game.disc) "Last played" else null,
+                    note = file?.let { fileNote(it, game) } ?: disc.fileName, warn = file?.cached == false,
+                    enabled = ready && state.rendererReady && file?.cached != false, tag = "details-disc-$index") { play(index) })
+                if (file?.cached == false) add(MenuRow("locate:${disc.id}", "Reconnect disc $number", note = "Cartridge can't find this disc's file. Choose the same file again.",
+                    warn = true, enabled = ready, tag = "details-locate-$index") { locateGame(disc.id) })
+            }
+            game.discs.firstNotNullOfOrNull { it.playlist }?.let { add(MenuRow("playlist", "From $it", RowKind.Info, note = "The playlist that named these discs")) }
+        } else known?.files?.singleOrNull()?.let { file -> add(MenuRow("file", "File", RowKind.Info, note = fileNote(file, game), tag = "details-file")) }
         add(MenuRow("favorite", if (game.favorite) "Remove from Favorites" else "Add to Favorites", enabled = ready, tag = "details-favorite") { coordinator.favorite() })
         add(MenuRow("options", "Game options", RowKind.Link, tag = "details-options") { push(Destination.Options) })
         add(MenuRow("manage", "Manage game", RowKind.Link, tag = "details-manage") { push(Destination.Manage) })
@@ -167,6 +202,19 @@ private fun ConsoleShell.managePage(game: LibraryGame, state: CollectionState): 
         if (game.canUndoEnrichment) add(MenuRow("undo", "Undo last artwork change", enabled = ready, tag = "manage-undo") { coordinator.undoEnrichment() })
         if (game.label != null) add(MenuRow("reset", "Remove label", note = "Returns to the plain printed label", enabled = ready, tag = "manage-reset") { coordinator.removeLabel() })
         add(MenuRow("locate", "Locate game file", note = "If the file moved, choose it again", enabled = ready, tag = "manage-locate") { locateGame() })
+        // The discs of a game are the owner's to correct (ADR 0032); every change here has one Undo.
+        if (game.system.bundle) add(MenuRow("add-disc", "Add a disc…", RowKind.Link, note = "Another game on the shelf that is one of this game's discs",
+            enabled = ready, tag = "manage-add-disc") { push(Destination.AddDisc) })
+        if (game.discs.size > 1) add(MenuRow("separate", "Separate discs", note = "Each disc becomes a game of its own again", enabled = ready, tag = "manage-separate") {
+            coordinator.separateDiscs() })
+        val known = facts?.takeIf { it.first == game.id }?.second
+        known?.cards.orEmpty().forEach { discId -> game.discs.firstOrNull { it.id == discId }?.let { disc ->
+            add(MenuRow("card:$discId", "Use disc ${disc.number}'s memory card", note = "Its saves from when it was a game of its own. The card used now is kept.",
+                enabled = ready, tag = "manage-card-${disc.number}") { useCard(discId) })
+        } }
+        if (known?.previousCard == true) add(MenuRow("card-back", "Use the memory card from before", note = "Puts back the card this game had; the one it replaces is kept",
+            enabled = ready, tag = "manage-card-back") { restoreCard() })
+        if (state.discUndo == game.id) add(MenuRow("undo-discs", "Undo last disc change", enabled = ready, tag = "manage-undo-discs") { coordinator.undoDiscs() })
         add(MenuRow("hide", "Hide from library", RowKind.Danger, note = "Keeps the game file, saves and artwork", enabled = ready, tag = "manage-hide") { hide() })
     }, PageStyle.Sheet, game.title)
 }
@@ -601,9 +649,39 @@ private fun ConsoleShell.saveStatesPage(game: LibraryGame, state: CollectionStat
                 saved.forEach { add(row(it)) }
             }
         }
+        // States the other discs made while each was a game of its own: loaded with that disc in the drive, never changed.
+        val others = discStates?.takeIf { it.first == game.id }?.second.orEmpty().filter { it.second.kind != SlotKind.Previous }
+        others.groupBy { it.first }.forEach { (disc, entries) ->
+            add(MenuRow("header:disc-${disc.number}", "From disc ${disc.number} on its own", RowKind.Header))
+            entries.forEach { (_, slot) ->
+                add(MenuRow("disc-slot:${disc.id}:${slot.name}", slotTitle(slot) ?: dateLabel(slot.savedAt), RowKind.Link, value = whenLabel(slot.savedAt),
+                    note = if (slot.compatible) "Loads with disc ${disc.number} in the drive" else OTHER_BUILD, warn = !slot.compatible, enabled = ready && slot.compatible,
+                    tag = "disc-slot-${disc.number}-${slot.name}", picture = RowPicture(slot.thumbnail, slot.thumbnail?.lastModified() ?: slot.savedAt)) {
+                    push(Destination.ConfirmSlot(SlotAction.Load, "${ConsoleShell.DISC_STATE}${disc.id}:${slot.name}")) })
+            }
+        }
     }, PageStyle.Page, game.title,
         "Quick Save replaces the quick save; the one it replaced stays here until the next. Your saves are kept until you delete them.\n\n" +
             "During a game, ${ButtonCombo.title(controls.quickSave)} quick saves and ${ButtonCombo.title(controls.quickLoad)} quick loads.")
+}
+
+/** The paused game's discs: the one chosen goes in the drive and the game goes on (ADR 0032). */
+private fun ConsoleShell.discsPage(game: LibraryGame, state: CollectionState, status: EngineStatus): Page = Page("discs", "Change Disc",
+    (0 until status.discs).map { index ->
+        MenuRow("disc:$index", "Disc ${discNumber(game, index)}", value = if (index == status.disc) "In the drive" else null,
+            note = game.discs.getOrNull(index)?.fileName, enabled = !state.busy, tag = "disc-$index") { coordinator.changeDisc(index) }
+    }, PageStyle.Sheet, game.title, "The game sees the new disc when it goes on.")
+
+/** Games of one disc on the same console, any of which can join the focused game as one of its discs. */
+private fun ConsoleShell.addDiscPage(game: LibraryGame, state: CollectionState): Page {
+    val choices = state.allGames.filter { it.system == game.system && it.id != game.id && it.discs.isEmpty() }.sortedBy { it.fileName.lowercase() }
+    return Page("add-disc", "Add a disc", choices.map { other ->
+        MenuRow("join:${other.id}", other.fileName, note = other.title.takeIf { it != other.fileName }, enabled = !state.busy, tag = "add-disc-${other.id.take(8)}") {
+            while (top != null && top != Destination.Manage) pop()
+            coordinator.addDisc(other.id)
+        }
+    }.ifEmpty { listOf(MenuRow("none", "No other ${game.system.title} games", RowKind.Info, note = "Add the disc's file to your library first.")) },
+        PageStyle.Page, game.title, "The game you choose leaves the shelf and becomes a disc of this one. Its saves and artwork are kept, and Separate discs undoes it.")
 }
 
 private fun ConsoleShell.slotPage(game: LibraryGame, name: String, state: CollectionState): Page? {

@@ -133,7 +133,7 @@ class ScrapeReviewTest {
             db.execSQL("INSERT INTO games(id,title,sourceUri,labelFit,labelQuarterTurns) VALUES (?, 'Original', 'content://old', 'Fit', 0)", arrayOf(id))
             db.execSQL("INSERT INTO slots VALUES(0, ?)", arrayOf(id)); db.execSQL("INSERT INTO collection_state(singleton,selectedSlot) VALUES(0,0)"); db.version = 5
         }
-        fun open() = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(LibraryDatabase.MIGRATION_5_6, LibraryDatabase.MIGRATION_6_7).build()
+        fun open() = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(*LibraryDatabase.MIGRATIONS).build()
         var database = open()
         val save = File(context.filesDir, "saves/$id.state").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(1, 2, 3)) }
         try {

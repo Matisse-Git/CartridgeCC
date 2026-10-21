@@ -21,11 +21,18 @@ import dev.cartridge.emulation.EngineStatus
 
 /**
  * The one thing that rests on a game (ADR 0031): in its top corner while it is frozen, or while it runs faster than
- * normal, with the speed. Frozen shows only the pause bars. It is drawn over the view, so a state's picture never has it.
+ * normal, with the speed. Frozen shows only the pause bars. For a moment after the disc is changed it names the disc
+ * now in the drive, [disc] (ADR 0032). It is drawn over the view, so a state's picture never has it.
  */
-@Composable fun GameBadge(status: EngineStatus, modifier: Modifier = Modifier) {
+@Composable fun GameBadge(status: EngineStatus, modifier: Modifier = Modifier, disc: Int? = null) {
     val fast = status.state == SessionState.Running && status.speed > 1
-    if (!status.frozen && !fast) return
+    if (!status.frozen && !fast) {
+        if (disc != null && status.state == SessionState.Running) Row(modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(Space.L)
+            .clip(RoundedCornerShape(Radius.Row)).background(Ink.Scrim).padding(horizontal = Space.M, vertical = Space.S).testTag("disc-badge")) {
+            Txt("Disc $disc", Type.Heading, lines = 1)
+        }
+        return
+    }
     Row(modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(Space.L).clip(RoundedCornerShape(Radius.Row)).background(Ink.Scrim)
         .padding(horizontal = Space.M, vertical = Space.S).testTag("game-badge")
         .semantics { contentDescription = if (status.frozen) "Frozen" else "Fast-forward ${status.speed}×" },

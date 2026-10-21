@@ -76,6 +76,16 @@ JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_changeDisk
     return LibretroDroid::getInstance().changeDisk(index);
 }
 
+JNIEXPORT jboolean JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setInitialDisk(
+    JNIEnv* env,
+    jclass obj,
+    jint index,
+    jstring path
+) {
+    auto initialPath = JniString(env, path);
+    return LibretroDroid::getInstance().setInitialDisk(index, initialPath.stdString());
+}
+
 JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_updateVariable(
     JNIEnv* env,
     jclass obj,

@@ -10,8 +10,15 @@ import java.io.File
  * pause with no menu, from the freeze combo (ADR 0031). [speed] is how many frames run for each one shown, 1 normally.
  */
 data class EngineStatus(val state: SessionState = SessionState.Idle, val error: String? = null, val saveWarning: String? = null, val notice: String? = null,
-    val frozen: Boolean = false, val speed: Int = 1)
-data class GameRequest(val rom: File, val id: String, val system: GameSystem = GameSystem.GBA, val resumeState: ByteArray? = null)
+    val frozen: Boolean = false, val speed: Int = 1,
+    /** The disc in the drive and how many the engine can change between (ADR 0032); 0 discs where it cannot. */
+    val disc: Int = 0, val discs: Int = 0)
+/**
+ * [discs] are the private copies of a game's discs in order, empty for a game of one disc, and [disc] the one to start on:
+ * [rom] is that disc's file. A core that can change discs is started from a playlist of all of them.
+ */
+data class GameRequest(val rom: File, val id: String, val system: GameSystem = GameSystem.GBA, val resumeState: ByteArray? = null,
+    val discs: List<File> = emptyList(), val disc: Int = 0)
 
 interface EmulationEngine {
     val status: StateFlow<EngineStatus>
@@ -35,6 +42,10 @@ interface EmulationEngine {
     suspend fun saveSlot(replacing: String? = null): String = error("Saved states are not available")
     /** A paused game continues from one of its listed states (docs/SAVE_RELIABILITY). */
     suspend fun loadSlot(name: String): Unit = error("Saved states are not available")
+    /** A paused game's drive is opened and [disc] put in it (ADR 0032); the game sees the new disc when it resumes. */
+    suspend fun changeDisc(disc: Int): Unit = error("This game has one disc")
+    /** A paused game continues from a state its disc [discId] made as a game of its own, with that disc, [disc], in the drive. */
+    suspend fun loadDiscState(discId: String, name: String, disc: Int): Unit = error("This game has one disc")
     suspend fun persistSaveRam()
     suspend fun configure(options: Map<String, String>)
     suspend fun checkpointSession() = Unit

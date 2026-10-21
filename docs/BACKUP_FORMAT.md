@@ -1,4 +1,14 @@
-# Cartridge backup v1
+# Cartridge backup v1 and v2
+
+Version 2 (ADR 0032, 2026-10-20) adds the discs of games made of several. `discs` lists each disc as
+`{"disc", "game", "number", "origin", "wasHidden"}`: the game is the record of its first disc, every disc of a
+game appears once, a game has two to eight discs with distinct numbers and is among its own, and a disc other than
+the game is neither in `order` nor in `removed`. `origin` is `names`, `manual` or `playlist:<file name>`.
+`separated` lists discs the owner separated by hand. Each game record may carry `disc`, the disc last in the
+drive, and `discCount`. A restore applies a game's discs unless the library already grouped or separated one of
+them; a new disc whose game the library grouped otherwise is listed on its own. Version 1 is still read: its
+discs restore as separate games. Disc bundles, generated playlists and the cards kept in `saves/<id>.discs/`
+are not in a backup.
 
 PS1 extension (v17): each new manual-state blob carries a `core` revision, matched to its game's
 system during inspection. Old mGBA archives still use the v1 root `core` fallback; PS1 states require
@@ -20,7 +30,7 @@ library itself is never in a backup; Update shaders downloads it again.
 
 Console settings → Export backup writes a ZIP through Android's document picker. Restore backup reads and validates it into generated private staging, shows game/image/save counts, and offers Merge missing data, optional settings, or Cancel. Export/restore require the idle collection. Keep backups private; archives are not encrypted.
 
-`backup.json` declares `project-cartridge.backup`, version 1, logical Room game records, canonical order/removal exclusions, selected slot/query, whitelisted settings and checksummed blobs. Images are `images/<SHA-256>.image`, battery/RTC/manual states are `saves/<ROM-SHA-256>.<kind>`, and manual state blobs carry the integration revision, and an optional compatible automatic checkpoint is `session/state.bin`. With Settings › Library ›
+`backup.json` declares `project-cartridge.backup`, version 2 (1 before ADR 0032), logical Room game records, canonical order/removal exclusions, selected slot/query, whitelisted settings and checksummed blobs. Images are `images/<SHA-256>.image`, battery/RTC/manual states are `saves/<ROM-SHA-256>.<kind>`, and manual state blobs carry the integration revision, and an optional compatible automatic checkpoint is `session/state.bin`. With Settings › Library ›
 *Include every save state* on (ADR 0028), a game's listed saves and the quick save it last replaced are
 `slots/<ROM-SHA-256>/<uuid|previous>.state` (kind `slot`, with `slot`, `savedAt` and the console's core
 revision), and their thumbnails `slots/<ROM-SHA-256>/<quick|previous|uuid>.jpg` (kind `slot-image`, at

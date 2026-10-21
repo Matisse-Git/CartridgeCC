@@ -12,8 +12,9 @@ Start shortcuts or Console settings, the specification supersedes them.
 The 2026-10-10 PS1 increment adds internal PlayStation gameplay and original 3D optical discs.
 CUE/BIN folder import is the owner's first workflow; CHD/PBP/ISO single files and explicit BIOS import
 are also implemented. Disc label scraping remains the primary artwork workflow and reuses existing
-review scopes. Digital controller, one memory card and single-disc operation define the initial scope;
-see PS1_PROGRESS for implemented behavior, device evidence and remaining compatibility checks.
+review scopes. Digital controller and one memory card define the initial scope. Since 2026-10-20 the discs
+of one game are one game with one memory card, and the pause menu changes discs (ADR 0032); see PS1_PROGRESS
+for implemented behavior, device evidence and remaining compatibility checks.
 
 **2026-10-10 — media models and browsing.** At the owner's direction the cartridge, the tall
 cartridge and the disc are converted from three Sketchfab downloads instead of being generated, and

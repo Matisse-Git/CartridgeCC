@@ -71,7 +71,7 @@
   action goes in exactly one place; a new setting needs a real effect, a stated scope and a device check
   that reads it back. Build screens only from `ui/` tokens and components. Layouts must
   keep the focused game's identity; a shelf the player turns to opens on its first game (ADR 0020). Opaque pages pause Filament; sheets about the focused object do
-  not dim it. Do not show a capability the adapter lacks (multi-disc, rewind, analog pads).
+  not dim it. Do not show a capability the adapter lacks (rewind, analog pads; Change Disc only where `Core.discs`).
   Re-run the UX tour (`tools/Test-Device.ps1 -Suite Tour`) and look at its screenshots after any
   visual change; compiled is not seen.
 
@@ -187,6 +187,18 @@
   edits of a shader's behaviour. The library is downloaded only when the owner presses Update, never
   committed, bundled or backed up; it replaces the installed one only when complete. Re-run
   `-Suite Shaders` after any change to presets, the host's drawing or the shim.
+
+- The discs of one game are one game (ADR 0032): the record of its first disc, whose id keeps its saves, artwork
+  and history. Discs are found to belong together by an `.m3u` in their folder, then by names that differ only in
+  `(Disc N)`, never by a scraped title, a mixed console or an ambiguous number. The owner's own grouping or
+  separation (`manual`, `separated_discs`) is never redone by a scan, and every hand change has one Undo. A game
+  has one memory card that every disc uses; a disc's own card is never changed or deleted, and a card replaced by
+  another disc's is kept in `saves/<id>.discs/`. A disc that was hidden joins its game and is hidden again when
+  separated. Every disc must be present to start a game from its playlist (`files/playlists/<id>.m3u`): states
+  name the disc by its place there. Change Disc is offered only where `Core.discs` is on, and is turned on for an
+  engine only after one of the owner's games has changed disc on the device. Re-run `-Suite MultiDisc` and
+  `RealGameCheck -e discs …` with one of the owner's sets after any change to discs, the scanner or the host's disc
+  control.
 
 - The host is LibretroDroid 0.14.0 built from its source in `libretrodroid/` (ADR 0027). Its
   submodules are fetched by archive hash, never copied in; every change from the tag is listed in

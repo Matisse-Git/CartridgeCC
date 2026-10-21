@@ -35,6 +35,9 @@ class GLRetroViewData(context: Context) {
     var skipDuplicateFrames: Boolean = false
     var enableMicrophone: Boolean = false
     var immersiveMode: ImmersiveMode? = null
+    /** Cartridge (ADR 0032): the disc a playlist ([gameFilePath]) starts on, and that disc's path as the playlist names it. */
+    var initialDisk: Int = 0
+    var initialDiskPath: String? = null
 }
 
 enum class ViewportAlignment(val value: Int) {

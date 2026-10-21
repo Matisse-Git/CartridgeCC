@@ -45,6 +45,19 @@ with NDK r26b's clang 17 at API 21; this one uses NDK 27.2's clang 18 at API 21.
 
 Every later change to this module is the project's own and is described in its commit and ADR.
 
+## Games of several discs (ADR 0032)
+
+- `Environment` answers `RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION` with 1 and takes
+  `RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE`. The extended interface's first seven functions are copied into
+  an original `retro_disk_control_callback`, so `availableDisks`, `currentDisk` and `changeDisk` are unchanged and
+  work with either interface. Cores that ask for the version (PCSX ReARMed, Beetle Saturn, Flycast) now register the
+  extended interface; ARMSX2 and Dolphin, which only register it, are now heard.
+- `LibretroDroid.setInitialDisk(index, path)` (JNI, `LibretroDroid::setInitialDisk`) calls the core's
+  `set_initial_image`. `GLRetroViewData.initialDisk`/`initialDiskPath` make `GLRetroView` call it just before it loads a
+  game from a path, so a playlist starts on the disc asked for. A core without the extended interface ignores it and
+  starts on its first disc.
+- The host's API is otherwise unchanged.
+
 ## Shader presets (ADR 0027, step 2)
 
 - `ShaderConfig.Preset` and `ShaderPreset` (Kotlin), `ShaderManager::Type::SHADER_PRESET` and a

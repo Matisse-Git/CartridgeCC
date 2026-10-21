@@ -1,5 +1,57 @@
 # Tests and actual results
 
+## Games of several discs — 2026-10-20 (ADR 0032)
+
+Host: both APKs build, lint has 0 errors and no new warnings, `tools/test_assets.py` passes, and 155 JVM
+tests pass (10 new). `DiscSetTest` covers disc numbers and titles from names, playlists with `\r\r\n` line
+ends and paths elsewhere ignored, a playlist named without its discs' region, sets grouped by name only, a
+set that skips a disc, ambiguous numbers, mixed consoles and identical content left separate, and a playlist
+claiming its discs before the names do. `DiscSessionTest` covers a start on the disc asked for and otherwise
+on the disc last in the drive, Change Disc only from the pause menu and only to a disc that exists, the badge
+naming the disc by its number for two seconds, the disc remembered, and one Undo of a hand change.
+
+On the RP5 (Android 13, `RP5_V1.0.0.189_20251128_174732_user`, serial bb28de36), `DiscDeviceTest`
+(`-Suite MultiDisc`), OK (3 tests), with discs made from the original PS1 probe, each with a mark of its own:
+
+- A folder with a playlist set and a name set scans to two games, not four. The rescan reports them once each.
+  Details lists each disc's own file. Separating a set by hand survives a rescan, and Undo puts it back. A disc
+  added by hand gives the game its card and keeps its own, and a scan leaves the hand grouping alone. A backup
+  restores the discs, and one without them (version 1) restores four games.
+- A version 7 library with the second disc hidden, as the owner's was: after the migration and a scan the hidden
+  disc is part of its game, and separating hides it again.
+- PCSX ReARMed, through the production interface: Details' Disc 2 row starts the game on disc 2, from the
+  generated playlist. Change Disc puts disc 1 in, the game goes on drawing and the badge says *Disc 1*. A quick
+  save on disc 1, a change to disc 2 and a quick load bring disc 1 back. The game's one card is written and disc 2
+  has none. The next start is on the disc last in the drive. The engine's log shows its own `switching to disk`
+  for each change.
+
+The owner's own sets, each joined in `RealGameCheck`'s isolated test library (`-e discs`, `-e disc`,
+`-e change`). The owner's library and saves were not changed, and the saves of all nine discs were compared
+byte for byte afterwards:
+
+| Set | What was done | What it did |
+|---|---|---|
+| Four discs, with an `.m3u` | Started on disc 3; Change Disc to disc 2 at 15 s; quick save and quick load at 22–25 s; a real sleep at 32 s | Title screen on disc 3; after the change the opening film played; the state kept disc 2; after the sleep it came back from its checkpoint on disc 2 and ran on |
+| Two discs, no playlist | Started on disc 2; Change Disc to disc 1 at 12 s | Disc 2's logo, then the title screen, which held still from then on, as titles do |
+| Three discs, with an `.m3u` | Started on disc 1; Change Disc to disc 3 at 12 s, during the opening film | The film stopped on its frame: it was being read from the disc that left the drive, as opening the lid would stop it |
+
+Regression on the same device and build: `UxTourTest`, `SaveStatesDeviceTest`, `Ps1DeviceTest`, `BackupDeviceTest`,
+`LibraryManagementTest`, `ProviderContractTest`, `ScrapeReviewTest`, `AdditionalSystemsTest`, `LargeDiscImportTest`,
+`ConsoleCoresTest`, `SaturnCoreTest`, `DreamcastCoreTest`, `Ps2CoreTest`, `GameCubeCoreTest`, `BrowseStabilityTest` and
+`SessionRecoveryTest` all pass (four older migration tests now open the database with every migration). In the first
+run `ConsoleCoresTest` crashed in Snes9x's `retro_load_game`: the SNES probe is 32 KiB and Snes9x reads its header at
+`data + 0xffc0`, past the end, which faults only when the next page is unmapped. It passed when run again. The host
+reports disc interface version 1 to every engine now, so one of the owner's games ran 20 s on each engine that
+registers a disc interface. Saturn: 60 pictures a second. Dreamcast: the game's own 30. PlayStation 2 and
+GameCube: 61. Sound was whole on all four and none was dropped, as before.
+
+Screenshots, looked at: `06b-details-discs`, `21d-change-disc`, `20e-disc-badge`, and `06-details` with the
+new File row.
+
+Not shown by anything: a game accepting the change at its own "insert disc 2" prompt. It needs a save near the
+end of a disc, and is the owner's to try. Saturn, Dreamcast, PlayStation 2 and GameCube sets are grouped but
+have no Change Disc; none was started from a playlist.
+
 ## Freeze and fast-forward — 2026-10-18 (ADR 0031)
 
 Host: both APKs build, lint has 0 errors and no new warnings, `tools/test_assets.py` passes, and 145 JVM

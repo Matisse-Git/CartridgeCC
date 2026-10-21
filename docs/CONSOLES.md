@@ -17,7 +17,7 @@ LibretroDroid on the emulator's own surface. No console here starts another app.
 |---|---|---|---|---|
 | Game Boy Advance | mGBA 0.10.5 | `.gba` | none | Playable. Verified with original programs and by the owner with games |
 | Game Boy, Game Boy Color | mGBA 0.10.5 | `.gb` `.gbc` | none | Playable. Verified with original programs |
-| PlayStation | PCSX ReARMed c8816799 | CUE+BIN folder, `.chd` `.pbp` `.iso`, PS-X `.exe` | BIOS optional (built-in stand-in runs only some games) | Playable. Verified with original programs; BIOS-backed games are the owner's check |
+| PlayStation | PCSX ReARMed c8816799 | CUE+BIN folder, `.chd` `.pbp` `.iso`, PS-X `.exe`; several discs as one game, `.m3u` | BIOS optional (built-in stand-in runs only some games) | Playable. Verified with original programs; BIOS-backed games are the owner's check. **Change Disc** tried with the owner's three multi-disc sets (ADR 0032) |
 | Super Nintendo | Snes9x 1.63 | `.sfc` `.smc` `.swc` `.fig` | none | **Playable. Verified with an original program**: picture, input, battery memory, state, restart |
 | Nintendo Entertainment System | FCEUmm 7a542dab | `.nes` `.unf` `.unif` | none | **Playable. Verified with an original program**, sound included |
 | Genesis / Mega Drive | Genesis Plus GX 393f70cd | `.md` `.gen` `.smd`; `.bin` in a Genesis folder | none | **Playable. Verified with an original program**, sound included |
@@ -59,6 +59,29 @@ for: US first (`(USA, Europe)` is US), then Europe, then Japan; `(World)` and an
 
 The case is a registry field (`media`, `europe`, `japan`) and changes nothing about how a game is stored
 or run. Sizes are approximate; see ASSET_PIPELINE.
+
+## Games of several discs (ADR 0032, 2026-10-20)
+
+The discs of one game are one shelf entry. They are found to belong together at each scan, folder by
+folder: first by an `.m3u` beside them, then by names that differ only in `(Disc N)`. The game is its first
+disc's record, so the saves, artwork and history that disc already had stay with it. It has one memory card
+that every disc uses. Details lists each disc with its file, and pressing one starts the game on it. Manage
+game can add a disc by hand, separate the discs, and use another disc's old memory card instead.
+
+| Console | Grouped on the shelf, one card, discs in Details | Change Disc in the pause menu |
+|---|---|---|
+| PlayStation | yes | **yes**: the engine is started from a playlist of the discs on the one chosen. Verified on the RP5 with the owner's sets of four, three and two discs |
+| Saturn | yes | not yet: the engine can, but no game has changed disc on the device. Each disc starts from Details |
+| Dreamcast | yes | not yet, as Saturn |
+| PlayStation 2, GameCube | yes | not yet: their engines offer only the extended disc interface, which the host now takes; no game has been tried |
+
+A PlayStation `.pbp` that holds several discs is one file and one game; Change Disc offers the discs the
+engine finds in it, and Details says how many there are once it has run.
+
+What is not known: whether a game accepts the change at its own "insert disc 2" prompt. Every change on
+the device so far was made at a title screen or in an opening film; that needs a save near the end of a
+disc, and is the owner's to try. Changing disc while a game plays a film from the disc stops that film,
+as opening the lid would.
 
 ## What "verified with an original program" covers
 
@@ -116,7 +139,8 @@ What is true today:
   demanding 3D games are not; nothing here measures it. The pinned fork's new binary translators for
   the SCU and SCSP signal processors (added upstream in September 2026, on by default there) are
   fixed off: interpreters first, speed-ups once they can be measured on the device.
-- Multi-disc games are separate entries; there is no disc change yet.
+- A multi-disc game is one game with one memory card (ADR 0032). There is no Change Disc yet: each disc
+  is started from the game's details.
 
 ## Dreamcast, PlayStation 2, GameCube
 
@@ -297,7 +321,8 @@ Still not shown by anything:
 - **A game is copied into private storage**, like every other. For a DVD that means the disc's size
   again: 4.4 GiB for a single-layer PlayStation 2 game. The import says so before it starts if the
   space is not there. An empty 2.2 GiB image was imported and listed in 4.7 s on the RP5.
-- One player. No disc change for multi-disc games; each disc is its own entry.
+- One player. A multi-disc game is one game (ADR 0032), with no Change Disc yet: each disc is started from
+  the game's details.
 - Shown in their retail case (ADR 0029).
 - **Leaving the app or sleeping.** Dreamcast is written to a checkpoint and restored from it, like
   the small consoles. PlayStation 2 and GameCube have nothing to restore from, so their game stays
@@ -370,7 +395,8 @@ also says: whether the pad has sticks (`analog`), whether the pad has to be plug
 (`emptyPorts`), which packaged data it unpacks (`data`), when the whole machine may be captured
 (`snapshots`: always, only while paused, or never), that it is unloaded on the thread it ran on
 (`draws`), and whether it can read a CUE sheet or is started from the sheet's first track
-(`sheets`).
+(`sheets`). `discs` says that the player may change disc during a game (ADR 0032); it is on only for
+PlayStation.
 
 Nothing else in the app names a console to decide behaviour. Adding one is: a core in
 `cpp/cores.cmake` through `cartridge_core()` (or, for an engine with a build of its own,

@@ -482,3 +482,20 @@ M6 portable backup: logical records and declared checksummed blobs, read-only st
 The configured input threshold is applied before generic UI repeat timing, avoiding a second fixed threshold. Console list focus uses Compose bring-into-view. Portable state records are core-bound with or without an automatic session. Process/stability diagnostics run only in instrumentation against an isolated DB and generated original game; they are not normal product flows.
 
 Resume-record IO finishes before the coordinator copies current state; a suspended receiver copy must not overwrite intervening render readiness. The scale regression recreates a 500-title grid eight times to cover this ordering.
+
+## Games of several discs (2026-10-20, ADR 0032)
+
+| Piece | Role |
+|---|---|
+| `domain/DiscSet` | `DiscNames` (disc number, shared base name, title without the tag), `Playlist` (reads any line end, follows only names in its own folder, writes the engine's list), `DiscSets.group` (playlist first, then names; never mixed consoles or an ambiguous number) |
+| `library/LibraryDatabase` v8 | `discs` (disc, game, number, origin, hidden before it joined), `separated_discs`, `games.disc` and `games.discCount` |
+| `library/RoomCollectionRepository` | groups at a scan, by hand (`addDisc`, `separateDiscs`) and from a backup through one `join`, which keeps only the game on the shelf and the focus on it; `undoDiscs` puts discs, separations, hidden entries and order back; the snapshot names a game without its disc tag and sums its discs' play |
+| `storage/DirectoryScanner` | after each folder: reads its playlists, groups, and counts a set as one game |
+| `storage/DiscCards` | the game's one memory card: taken from a disc when the game has none, replaced by a disc's on request with the old one kept in `saves/<id>.discs/` |
+| `emulation/LibretroEngine` | writes `files/playlists/<id>.m3u` and starts it on the chosen disc where `Core.discs`; reads the disc in the drive after loading and after every state; `changeDisc` and `loadDiscState` while paused |
+| `session/CollectionCoordinator` | `insert(disc)`, `changeDisc` (change, remember, resume, badge), the disc in the drive written at every change and when a game ends or is left |
+| `shell` | Details disc and File rows, Manage's disc and card rows, the pause menu's Change Disc and its sheet, states from a disc's own past |
+
+A disc's identity does not change when it joins a game: its record, private bundle, saves and index entries stay
+under its own content id. Only the game's id is used while it is played. A rescan lists a member disc's document
+under the disc's id, which `add` refuses to put on the shelf.

@@ -137,7 +137,7 @@ class LibraryManagementTest {
             schema.getJSONArray("setupQueries").let { setup -> repeat(setup.length()) { db.execSQL(setup.getString(it)) } }
             db.execSQL("INSERT INTO collection_state VALUES (0,0)"); db.execSQL("INSERT INTO slots VALUES (0,NULL)"); db.version = 4
         }
-        val database = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(LibraryDatabase.MIGRATION_4_5, LibraryDatabase.MIGRATION_5_6, LibraryDatabase.MIGRATION_6_7).build()
+        val database = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(*LibraryDatabase.MIGRATIONS).build()
         val treeFiles = File(context.filesDir, "m1-tree").apply { mkdirs() }
         val probe = File(context.filesDir, "cartridge-probe.gba").readBytes()
         repeat(6) { File(treeFiles, "g$it.gba").writeBytes(probe + byteArrayOf((it + 40).toByte())) }

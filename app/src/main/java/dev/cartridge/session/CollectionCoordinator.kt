@@ -48,6 +48,10 @@ data class CollectionState(
      * loading pause and a core's blank first frames are never seen. It opens on a picture, not on a promise.
      */
     val curtain: Boolean = false,
+    /** The number of the disc just put in the drive, shown on the game for a moment by `ui/GameBadge` (ADR 0032). */
+    val discBadge: Int? = null,
+    /** The game whose last disc change by hand can be undone. */
+    val discUndo: String? = null,
 ) {
     val selectedGame get() = slots[selection.index]
     val title get() = selectedGame?.title ?: if (allGames.isNotEmpty()) "No matching games" else "Your collection is empty"
@@ -62,6 +66,8 @@ data class CollectionState(
 
 /** How long the focus must rest before it is written to the library. */
 private const val FOCUS_SETTLE_MS = 400L
+/** How long a changed disc's number stays on the game. */
+private const val DISC_BADGE_MS = 2_000L
 
 /** Main-thread ports return only after the old GPU owner has synchronously detached/flushed. */
 interface RendererHandoff {
@@ -116,6 +122,8 @@ class CollectionCoordinator(
     private var resumeAfterBackground = false
     private val shelfFocus = initialShelfFocus.toMutableMap()
     private var launchTarget: LibraryGame? = null
+    private var discUndo: DiscUndo? = null
+    private var badgeJob: Job? = null
 
     init {
         observers += scope.launch {
@@ -410,7 +418,8 @@ class CollectionCoordinator(
     fun dismissMessage() { if (!destroyed && state.value.message != null) mutableState.value = state.value.copy(message = null) }
     fun dismissLaunchFailure() { if (!destroyed && state.value.launchFailure != null) mutableState.value = state.value.copy(launchFailure = null) }
 
-    fun insert() {
+    /** Starts the focused game, on its disc [disc] by its place in the game's discs, or on the disc last in the drive. */
+    fun insert(disc: Int? = null) {
         val selected = state.value
         if (!foreground || !selected.loaded || selected.screen != CollectionScreen.Library || !selected.rendererReady) return
         val game = selected.selectedGame ?: return
@@ -418,7 +427,7 @@ class CollectionCoordinator(
         runAction(isLaunch = true) {
             mutableState.value = state.value.copy(screen = CollectionScreen.Inserting, message = null, launchFailure = null)
             coroutineScope {
-                val request = async { repository.gameRequest(game) }
+                val request = async { repository.gameRequest(game, disc) }
                 if (!selected.reducedMotion) delay(dev.cartridge.domain.MediaMotion.INSERT_MS.toLong())
                 closeCurtain()
                 val readyRequest = request.await()
@@ -427,6 +436,9 @@ class CollectionCoordinator(
                 mutableState.value = state.value.copy(screen = CollectionScreen.Emulator)
                 playingId = game.id
                 engine.prepare(readyRequest)
+                // The disc a game of several was started on is in the drive, also where the engine cannot change discs.
+                if (readyRequest.discs.size > 1 && engine.status.value.state == SessionState.Running)
+                    try { repository.setDisc(game.id, readyRequest.disc, 0) } catch (failure: Exception) { if (failure is CancellationException) throw failure }
             }
             if (engine.status.value.state != SessionState.Running) error(engine.status.value.error ?: "The core did not start")
             renderers.awaitPicture()
@@ -501,6 +513,55 @@ class CollectionCoordinator(
             operation()
             if (resume && engine.status.value.state == SessionState.Paused) engine.resume()
             notify(message)
+        }
+    }
+    /** A paused game's drive gets [disc] (ADR 0032), and the game goes on with the disc's number on it for a moment. */
+    fun changeDisc(disc: Int) {
+        val status = engine.status.value
+        if (status.state != SessionState.Paused || disc !in 0 until status.discs) return
+        runAction {
+            if (disc != engine.status.value.disc) engine.changeDisc(disc)
+            rememberDisc()
+            engine.resume()
+            showDisc(disc)
+        }
+    }
+    /** A paused game continues from a state one of its discs made as a game of its own. */
+    fun loadDiscState(discId: String, name: String, disc: Int, resume: Boolean = false) {
+        if (engine.status.value.state != SessionState.Paused) return
+        runAction { engine.loadDiscState(discId, name, disc); rememberDisc(); if (resume) engine.resume(); notify("Loaded"); if (resume) showDisc(disc) }
+    }
+    private fun showDisc(disc: Int) {
+        badgeJob?.cancel()
+        val game = playingId?.let { id -> state.value.allGames.firstOrNull { it.id == id } }
+        mutableState.value = state.value.copy(discBadge = game?.discs?.getOrNull(disc)?.number ?: (disc + 1))
+        badgeJob = scope.launch { delay(DISC_BADGE_MS); mutableState.value = state.value.copy(discBadge = null) }
+    }
+    /** The disc in the drive is where the game starts next time. A failure to write it costs nothing but that. */
+    private suspend fun rememberDisc() {
+        val id = playingId ?: return
+        val status = engine.status.value
+        if (status.discs <= 0) return
+        try { repository.setDisc(id, status.disc, status.discs) } catch (failure: Exception) { if (failure is CancellationException) throw failure }
+    }
+    /** By hand (ADR 0032): [discId], a game of one disc, joins the focused game as one of its discs. */
+    fun addDisc(discId: String) = discChange("Disc added") { repository.addDisc(it.id, discId) }
+    /** By hand: each of the focused game's discs is a game of its own again. */
+    fun separateDiscs() = discChange("Discs separated") { repository.separateDiscs(it.id) }
+    fun undoDiscs() {
+        val undo = discUndo ?: return
+        libraryOperation {
+            repository.undoDiscs(undo); discUndo = null
+            mutableState.value = state.value.copy(discUndo = null)
+            show(undo.gameId); notify("Disc change undone")
+        }
+    }
+    private fun discChange(message: String, change: suspend (LibraryGame) -> DiscUndo) {
+        val game = state.value.selectedGame ?: return
+        libraryOperation {
+            discUndo = change(game)
+            mutableState.value = state.value.copy(discUndo = game.id)
+            show(game.id); notify(message)
         }
     }
     fun configureGame(options: Map<String, String>, applied: () -> Unit) {
@@ -626,6 +687,7 @@ class CollectionCoordinator(
         val covered = foreground && (hadSession || state.value.curtain)
         if (covered && animate) closeCurtain()
         playJob?.cancel(); savePlay(false); playActive = false
+        rememberDisc()
         engine.stop()
         if (sessionStore != null && message == null && animate && engine.status.value.state == SessionState.Idle) {
             withContext(NonCancellable + Dispatchers.IO) { sessionStore.clear() }
@@ -686,6 +748,7 @@ class CollectionCoordinator(
                         try { engine.pause(); engine.checkpointSession() }
                         catch (failure: Exception) { if (failure is CancellationException) throw failure; checkpointFailure = failure }
                         playJob?.cancel(); savePlay(false); playActive = false
+                        rememberDisc()
                         engine.stop(); playingId = null
                         if (engine.status.value.state == SessionState.Error) {
                             checkpointFailure = IllegalStateException(engine.status.value.error)

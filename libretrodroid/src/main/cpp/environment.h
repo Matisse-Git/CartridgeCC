@@ -85,6 +85,8 @@ public:
     retro_hw_context_reset_t getHwContextDestroy() const;
 
     struct retro_disk_control_callback* getRetroDiskControlCallback() const;
+    /** The extended interface, when the core gave it (Cartridge, ADR 0032): it can start a game on a chosen disc. */
+    struct retro_disk_control_ext_callback* getRetroDiskControlExtCallback() const;
 
     int getPixelFormat() const;
     bool isUseHwAcceleration() const;
@@ -120,6 +122,9 @@ private:
     retro_hw_context_reset_t hw_context_reset = nullptr;
     retro_hw_context_reset_t hw_context_destroy = nullptr;
     struct retro_disk_control_callback *retro_disk_control_callback = nullptr;
+    struct retro_disk_control_ext_callback *retro_disk_control_ext_callback = nullptr;
+    /** The first seven functions of the extended interface, which are the original interface. */
+    struct retro_disk_control_callback disk_control_from_ext {};
 
     std::string savesDirectory;
     std::string systemDirectory;

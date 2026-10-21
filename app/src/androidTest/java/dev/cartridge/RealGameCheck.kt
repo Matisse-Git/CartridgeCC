@@ -33,6 +33,10 @@ import java.util.concurrent.TimeUnit
  *   -e class dev.cartridge.RealGameCheck -e game <hash prefix | PS2 | DREAMCAST | GAMECUBE> [-e pick 0]
  *   [-e seconds 30] [-e every 5] [-e keys 12:BUTTON_START,15:BUTTON_A] [-e stacks 20,21] [-e sleep 20]
  *   [-e shader crt/crt-royale.glslp] [-e check 10:crt/crt-royale.glslp] [-e full true] [-e fast 10] [-e sleepWith fast|frozen]
+ *   [-e discs <hash prefix>,<hash prefix>] [-e disc 1] [-e change 20:0]
+ *
+ * `discs` names the game's other discs, which join it in the test library as they would by hand (ADR 0032); `disc`
+ * starts it on that disc by its place, and `change` opens the pause menu at that second and puts that disc in the drive.
  *
  * `shader` starts the game with a preset from the installed shader library (ADR 0027); `check` pauses the
  * game at that second, checks a preset in its own GL context as Settings will, and resumes it. `fast` counts the
@@ -103,6 +107,10 @@ class RealGameCheck {
         // A second at which the quick save combo is held during play, and three seconds later the quick load combo (ADR 0028).
         val quick = arguments.getString("quick")?.toInt()
         val fast = arguments.getString("fast")?.toInt()
+        val others = arguments.getString("discs").orEmpty().split(',').filter { it.isNotBlank() }
+        val startDisc = arguments.getString("disc")?.toInt()
+        val changeAt = arguments.getString("change")?.substringBefore(':')?.toInt()
+        val changeTo = arguments.getString("change")?.substringAfter(':')?.toInt()
         val roms = File(context.filesDir, "roms")
         val system = GameSystem.entries.firstOrNull { it.name.equals(wanted, ignoreCase = true) }
         // Games, not this project's own probes: those are a few hundred kilobytes at most. A game named by its hash
@@ -149,13 +157,31 @@ class RealGameCheck {
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 scenario.onActivity { it.coordinator.addGame { LibraryGame(id, "Imported game", "content://$FIXTURE/none", system = console) } }
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.id == id }
-                ui.tool("insert").performClick()
+                // The game's other discs join it here as the owner would join them by hand; the owner's library is not touched.
+                val members = others.map { prefix ->
+                    roms.listFiles { file -> file.isDirectory && file.name.startsWith(prefix) && file.name.endsWith(".${console.extension}") }.orEmpty().single().name.substringBefore('.')
+                }
+                members.forEachIndexed { index, member ->
+                    scenario.onActivity { it.coordinator.addGame { LibraryGame(member, "Imported disc ${index + 2}", "content://$FIXTURE/none", system = console) } }
+                    await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.id == member }
+                }
+                if (members.isNotEmpty()) {
+                    scenario.onActivity { it.coordinator.reveal(id) }
+                    await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.id == id }
+                    members.forEach { member ->
+                        scenario.onActivity { it.coordinator.addDisc(member) }
+                        await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.discs?.any { disc -> disc.id == member } == true }
+                    }
+                    scenario.onActivity { android.util.Log.i(TAG, "$tag discs: ${it.coordinator.state.value.selectedGame!!.discs.joinToString { disc -> "${disc.number}=${disc.id.take(6)}" }}") }
+                }
+                if (startDisc != null) scenario.onActivity { it.coordinator.insert(startDisc) } else ui.tool("insert").performClick()
                 try { await(scenario, 45_000) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Running } }
                 catch (failure: Throwable) {
                     SaveBridge.dumpThreads()
                     scenario.onActivity { android.util.Log.e(TAG, "$tag did not start: ${it.engine.status.value} ${it.coordinator.state.value.launchFailure}") }
                     throw failure
                 }
+                scenario.onActivity { android.util.Log.i(TAG, "$tag started: disc ${it.engine.status.value.disc + 1} of ${it.engine.status.value.discs} in the engine") }
                 var last = LongArray(0); val began = System.nanoTime()
                 for (second in 1..seconds) {
                     Thread.sleep(1000); beat.set(System.nanoTime())
@@ -259,6 +285,20 @@ class RealGameCheck {
                         check(again > 0) { "The game did not go on after the freeze" }
                         last = stats(scenario, core)
                     }
+                    if (second == changeAt && changeTo != null) {
+                        // Change Disc from the pause menu, as the player does it (ADR 0032); the game must go on drawing.
+                        val from = frames(scenario, core)
+                        ui.onNodeWithTag("pause").performClick(); await(scenario, 60_000) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Paused }
+                        ui.onNodeWithTag("menu-6").performClick(); ui.waitUntil(5_000) { ui.shown("disc-$changeTo") }
+                        ui.onNodeWithTag("disc-$changeTo").performClick()
+                        await(scenario, 30_000) { !it.coordinator.state.value.busy && it.engine.status.value.state == SessionState.Running && it.engine.status.value.disc == changeTo }
+                        val badge = ui.shown("disc-badge")
+                        Thread.sleep(1500); beat.set(System.nanoTime())
+                        val to = frames(scenario, core)
+                        android.util.Log.i(TAG, "$tag t=$second changed to disc ${changeTo + 1}: badge=$badge, ${to - from} core frames since, ${frames(scenario, core) - to} in the next moment")
+                        check(to > from) { "The game did not go on after the disc change" }
+                        last = stats(scenario, core)
+                    }
                     if (second == sleep) {
                         val before = stats(scenario, core)
                         // -e sleepWith fast|frozen: the game is put down fast-forwarding or frozen, and must come back at normal speed.
@@ -325,7 +365,8 @@ class RealGameCheck {
                     last = now
                     var state = SessionState.Idle
                     scenario.onActivity { state = it.engine.status.value.state }
-                    val seen = if (second % every == 0 || second == 1) picture(scenario, File(shots, "$tag-${second.toString().padStart(3, '0')}.png")) else ""
+                    val seen = (if (second % every == 0 || second == 1) picture(scenario, File(shots, "$tag-${second.toString().padStart(3, '0')}.png")) else "") +
+                        (if (members.isNotEmpty() || console.core.discs) { var drive = ""; scenario.onActivity { drive = " disc=${it.engine.status.value.disc + 1}/${it.engine.status.value.discs}" }; drive } else "")
                     if (now.size >= 12) android.util.Log.i(TAG, "$tag t=$second $state runs=${delta[0]} core=${delta[1]} drawn=${delta[2]} repeated=${delta[3]} silent=${delta[4]} " +
                         "audioIn=${delta[5]} calls=${delta[6]} elsewhere=${delta[7]} largest=${now[8]} audioOut=${delta[9]} dropped=${delta.getOrElse(12) { 0 }} bound=${delta[10]} size=${now[11] shr 16}x${now[11] and 0xFFFF} $seen")
                     else android.util.Log.i(TAG, "$tag t=$second $state no counters $seen")

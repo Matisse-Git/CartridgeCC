@@ -123,6 +123,11 @@ enum class Core(
      * sound in the shim and has not been run faster on the device: it is offered only once a game shows it works.
      */
     val fastForward: Boolean = !draws,
+    /**
+     * The player may change the disc in the drive during a game (ADR 0032): the engine is started from a playlist of the
+     * game's discs and changes between them itself. On only once one of the owner's games has changed disc on the device.
+     */
+    val discs: Boolean = false,
 ) {
     Mgba("libmgba_libretro.so", "mgba-0.10.5-cartridge-memory-2", "Game Boy · Color · Advance", "mGBA 0.10.5", stateEnvelope = false),
     Pcsx("libpcsx_rearmed_libretro.so", "pcsx-c8816799-cartridge-1", "PlayStation", "PCSX ReARMed c8816799",
@@ -132,7 +137,8 @@ enum class Core(
         firmwareHelp = "Most games need the console's own BIOS. Without it only some will start.",
         // One configured private BIOS. PCSX identifies the region from the bytes, not from this name.
         firmwareAccepts = "a supported retail PS1 BIOS dump (SCPH-5500/5501/5502/1001/7001/101 or PSXONPSP660)",
-        fixed = mapOf("pcsx_rearmed_bios" to "auto", "pcsx_rearmed_memcard1" to "libretro", "pcsx_rearmed_memcard2" to "disabled")),
+        fixed = mapOf("pcsx_rearmed_bios" to "auto", "pcsx_rearmed_memcard1" to "libretro", "pcsx_rearmed_memcard2" to "disabled"),
+        discs = true),
     Snes9x("libsnes9x_libretro.so", "snes9x-1.63-cartridge-1", "Super Nintendo", "Snes9x 1.63"),
     Fceumm("libfceumm_libretro.so", "fceumm-7a542dab-cartridge-1", "Nintendo Entertainment System", "FCEUmm 7a542dab"),
     GenesisPlusGx("libgenesis_plus_gx_libretro.so", "gpgx-393f70cd-cartridge-1", "Genesis · Master System · Game Gear", "Genesis Plus GX 393f70cd"),

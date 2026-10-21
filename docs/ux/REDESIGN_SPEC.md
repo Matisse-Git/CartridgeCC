@@ -249,6 +249,6 @@ Assets, materials, lighting and the bounded instance pools are unchanged. Added 
 
 ## Capability limits (not offered in the interface)
 
-Multi-disc games and `.m3u` playlists, rewind, fast-forward, cheats, achievements, analog or
+Rewind, cheats, achievements, analog or
 DualShock pads, per-button remapping, gameplay touch controls, themes other than dark, and UI
 sounds beyond insert/eject. Each waits on the emulator adapter, not on the interface.

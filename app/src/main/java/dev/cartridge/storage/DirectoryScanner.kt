@@ -8,7 +8,10 @@ import dev.cartridge.library.DirectoryRepository
 import dev.cartridge.library.LibraryGame
 import dev.cartridge.library.IndexedDocument
 import dev.cartridge.domain.ConsoleCatalog
+import dev.cartridge.domain.DiscFile
+import dev.cartridge.domain.DiscSets
 import dev.cartridge.domain.FolderHint
+import dev.cartridge.domain.Playlist
 import dev.cartridge.domain.FoundFile
 import dev.cartridge.domain.GameSystem
 import kotlinx.coroutines.*
@@ -94,6 +97,18 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
     private data class Listed(val id: String, val name: String, val bytes: Long, val modified: Long)
     private companion object { const val SHEET_BYTES = 262144 }
 
+    /** A playlist's text, or nothing if it is too large or cannot be read: it only ever puts discs together. */
+    private fun readPlaylist(uri: Uri, bytes: Long): String? {
+        if (bytes > Playlist.MAX_BYTES) return null
+        return try {
+            resolver.openInputStream(uri)?.use { input ->
+                val buffer = ByteArray(Playlist.MAX_BYTES + 1); var filled = 0
+                while (filled < buffer.size) { val count = input.read(buffer, filled, buffer.size - filled); if (count < 0) break; filled += count }
+                if (filled > Playlist.MAX_BYTES) null else String(buffer, 0, filled, Charsets.UTF_8)
+            }
+        } catch (failure: Exception) { if (failure is CancellationException) throw failure; null }
+    }
+
     /**
      * What the sheets of one folder name, read only where it can matter: when the folder holds a sheet and also
      * a file that would otherwise be imported on its own.
@@ -131,9 +146,19 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
         val addedSystems = mutableMapOf<GameSystem, Int>(); val knownSystems = mutableMapOf<GameSystem, Int>(); val others = mutableMapOf<String, Int>()
         val errors = mutableListOf<String>()
         fun failure(message: String) { failed++; if (errors.size < 8) errors += message }
-        fun listed(game: LibraryGame, new: Boolean) {
+        // This folder's games by the name they have in it, and whether each was new, for putting discs together (ADR 0032).
+        val folderGames = mutableListOf<DiscFile>(); val counted = mutableMapOf<String, Boolean>()
+        fun listed(game: LibraryGame, new: Boolean, name: String) {
+            folderGames += DiscFile(game.id, name, game.system)
+            counted.putIfAbsent(game.id, new)
             if (new) { added++; addedSystems[game.system] = (addedSystems[game.system] ?: 0) + 1; if (firstAdded == null) firstAdded = game.id }
             else { duplicates++; knownSystems[game.system] = (knownSystems[game.system] ?: 0) + 1 }
+        }
+        /** A disc that joined another game is that game: it is neither added nor already known in its own right. */
+        fun uncount(id: String, system: GameSystem) {
+            val new = counted.remove(id) ?: return
+            if (new) { added--; addedSystems[system] = (addedSystems[system] ?: 1) - 1; if (firstAdded == id) firstAdded = null }
+            else { duplicates--; knownSystems[system] = (knownSystems[system] ?: 1) - 1 }
         }
         val importer = RomImporter(resolver, roms)
         while (pending.isNotEmpty()) {
@@ -158,6 +183,8 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
                     }
                 }
                 val tracks = sheetTracks(tree, listing, hint)
+                folderGames.clear()
+                val playlistTexts = mutableMapOf<String, String>()
                 for ((documentId, name, bytes, modified) in listing) {
                     coroutineContext.ensureActive()
                     // A file a sheet in this folder names is that disc's track, imported with it.
@@ -167,7 +194,7 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
                         // A disc already in the library keeps its index entry even if its folder is named for another console.
                         is FoundFile.OtherConsole -> if (indexed[uri.toString()] == null) { others[found.console] = (others[found.console] ?: 0) + 1; continue }
                         FoundFile.Archive -> { archives++; continue }
-                        FoundFile.Playlist -> { playlists++; continue }
+                        FoundFile.Playlist -> { readPlaylist(uri, bytes)?.let { playlistTexts[name] = it }; continue }
                         FoundFile.Ignored -> continue
                         is FoundFile.Game -> Unit
                     }
@@ -181,7 +208,7 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
                             if (!verifyAll && old != null && bytes > 0 && modified > 0 &&
                                 !GameSystem.sheet(name) && old.bytes == bytes && old.modified == modified && cached?.isFile == true && cached.length() == bytes) {
                                 val game = LibraryGame(old.gameId, name.substringBeforeLast('.'), uri.toString(), system = checkNotNull(cachedSystem))
-                                listed(game, repository.add(game)); games++
+                                listed(game, repository.add(game), name); games++
                                 directories.index(old.copy(missing = false)); unchanged++
                                 continue
                             }
@@ -198,7 +225,7 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
                                 require(matches.size <= 1) { "Ambiguous CUE track: $track" }; matches.singleOrNull()
                             }) { taskContext.ensureActive() }
                             val entry = LibraryGame(game.request.id, game.title, uri.toString(), system = game.request.system)
-                            listed(entry, repository.add(entry)); games++
+                            listed(entry, repository.add(entry), name); games++
                             directories.index(IndexedDocument(tree.toString(), uri.toString(), game.request.id, bytes, modified))
                         } catch (exception: Exception) {
                             if (exception is CancellationException) throw exception
@@ -207,6 +234,13 @@ class DirectoryScanner(private val resolver: ContentResolver, private val roms: 
                             failure("$name: ${exception.message ?: "Cannot import this file"}")
                         }
                     }
+                }
+                // The discs of one game, by a playlist beside them or by their names, are listed as that game (ADR 0032).
+                val groups = DiscSets.group(folderGames, playlistTexts)
+                playlists += (playlistTexts.keys - groups.mapNotNull { it.playlist }.toSet()).size
+                if (groups.isNotEmpty()) {
+                    val systems = folderGames.associate { it.id to it.system }
+                    repository.groupDiscs(groups).forEach { uncount(it, systems.getValue(it)) }
                 }
             } catch (exception: Exception) {
                 if (exception is CancellationException) throw exception

@@ -142,7 +142,7 @@ class AdditionalSystemsTest {
             db.execSQL("INSERT INTO games (id,title,sourceUri,labelFit,labelQuarterTurns,favorite,playMs) VALUES ('${"f".repeat(64)}','Original legacy','content://fixture','Fit',0,1,1234)")
             db.execSQL("INSERT INTO collection_state VALUES (0,0,'Added',0,'')"); db.execSQL("INSERT INTO slots VALUES (0,'${"f".repeat(64)}')"); db.version = 6
         }
-        val database = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(LibraryDatabase.MIGRATION_6_7).build()
+        val database = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(*LibraryDatabase.MIGRATIONS).build()
         try {
             val repository = RoomCollectionRepository(context, database)
             val legacy = repository.initialize().slots.single()!!
