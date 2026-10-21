@@ -52,7 +52,7 @@ private fun formatTime(context: Context, style: ClockStyle): String = when (styl
 
 /**
  * Real device time and battery. Android broadcasts drive it: one tick a minute, clock/zone/locale changes,
- * and battery changes. Nothing polls, and the receiver exists only while the owner is STARTED.
+ * and battery changes. Nothing polls, and the receiver exists only while the lifecycle owner is STARTED.
  */
 @Composable fun rememberDeviceStatus(style: ClockStyle): DeviceStatus {
     val context = LocalContext.current
