@@ -22,7 +22,7 @@ is generated locally, not shipped as a ROM in the APK.
 This was an empty directory; no existing subsystem was rewritten.
 
 - Root: `.gitignore`, `.gitattributes`, Gradle settings/build/properties, wrapper scripts/JAR/properties,
-  `README.md`, `AGENTS.md`. Local SDK/NDK/Gradle caches and `local.properties` are ignored.
+  `README.md`. Local SDK/NDK/Gradle caches and `local.properties` are ignored.
 - `app/build.gradle.kts`, manifests/resources and `app/src/main/cpp/CMakeLists.txt`.
 - `app/src/main/java/dev/cartridge/MainActivity.kt`: shell/UI and surface coordinator.
 - `domain/SessionState.kt`, `domain/Navigation.kt`: lifecycle contract, selection, repeat and spring.
@@ -38,7 +38,7 @@ This was an empty directory; no existing subsystem was rewritten.
   preserved third-party license texts under `docs/licenses/`.
 
 USB-validation follow-up modified the debug probe, SurfaceHandoffTest and original diagnostic assembly;
-added `tools/Test-Device.ps1`; updated README/AGENTS and product/architecture/roadmap/pipeline/testing/
+added `tools/Test-Device.ps1`; updated README and product/architecture/roadmap/pipeline/testing/
 licensing/technical-plan/report documentation; added `docs/LABEL_SCRAPING.md`. Production renderer and
 emulator code passed the device proof without a rewrite. Personal logs/screenshots, ROM working copies
 and tool/build outputs remain ignored.

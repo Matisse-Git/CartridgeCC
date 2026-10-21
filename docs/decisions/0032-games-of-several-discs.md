@@ -9,7 +9,7 @@ memory card, states, history and artwork hung off that id. A two-disc game was t
 memory cards. Disc 2 could not see disc 1's save, so it could not be played at all. The owner had hidden
 discs 2 to 4 of each set by hand. `.m3u` playlists were counted and skipped. The scanner ignored the disc
 control LibretroDroid 0.14.0 already offered (`changeDisk`, `availableDisks`, `currentDisk`, on the
-original Libretro interface), and AGENTS.md forbade showing multi-disc as a capability.
+original Libretro interface), and the project rules forbade showing multi-disc as a capability.
 
 The owner's library has four sets on the RP5. Three are PlayStation: one of four discs with an `.m3u`
 named without the region and written with `\r\r\n` line ends, one of three with an `.m3u`, and one of two

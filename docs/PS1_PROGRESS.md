@@ -106,7 +106,7 @@ The normal build fetches and checks the pinned archive; no separately downloaded
   `tools/generate_disc.py`, `tools/test_assets.py` and `tools/validate_assets.cjs`.
 - Tests: `Ps1StorageTest.kt`, `Ps1DeviceTest.kt`, `AdditionalSystemsTest.kt`, `ProviderLiveTest.kt`,
   debug fixture providers, `tools/probe/generate_ps1_probe.py` and `tools/Test-Device.ps1`.
-- Records: README/AGENTS/gitignore, this report, product/architecture/roadmap/asset/testing/backup/license
+- Records: README/gitignore, this report, product/architecture/roadmap/asset/testing/backup/license
   documents, ADR 0017 and five upstream dependency licence texts.
 
 Kotlin paths above are relative to `app/src/main/java/dev/cartridge/`; tests are in their corresponding

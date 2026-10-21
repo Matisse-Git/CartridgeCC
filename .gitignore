@@ -31,3 +31,11 @@ __pycache__/
 *.cartridgepack
 # Source models for tools/import_models.py: large, and their textures carry commercial game labels.
 /assets/models/
+# AI assistant and private planning files: these should NEVER be going to git.
+AGENTS.md
+CLAUDE.md
+CLAUDE.local.md
+**/CLAUDE.md
+.claude/
+.mcp.json
+STRATEGY.md

@@ -35,7 +35,7 @@ DirectoryScanner, CollectionCoordinator, MainActivity and ControllerRouter conne
 focus, optional panels, controller routing and picker recovery. DebugCollectionActivity and the
 read-only FixtureTreeProvider retain isolated test databases and original fixtures.
 LibraryQueryTest, CoordinatorTest, LibraryManagementTest, migration tests and Test-Device.ps1 cover
-the new behavior. README/AGENTS/product/architecture/roadmap/testing/license notes and ADR 0009 align.
+the new behavior. README/product/architecture/roadmap/testing/license notes and ADR 0009 align.
 No dependency versions or production native/3D assets changed.
 
 ## Verification

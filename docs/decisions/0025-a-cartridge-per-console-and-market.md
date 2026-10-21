@@ -45,7 +45,7 @@ game.
 The name was chosen over the dump's own country byte because it needs nothing stored: the byte
 would have to be read at import and kept in Room and in backups, for a decision that is only about
 which plastic to draw. The name is also what the owner sees and can correct. This is presentation
-only (AGENTS: "media is presentation only"): identity, core, saves, options and scraping never ask
+only ("media is presentation only"): identity, core, saves, options and scraping never ask
 which shape a game has, and a test holds every other console to its one shape whatever a game is
 called.
 

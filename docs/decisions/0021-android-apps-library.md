@@ -86,7 +86,7 @@ would otherwise never be told. There is no other button, tab or menu row.
   both must be reachable from `dismiss`, which both call.
 - Apps lists whatever has a launcher entry, including other emulators and front ends. Starting one
   is the player starting an Android app. It is not Cartridge playing a game with it: games are
-  still only ever run by the embedded cores (README, AGENTS).
+  still only ever run by the embedded cores (README).
 - Screenshots and interface tests use invented apps (`FixtureAppSource`), so nothing committed
   shows what the owner has installed. One device test uses the real service and records counts only.
 - With `<queries>` in place, other packages' launcher activities become visible to

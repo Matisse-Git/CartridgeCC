@@ -21,7 +21,7 @@ Major file groups (paths relative to repository):
 | Backup | `storage/BackupStore.kt`, `BackupPreferences.kt`, `BoundedArchive.kt`, `LabelStore.kt` |
 | Physical media | Versioned GLB/material/lighting generators and assets; `rendering/` bounded pool/labels/layout integration |
 | Verification | Host/domain/store tests; RP5 `ConsoleEnvironmentTest`, `SessionRecoveryTest`, `BackupDeviceTest`, `ProcessRecoveryTest`, `ConsoleStabilityTest`; `Test-Device.ps1`, `Test-ProcessRecovery.ps1`, `Test-Stability.ps1` |
-| Documentation | README, AGENTS, PRODUCT, ARCHITECTURE, ROADMAP, TESTING, LICENSING; M3/M4/M5/M6 progress; BACKUP_FORMAT, CONSOLE_RELIABILITY and ADRs 0009–0016 |
+| Documentation | README, PRODUCT, ARCHITECTURE, ROADMAP, TESTING, LICENSING; M3/M4/M5/M6 progress; BACKUP_FORMAT, CONSOLE_RELIABILITY and ADRs 0009–0016 |
 
 Java/Kotlin package paths above are under `app/src/main/java/dev/cartridge`; device tests are under `app/src/androidTest/java/dev/cartridge` and command helpers under `tools`. Small local commits preserve each increment. No remote push or public release was performed.
 

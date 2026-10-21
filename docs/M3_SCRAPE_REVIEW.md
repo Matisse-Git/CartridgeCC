@@ -38,7 +38,7 @@ CollectionRepository / RoomCollectionRepository / LibraryDatabase / schema 6 sto
 CollectionCoordinator, MainActivity, LibraryPanels and DebugCollectionActivity connect real preview,
 filtered view restoration, Details undo and isolated preferences. Host queue/preferences/coordinator
 and device contract/resume/review tests cover these guarantees; Test-Device adds a Review suite.
-README, AGENTS, product/architecture/roadmap/licensing/testing and ADR 0010 describe the increment.
+README, product/architecture/roadmap/licensing/testing and ADR 0010 describe the increment.
 All dependency versions, native core/saves and production meshes/materials remain unchanged.
 
 ## Verification
