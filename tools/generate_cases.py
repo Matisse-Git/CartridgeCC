@@ -4,7 +4,7 @@ Run from the repository root with Blender 4.2 or newer (validated with 5.2.2 LTS
 
     blender -b --factory-startup --disable-autoexec --python tools/generate_cases.py
 
-ADR 0019 forbids a generator for the objects converted from the owner's downloads. This one is the exception
+ADR 0019 forbids a generator for the objects converted from the user's downloads. This one is the exception
 ADR 0029 allows: no usable case model could be downloaded without an account, and a case is a simple shape
 whose look is its cover. It writes only `*_case.glb` and `*_box.glb`, never a file `import_models.py` writes.
 

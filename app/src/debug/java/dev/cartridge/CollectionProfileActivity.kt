@@ -12,7 +12,7 @@ import dev.cartridge.rendering.CollectionAssets
 import dev.cartridge.domain.CollectionLayout
 import kotlinx.coroutines.*
 
-/** Original study labels only. Measures the real renderer without touching the owner's library. */
+/** Original study labels only. Measures the real renderer without touching the user's library. */
 class CollectionProfileActivity : ComponentActivity() {
     internal var surface: CartridgeSurface? = null
     @Volatile var startedNanos = 0L

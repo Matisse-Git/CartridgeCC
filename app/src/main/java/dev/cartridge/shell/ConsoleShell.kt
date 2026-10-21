@@ -102,7 +102,7 @@ class ConsoleShell(
     /** Where the shader library is installed and updated (ADR 0027): `library` inside it is what presets come from. */
     private val shaderBase: File = File(context.filesDir, "shaders"),
     private val shaderUpdater: ShaderLibraryUpdater = ShaderLibrary.updater(context, shaderBase),
-    /** Where artwork comes from and the owner's ScreenScraper login (ADR 0029); none in tests of the shell alone. */
+    /** Where artwork comes from and the user's ScreenScraper login (ADR 0029); none in tests of the shell alone. */
     internal val artwork: dev.cartridge.scraping.ArtworkSettings? = null,
     internal val autoScraper: dev.cartridge.scraping.AutoScraper? = null,
 ) {
@@ -161,9 +161,9 @@ class ConsoleShell(
     /** Bumped whenever a stored option changes, so pages built from [options] recompose. */
     var optionsRevision by mutableIntStateOf(0); private set
     var homeEnabled by mutableStateOf(host.homeEnabled); private set
-    /** Private names of the console files the owner has added. */
+    /** Private names of the console files the user has added. */
     var firmwarePresent by mutableStateOf<Set<String>>(emptySet()); private set
-    /** The console whose file the owner is choosing. Lost with the Activity; the file then identifies itself. */
+    /** The console whose file the user is choosing. Lost with the Activity; the file then identifies itself. */
     private var firmwareFor: Core? = null
     var roots by mutableStateOf<List<DirectoryRecord>>(emptyList()); private set
     var hidden by mutableStateOf<List<LibraryGame>>(emptyList()); private set
@@ -203,9 +203,9 @@ class ConsoleShell(
     private fun refreshFirmware() {
         scope.launch { firmwarePresent = withContext(Dispatchers.IO) { Core.entries.flatMap { firmware().present(it) }.map { it.file }.toSet() } }
     }
-    /** A console can start its games: it needs no file of the owner's, has a built-in stand-in, or has what it needs. */
+    /** A console can start its games: it needs no file of the user's, has a built-in stand-in, or has what it needs. */
     fun firmwareReady(core: Core) = !core.firmwareRequired || core.firmware.any { it.file in firmwarePresent }
-    /** The owner's own file is in place, so nothing about this console is running on a stand-in. */
+    /** The user's own file is in place, so nothing about this console is running on a stand-in. */
     fun firmwareAdded(core: Core) = core.firmware.any { it.file in firmwarePresent }
     private val state get() = coordinator.state.value
     private val status get() = engine.status.value
@@ -357,7 +357,7 @@ class ConsoleShell(
         if (state.allGames.isEmpty()) addGames() else start()
     }
     /**
-     * A console that needs its owner's file explains that here, instead of failing once the game has left the shelf.
+     * A console that needs the user's file explains that here, instead of failing once the game has left the shelf.
      * [disc] starts a game of several discs on that one (ADR 0032); otherwise on the disc last in the drive.
      */
     private fun start(disc: Int? = null) {

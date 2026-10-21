@@ -100,7 +100,7 @@ class ShaderPresetTest {
             results.filterValues { it != null }.entries.joinToString("\n") { "${it.key}: ${it.value}" }
         File(context.filesDir, "diagnostics").apply { mkdirs() }.resolve("shader-check.txt").writeText(report)
         android.util.Log.i(TAG, report.lineSequence().take(2).joinToString(" | "))
-        // The presets the owner's checks rely on (ADR 0027).
+        // The presets the user's checks rely on (ADR 0027).
         for (needed in listOf("crt/crt-royale.glslp", "handheld/lcd-grid-v2-gba-color-motionblur.glslp")) {
             if (needed in results) assertEquals("$needed: ${results[needed]}", null, results[needed])
         }

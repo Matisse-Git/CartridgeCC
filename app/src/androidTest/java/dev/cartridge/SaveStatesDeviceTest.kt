@@ -138,7 +138,7 @@ class SaveStatesDeviceTest {
                 // A new save leaves the menu open, on the save just made.
                 scenario.onActivity { assertEquals(Destination.SaveStates, it.shell.top); assertEquals(SessionState.Paused, it.engine.status.value.state) }
 
-                // Loading one asks first, then returns to the game, as it does until the owner says otherwise.
+                // Loading one asks first, then returns to the game, as it does until the user says otherwise.
                 scenario.onActivity { it.shell.home() }
                 ui.onNodeWithTag("menu-0").performClick(); running()
                 button(); shows(first)

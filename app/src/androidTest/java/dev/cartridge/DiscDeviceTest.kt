@@ -85,7 +85,7 @@ class DiscDeviceTest {
         val again = scanner.scan(tree, {})
         assertEquals(0, again.added); assertEquals(2, again.duplicates); assertEquals(2, repository.initialize().slots.filterNotNull().size)
 
-        // Details: each disc's own file, by the name it has in the owner's folder.
+        // Details: each disc's own file, by the name it has in the user's folder.
         val facts = repository.facts(probe.id)
         assertEquals(listOf("Probe (Disc 1).cue", "Probe (Disc 2).cue"), facts.files.map { it.file })
         assertTrue(facts.files.all { it.cached && it.tracks == 1 && it.bytes >= 150528 })
@@ -112,7 +112,7 @@ class DiscDeviceTest {
             assertEquals(listOf(1, 2), joined.discs.map { it.number }); assertTrue(joined.discs.all { it.manual })
             assertArrayEquals(card, saves.read(other.id, "sram")); assertArrayEquals(card, saves.read(loose.id, "sram"))
             scanner.scan(tree, {})
-            assertTrue("A scan leaves the owner's grouping as it is", repository.initialize().slots.filterNotNull().single { it.id == other.id }.discs.all { it.manual })
+            assertTrue("A scan leaves the user's grouping as it is", repository.initialize().slots.filterNotNull().single { it.id == other.id }.discs.all { it.manual })
         } finally { File(context.filesDir, "saves/${other.id}.sram").delete(); File(context.filesDir, "saves/${loose.id}.sram").delete() }
 
         // A backup brings the discs back; one from before discs (version 1) brings each disc back as a game.
@@ -124,7 +124,7 @@ class DiscDeviceTest {
     }
 
     @Test fun aLibraryFromBeforeDiscsKeepsItsHiddenDiscAndGetsItBackOnSeparate() = runBlocking {
-        // A version 7 library, as the owner's is: every disc a game, the second one hidden by hand.
+        // A version 7 library, as the user's is: every disc a game, the second one hidden by hand.
         val name = "m1-test-${UUID.randomUUID()}"; databases += name
         val file = context.getDatabasePath("$name.db").also { it.parentFile!!.mkdirs() }
         val schema = InstrumentationRegistry.getInstrumentation().context.assets.open("dev.cartridge.library.LibraryDatabase/7.json")

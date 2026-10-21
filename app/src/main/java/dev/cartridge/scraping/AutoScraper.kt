@@ -111,7 +111,7 @@ class AutoScraper(
     private enum class Outcome { Applied, Unchanged, NotFound, Failed }
 
     private suspend fun one(id: String, policy: FillPolicy): Outcome {
-        // Read the game as it is now: the owner may have chosen something while the run waited.
+        // Read the game as it is now: the user may have chosen something while the run waited.
         val game = repository.initialize().slots.filterNotNull().firstOrNull { it.id == id } ?: return Outcome.Unchanged
         mutableStatus.value = status.value.copy(current = game.title)
         val market = Market.of(game.fileName)
@@ -124,7 +124,7 @@ class AutoScraper(
         val now = System.currentTimeMillis()
         val metadata = ranked.metadata.filterKeys { it in METADATA_FIELDS }.mapNotNull { (field, values) ->
             values.firstOrNull()?.let { field to MetadataValue(it, source, ranked.id, ranked.sourceUrl, ranked.license, now, automatic = true) } }.toMap()
-        // Only download what may be applied: the owner's daily quota counts images too.
+        // Only download what may be applied: the user's daily quota counts images too.
         val art = chooseArt(ranked.artwork, market)?.takeIf { policy.replaces(game.label?.takeIf { it.isCaseArt }?.provenance?.automatic) }
         val label = art?.let { asset ->
             val bytes = provider.image(asset)

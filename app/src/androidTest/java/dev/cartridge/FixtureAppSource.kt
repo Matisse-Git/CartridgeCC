@@ -10,7 +10,7 @@ import dev.cartridge.apps.AppSource
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Invented apps with drawn icons, so interface tests and the tour's screenshots never show what the owner
+ * Invented apps with drawn icons, so interface tests and the tour's screenshots never show what the user
  * has installed. Tests of Android's own launcher service use the real source instead.
  */
 internal class FixtureAppSource(names: List<String>, private val withoutIcon: Set<String> = emptySet()) : AppSource {

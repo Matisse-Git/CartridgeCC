@@ -146,7 +146,7 @@ class BatterySaveTest {
         scenario.use {
             insert(it); key(it, KeyEvent.KEYCODE_BUTTON_A, green = true)
             assertFalse(save.exists())
-            assertTrue(save.mkdir()) // Only this unique test game's destination; never owner's saves.
+            assertTrue(save.mkdir()) // Only this unique test game's destination; never the user's saves.
             pause(it)
             it.onActivity { activity -> assertNotNull(activity.engine.status.value.saveWarning) }
             ui.onNodeWithTag("message").assertTextContains("Save checkpoint could not be written", substring = true)

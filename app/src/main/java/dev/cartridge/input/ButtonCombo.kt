@@ -4,7 +4,7 @@ import android.view.KeyEvent
 import dev.cartridge.domain.PadKey
 
 /**
- * What a combo held during a game does (docs/SAVE_RELIABILITY, ADR 0031), with the buttons it has until the owner
+ * What a combo held during a game does (docs/SAVE_RELIABILITY, ADR 0031), with the buttons it has until the user
  * records others. Names are stored ids: append, never rename or reorder.
  */
 enum class QuickCombo(val title: String, val default: Set<Int>, val key: String) {

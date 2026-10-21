@@ -1,6 +1,6 @@
 package dev.cartridge.storage
 
-/** Bounds the optional owner-provided LibCrypt subchannel data before native parsing. */
+/** Bounds the optional user-provided LibCrypt subchannel data before native parsing. */
 object SbiFile {
     fun validate(bytes: ByteArray) {
         require(bytes.size in 4..131072 && bytes.take(4) == listOf<Byte>(83,66,73,0)) { "Invalid SBI header" }

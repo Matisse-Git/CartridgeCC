@@ -58,7 +58,7 @@ android {
 room { schemaDirectory("$projectDir/schemas") }
 
 val syncLicenseNotices by tasks.registering(Sync::class) {
-    from(rootProject.file("docs/licenses"))
+    from(rootProject.file("licenses"))
     into(layout.buildDirectory.dir("generated/license-assets/licenses"))
 }
 android.sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/license-assets"))

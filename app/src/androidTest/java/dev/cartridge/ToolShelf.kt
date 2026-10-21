@@ -38,12 +38,12 @@ internal class TestGames(private val context: android.content.Context, private v
 }
 
 /**
- * A console file only its owner has, for a test that is nothing without one. The owner (or whoever runs the
+ * A console file only the user has, for a test that is nothing without one. The user (or whoever runs the
  * tests for them) puts it in the app's private files/m1-owner-firmware, under the name the core gives it;
  * nothing of it is in the repository, and a test that needs it is skipped where it is missing. Copies what is
  * there to where the test library's cores look and says whether [core] now has a file it can start on.
  */
-internal fun ownerFirmware(context: android.content.Context, core: dev.cartridge.domain.Core): Boolean {
+internal fun userFirmware(context: android.content.Context, core: dev.cartridge.domain.Core): Boolean {
     val held = java.io.File(context.filesDir, "m1-owner-firmware"); val system = java.io.File(context.filesDir, "m1-test-system")
     for (firmware in core.firmware) java.io.File(held, firmware.file).takeIf { it.isFile }?.copyTo(java.io.File(system, firmware.file), overwrite = true)
     return core.firmware.any { java.io.File(system, it.file).isFile }

@@ -61,7 +61,7 @@ object ShaderResolution {
 }
 
 /**
- * The owner's shader choices, in the same preferences as the other settings: `shader.global`,
+ * The user's shader choices, in the same preferences as the other settings: `shader.global`,
  * `shader.console.<GameSystem>` and `shader.game.<id>`. Presets that failed the check on this device are kept
  * per library commit, so a new library gives each one another chance.
  */

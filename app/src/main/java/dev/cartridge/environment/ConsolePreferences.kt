@@ -21,7 +21,7 @@ data class ConsoleSettings(
     val fastForwardSpeed: Int = DEFAULT_SPEED,
     /** Quick Save, Quick Load and Load in the pause menu go straight back to the game, or leave the menu open. */
     val returnToGame: Boolean = true,
-    /** The consoles whose buttons the owner changed (ButtonMap); every other console has its default. */
+    /** The consoles whose buttons the user changed (ButtonMap); every other console has its default. */
     val buttons: Map<GameSystem, Map<PadKey, PadKey>> = emptyMap(),
 ) {
     init { require(deadZone in .15f.. .65f && frameSkip in 0..2 && fastForwardSpeed in SPEEDS) }

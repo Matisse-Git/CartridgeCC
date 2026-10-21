@@ -8,4 +8,4 @@ gradlew text eol=lf
 *.wav -text
 *.jar -text
 # Preserve upstream license text verbatim, including its whitespace.
-docs/licenses/*.txt whitespace=-blank-at-eof,-blank-at-eol
+licenses/*.txt whitespace=-blank-at-eof,-blank-at-eol

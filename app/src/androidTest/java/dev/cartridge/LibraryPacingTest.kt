@@ -29,7 +29,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * The library as the owner browses it: the production activity, a mixed shelf, a decoded image label on
+ * The library as the user browses it: the production activity, a mixed shelf, a decoded image label on
  * every game, and the D-pad held at the console's own repeat rate. Presentation times are the display's,
  * read from SurfaceFlinger, not the renderer's own clock. Original artwork only.
  */

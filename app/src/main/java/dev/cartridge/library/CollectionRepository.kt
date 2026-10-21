@@ -53,7 +53,7 @@ data class LibraryFacts(val cachedRom: Boolean, val sourceStatus: String, val ba
     /** The game's own card was replaced by a disc's and is kept: it can be put back. */
     val previousCard: Boolean = false)
 /**
- * One disc's file as Details shows it: [file] is where the owner keeps it (its folder and name), [bytes] the size of the
+ * One disc's file as Details shows it: [file] is where the user keeps it (its folder and name), [bytes] the size of the
  * game's private copy with its tracks, [tracks] how many track files a sheet names. [cached] is false when the private copy is gone.
  */
 data class DiscFacts(val id: String, val file: String, val bytes: Long, val tracks: Int, val cached: Boolean, val sourceMissing: Boolean)
@@ -68,7 +68,7 @@ interface CollectionRepository {
     /** Hide only the collection entry; never delete ROMs, saves or enrichment. */
     suspend fun remove(gameId: String)
     suspend fun restore(gameId: String, position: Int)
-    /** Entries the owner hid. Their ROMs, saves and enrichment are intact. */
+    /** Entries the user hid. Their ROMs, saves and enrichment are intact. */
     suspend fun hiddenGames(): List<LibraryGame> = emptyList()
     suspend fun select(slot: Int)
     suspend fun setLabel(gameId: String, label: LabelRef?)
@@ -100,7 +100,7 @@ interface CollectionRepository {
     suspend fun gameRequest(game: LibraryGame, disc: Int? = null): GameRequest
 
     /**
-     * Discs a scan found to be one game (ADR 0032). A disc the owner grouped or separated by hand is left as it is. The
+     * Discs a scan found to be one game (ADR 0032). A disc the user grouped or separated by hand is left as it is. The
      * game is the first disc's record; the rest leave the shelf. Returns the ids of those discs that are shown as another game.
      */
     suspend fun groupDiscs(groups: List<DiscGroup>): Set<String> = emptySet()

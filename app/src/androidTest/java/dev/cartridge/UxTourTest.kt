@@ -38,7 +38,7 @@ import java.util.UUID
 /**
  * Walks the redesigned console with a controller and saves what the display really showed, 3D surface
  * included, to files/ux-tour. Every title, label and game here is an original fixture in an isolated
- * database; the owner's library is never opened.
+ * database; the user's library is never opened.
  */
 class UxTourTest {
     @get:Rule val ui = createEmptyComposeRule()
@@ -93,7 +93,7 @@ class UxTourTest {
                 .writeText("commit=148ce728155232a6b63be772c1810bd84728f359\ndate=2026-10-11T23:22:17Z\npresets=621\nfiles=1463\nbytes=34336068\n")
         }
         val intent = Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name).putExtra("testShaderBase", shaderBase)
-        // Invented apps with drawn icons: what the owner has installed is never in a screenshot.
+        // Invented apps with drawn icons: what the user has installed is never in a screenshot.
         DebugCollectionActivity.testApps = FixtureAppSource(FixtureAppSource.TOUR, withoutIcon = setOf("Ledger"))
         try {
             // Journey A: an empty console, one action, a folder, a summary.
@@ -300,7 +300,7 @@ class UxTourTest {
                     scenario.onActivity { it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_THUMBL)); it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_THUMBR)) }
                 }
                 pauseChord()
-                // Quick Save goes straight back to the game, as it does until the owner says otherwise.
+                // Quick Save goes straight back to the game, as it does until the user says otherwise.
                 key(scenario, KeyEvent.KEYCODE_DPAD_DOWN); key(scenario, KeyEvent.KEYCODE_BUTTON_A)
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.message == "Quick saved" && it.engine.status.value.state == SessionState.Running }
                 shot("20b-quick-saved")

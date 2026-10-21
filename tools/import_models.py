@@ -1,4 +1,4 @@
-"""Build the runtime media GLBs from the owner's downloaded source models.
+"""Build the runtime media GLBs from the user's downloaded source models.
 
 Run from the repository root with Blender 4.2 or newer (validated with 5.2.2 LTS; nothing else is needed):
 

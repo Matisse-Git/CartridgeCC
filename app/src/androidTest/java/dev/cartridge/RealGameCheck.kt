@@ -25,7 +25,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
 /**
- * Not part of any suite, and skipped unless it is given a game: starts one game the owner has already imported,
+ * Not part of any suite, and skipped unless it is given a game: starts one game the user has already imported,
  * in the isolated test library, and records what the engine does with it. Nothing about the game is written
  * here or kept in the repository; the game is named on the command line by the start of its content hash or by
  * its console.
@@ -44,9 +44,9 @@ import java.util.concurrent.TimeUnit
  * and puts it back (ADR 0031); a screenshot of each, badge included, goes beside the pictures.
  *
  * Pictures go to files/diagnostics/<tag>-<second>.png and one line of counters per second to the log. The
- * owner's library, play history and saved sessions are not touched; the game's own memory card is the one it
+ * user's library, play history and saved sessions are not touched; the game's own memory card is the one it
  * always uses, so nothing is saved from here. A console that cannot start without its BIOS is given the copy
- * the owner left for tests (see [ownerFirmware]) and writes its memory cards in the test library's own folder.
+ * the user left for tests (see [userFirmware]) and writes its memory cards in the test library's own folder.
  */
 class RealGameCheck {
     @get:Rule val ui = createEmptyComposeRule()
@@ -124,12 +124,12 @@ class RealGameCheck {
         val id = bundle!!.name.substringBefore('.')
         val console = GameSystem.entries.first { it.bundle == bundle.isDirectory && it.extension == bundle.name.substringAfter('.') }
         val tag = "${console.name.lowercase()}-${id.take(6)}"
-        if (console.core.firmwareRequired) assumeTrue("${console.title} needs its owner's BIOS in files/m1-owner-firmware", ownerFirmware(context, console.core))
+        if (console.core.firmwareRequired) assumeTrue("${console.title} needs the user's BIOS in files/m1-owner-firmware", userFirmware(context, console.core))
         val shots = File(context.filesDir, "diagnostics").apply { mkdirs() }
         shots.listFiles { file -> file.name.startsWith(tag) }?.forEach { it.delete() }
         val core = File(context.applicationInfo.nativeLibraryDir, console.coreFile).path
         val name = "m1-test-${UUID.randomUUID()}"
-        // The quick combos write to the owner's own quick save and list for this game. What is there is set aside first and
+        // The quick combos write to the user's own quick save and list for this game. What is there is set aside first and
         // put back exactly when the check ends, whatever happens in between.
         val saves = File(context.filesDir, "saves")
         val kept = File(shots, "$tag-kept-saves")
@@ -157,7 +157,7 @@ class RealGameCheck {
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 scenario.onActivity { it.coordinator.addGame { LibraryGame(id, "Imported game", "content://$FIXTURE/none", system = console) } }
                 await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.selectedGame?.id == id }
-                // The game's other discs join it here as the owner would join them by hand; the owner's library is not touched.
+                // The game's other discs join it here as the user would join them by hand; the user's library is not touched.
                 val members = others.map { prefix ->
                     roms.listFiles { file -> file.isDirectory && file.name.startsWith(prefix) && file.name.endsWith(".${console.extension}") }.orEmpty().single().name.substringBefore('.')
                 }

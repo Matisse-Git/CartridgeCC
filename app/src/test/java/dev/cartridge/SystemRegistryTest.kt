@@ -289,7 +289,7 @@ class SystemRegistryTest {
         }
         assertEquals(setOf("snes9x_reduce_sprite_flicker"), GameOptions.session(GameOptions.resolve(GameSystem.SNES, emptyMap())).keys - GameOptions.adapterKeys)
         assertEquals("enabled", GameOptions.session(GameOptions.resolve(GameSystem.NES, mapOf("nes.sprites" to "enabled")))["fceumm_nospritelimit"])
-        // PlayStation and Dreamcast can start without their owner's file; Saturn and PlayStation 2 cannot. Saturn takes
+        // PlayStation and Dreamcast can start without the user's file; Saturn and PlayStation 2 cannot. Saturn takes
         // one file per region, PlayStation 2 any one.
         assertEquals(listOf(Core.Pcsx, Core.BeetleSaturn, Core.Flycast, Core.Armsx2), Core.entries.filter { it.firmware.isNotEmpty() }); assertFalse(Core.Pcsx.firmwareRequired)
         assertFalse(Core.Flycast.firmwareRequired); assertTrue(Core.Flycast.ownFiles); assertTrue(Core.Flycast.analog)

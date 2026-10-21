@@ -1,6 +1,6 @@
 # ARMSX2 0076b5c3 (GPL-3.0), the PlayStation 2 core: PCSX2 with ARM64 recompilers for its three processors, built
 # unchanged as the Libretro core its own tree carries (pcsx2-libretro). It runs the console's own BIOS, which only
-# the owner can supply, and draws with OpenGL ES 3.2 on a thread of its own in a context that shares the host's.
+# the user can supply, and draws with OpenGL ES 3.2 on a thread of its own in a context that shares the host's.
 # A commit pins the tree; it has no submodules.
 FetchContent_Declare(armsx2
     GIT_REPOSITORY https://github.com/ARMSX2/ARMSX2.git

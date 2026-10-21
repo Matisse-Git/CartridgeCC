@@ -38,7 +38,7 @@ data class DiscRecord(@PrimaryKey val discId: String, val gameId: String, val nu
     /** The disc was hidden when it joined the game; separating the discs hides it again. */
     val wasHidden: Boolean = false)
 
-/** A disc the owner separated from its game by hand: no scan groups it again (ADR 0032). */
+/** A disc the user separated from its game by hand: no scan groups it again (ADR 0032). */
 @Entity(tableName = "separated_discs")
 data class SeparatedDisc(@PrimaryKey val discId: String)
 

@@ -39,9 +39,9 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
 /**
- * The PlayStation 2 core on the device. It runs nothing without the console's own BIOS, which only its owner
+ * The PlayStation 2 core on the device. It runs nothing without the console's own BIOS, which only the user
  * has, so the first test is the console without one: it explains itself instead of failing, and takes a BIOS
- * by what the file's own table says. The other two need the owner's BIOS on the device (see [ownerFirmware])
+ * by what the file's own table says. The other two need the user's BIOS on the device (see [userFirmware])
  * and are skipped where it is not: the original program from tools/probe/generate_ps2_probe.py is started on
  * it, alone and from a disc image, and its picture arrives through the host's OpenGL ES context. The program
  * reads no pad, so the pad is not part of this test; no state is offered for this console.
@@ -182,13 +182,13 @@ class Ps2CoreTest {
             }
         } finally {
             // The stand-in is no BIOS and must not be left for a game to be started on.
-            bios.delete(); ownerFirmware(context, Core.Armsx2)
+            bios.delete(); userFirmware(context, Core.Armsx2)
             DebugCollectionActivity.closeDatabases(); context.deleteDatabase("$name.db"); made.forget(name)
         }
     }
 
-    @Test fun onTheOwnersBiosADiscInAFolderNamedForTheConsoleStartsWhatItsSystemFileNamesAndTheAppCanBeClosedOnIt() {
-        assumeTrue("The owner's PlayStation 2 BIOS is not in files/m1-owner-firmware on this device", ownerFirmware(context, Core.Armsx2))
+    @Test fun onTheUsersBiosADiscInAFolderNamedForTheConsoleStartsWhatItsSystemFileNamesAndTheAppCanBeClosedOnIt() {
+        assumeTrue("The user's PlayStation 2 BIOS is not in files/m1-owner-firmware on this device", userFirmware(context, Core.Armsx2))
         val name = "m1-test-${UUID.randomUUID()}"
         val made = TestGames(context, GameSystem.PS2)
         disc()
@@ -224,8 +224,8 @@ class Ps2CoreTest {
         } finally { DebugCollectionActivity.closeDatabases(); context.deleteDatabase("$name.db"); made.forget(name) }
     }
 
-    @Test fun onTheOwnersBiosAnOriginalProgramDrawsThroughOpenGlOffersNoStateAndIsStillLoadedAfterTheAppIsLeft() {
-        assumeTrue("The owner's PlayStation 2 BIOS is not in files/m1-owner-firmware on this device", ownerFirmware(context, Core.Armsx2))
+    @Test fun onTheUsersBiosAnOriginalProgramDrawsThroughOpenGlOffersNoStateAndIsStillLoadedAfterTheAppIsLeft() {
+        assumeTrue("The user's PlayStation 2 BIOS is not in files/m1-owner-firmware on this device", userFirmware(context, Core.Armsx2))
         val name = "m1-test-${UUID.randomUUID()}"
         val made = TestGames(context, GameSystem.PS2)
         val fixtures = File(context.filesDir, "m1-fixtures").apply { mkdirs() }

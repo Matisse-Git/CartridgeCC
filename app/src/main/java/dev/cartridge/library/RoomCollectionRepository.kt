@@ -279,7 +279,7 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
             File(saves, "$gameId.sram").lastModified(), File(saves, "$gameId.state").lastModified(),
             ids.map { discFacts(it, system) }, ids.drop(1).filter { cards.has(it, system) }, cards.hasPrevious(gameId))
     }
-    /** One disc's file as Details shows it: where the owner keeps it, and the size of the private copy with its tracks. */
+    /** One disc's file as Details shows it: where the user keeps it, and the size of the private copy with its tracks. */
     private suspend fun discFacts(id: String, system: GameSystem): DiscFacts {
         val launcher = GameFiles.resolve(roms, id, system)
         val copy = if (system.bundle) launcher.parentFile!!.listFiles().orEmpty().filter(File::isFile) else listOf(launcher).filter(File::isFile)
@@ -288,7 +288,7 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
         return DiscFacts(id, uri?.let(::where).orEmpty().ifEmpty { dao.game(id)?.title.orEmpty() }, copy.sumOf(File::length),
             copy.count { it.name.startsWith("track-") }, launcher.isFile, documents.isNotEmpty() && documents.all { it.missing })
     }
-    /** Where the owner keeps a file: its folder and name where the provider's document id is a path, else the name it shows. */
+    /** Where the user keeps a file: its folder and name where the provider's document id is a path, else the name it shows. */
     private fun where(uri: String): String {
         val parsed = uri.toUri()
         val path = runCatching { DocumentsContract.getDocumentId(parsed) }.getOrNull()?.substringAfter(':', "")?.takeIf { '/' in it }
@@ -340,7 +340,7 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
             if (pairs.size < 2) continue
             val ids = pairs.map { it.first }
             val existing = ids.mapNotNull { dao.disc(it) }
-            // The owner's own grouping is never redone by a scan.
+            // The user's own grouping is never redone by a scan.
             if (existing.any { it.origin == GameDisc.MANUAL }) continue
             val games = existing.map { it.gameId }.toSet()
             // A disc already counted in another set is not taken from it.
@@ -403,7 +403,7 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
         val discs = current.ifEmpty { listOf(DiscRecord(gameId, gameId, DiscNames.number(game.title) ?: 1, GameDisc.MANUAL)) }
         val taken = discs.map { it.number }.toSet()
         val number = DiscNames.number(disc.title)?.takeIf { it !in taken } ?: ((taken.maxOrNull() ?: 0) + 1)
-        // Grouped by hand, the whole game is the owner's: no scan regroups it.
+        // Grouped by hand, the whole game is the user's: no scan regroups it.
         val manual = (discs + DiscRecord(discId, gameId, number, GameDisc.MANUAL)).map { it.copy(origin = GameDisc.MANUAL) }.sortedBy { it.number }
         manual.forEach { dao.unseparate(it.discId) }
         join(gameId, manual, current.associateBy { it.discId })

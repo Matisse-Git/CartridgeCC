@@ -71,7 +71,7 @@ class LabelStore(private val directory: File) {
 
     /**
      * A case's whole unfolded cover (ADR 0029). `box-texture` is the cover already unfolded, back, spine, front, and
-     * fills the texture. A front alone (`box-2D`, or the owner's own image) fills the front panel; the spine and
+     * fills the texture. A front alone (`box-2D`, or the user's own image) fills the front panel; the spine and
      * back take the colour of its edge, a little darker on the spine.
      */
     private fun cover(label: LabelRef, media: Media, cover: dev.cartridge.domain.Cover): LabelPixels {

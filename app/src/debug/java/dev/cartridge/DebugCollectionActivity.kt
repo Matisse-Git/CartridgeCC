@@ -11,7 +11,7 @@ import dev.cartridge.scraping.FileScrapeJournal
 import android.net.Uri
 import java.io.File
 
-/** Runs the production UI/engine/renderer against a separate test DB, never the owner's collection. */
+/** Runs the production UI/engine/renderer against a separate test DB, never the user's collection. */
 class DebugCollectionActivity : MainActivity() {
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
@@ -19,7 +19,7 @@ class DebugCollectionActivity : MainActivity() {
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
     override fun createSessionStore() = dev.cartridge.storage.SessionStore(File(filesDir, "${intent.getStringExtra("testDatabase")}-session"))
-    // Original diagnostics are written against the built-in BIOS; the owner's firmware stays out of them.
+    // Original diagnostics are written against the built-in BIOS; the user's firmware stays out of them.
     override fun systemDirectory() = File(filesDir, "m1-test-system")
     // A device test may name a preset inside the shader library for every game it starts, over the settings.
     override fun sessionShader(game: dev.cartridge.emulation.GameRequest) =
@@ -37,11 +37,11 @@ class DebugCollectionActivity : MainActivity() {
     }
     override fun createLabelStore() = LabelStore(File(filesDir, "m1-test-labels"))
     override fun createArtworkProvider() = testProvider ?: super.createArtworkProvider()
-    // A test's own login and waiting list; the owner's ScreenScraper login is never read by a test that does not ask for it.
+    // A test's own login and waiting list; the user's ScreenScraper login is never read by a test that does not ask for it.
     override fun createArtworkSettings() = dev.cartridge.scraping.ArtworkSettings(this, intent.getStringExtra("artworkSettings") ?: "${intent.getStringExtra("testDatabase")}-artwork")
     override fun createPendingScrapes() = dev.cartridge.scraping.SharedPendingScrapes(this, "${intent.getStringExtra("testDatabase")}-auto-scrape")
     override fun automaticScraping() = intent.getBooleanExtra("automaticScraping", false)
-    // The tour draws invented apps, so no screenshot shows what the owner has installed. Tests of Android itself leave this unset.
+    // The tour draws invented apps, so no screenshot shows what the user has installed. Tests of Android itself leave this unset.
     override fun createAppSource() = testApps ?: super.createAppSource()
     override fun createScrapeJournal() = FileScrapeJournal(File(filesDir, "${intent.getStringExtra("testDatabase")}-scrape"))
     /** `stayInMenu` keeps the pause menu open after Quick Save, Quick Load and Load, for tests that go on in it. */

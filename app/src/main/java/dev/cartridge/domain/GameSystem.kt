@@ -66,7 +66,7 @@ private val EUROPE = Regex("""[(\[](?:[^)\]]*\b(?:Europe|EUR|EU|UK|PAL|Germany|F
 private val JAPAN = Regex("""[(\[](?:[^)\]]*\b(?:Japan|JPN|JP|NTSC-J)\b[^)\]]*|J)[)\]]""", RegexOption.IGNORE_CASE)
 
 /**
- * A console file only its owner can supply; never bundled or downloaded. [file] is the private name the pinned
+ * A console file only the user can supply; never bundled or downloaded. [file] is the private name the pinned
  * core looks for, and [md5] lists the dumps it is known to accept.
  */
 class Firmware(val file: String, val title: String, val bytes: Int, val md5: Set<String> = emptySet(),
@@ -95,7 +95,7 @@ enum class Core(
     /** The engine and its pinned version, for About. */
     val engine: String,
     val firmware: List<Firmware> = emptyList(),
-    /** False when the core has a built-in replacement, so its consoles start without the owner's file. */
+    /** False when the core has a built-in replacement, so its consoles start without the user's file. */
     val firmwareRequired: Boolean = false,
     /** What happens without the firmware, for the row that offers to add it. */
     val firmwareHelp: String = "",
@@ -125,7 +125,7 @@ enum class Core(
     val fastForward: Boolean = !draws,
     /**
      * The player may change the disc in the drive during a game (ADR 0032): the engine is started from a playlist of the
-     * game's discs and changes between them itself. On only once one of the owner's games has changed disc on the device.
+     * game's discs and changes between them itself. On only once one of the user's games has changed disc on the device.
      */
     val discs: Boolean = false,
 ) {
@@ -162,7 +162,7 @@ enum class Core(
         fixed = mapOf("reicast_per_content_vmus" to "All VMUs", "reicast_digital_triggers" to "enabled"),
         ownFiles = true, analog = true, emptyPorts = true, snapshots = Snapshots.Paused, draws = true),
     Dolphin("libdolphin_libretro.so", "dolphin-114977f1-cartridge-1", "GameCube", "Dolphin 114977f1",
-        // A game starts directly, not through the console's own menu, which would need the owner's file; and the
+        // A game starts directly, not through the console's own menu, which would need the user's file; and the
         // engine writes none of its messages over the picture. Its memory card is a folder of the game's own.
         // One emulation thread: with two, this frontend's hand-over between them can lose the signal that ends a
         // frame (it is dropped when it arrives before the frame's thread is listening) and both wait for ever.

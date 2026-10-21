@@ -3,7 +3,7 @@
 This module is [LibretroDroid](https://github.com/Swordfish90/LibretroDroid) at tag `0.14.0`, commit
 `8835c3098514390a271e36983957f7bb5f40abf1`, the version the app used as JitPack's prebuilt AAR until
 2026-10-16. It is built here so that the host's final drawing pass can take downloaded shader presets
-(ADR 0027). Its licence is GPL-3.0-or-later (`LICENSE`, also `docs/licenses/LibretroDroid-GPL-3.0.txt`).
+(ADR 0027). Its licence is GPL-3.0-or-later (`LICENSE`, also `licenses/LibretroDroid-GPL-3.0.txt`).
 
 `src/` and `LICENSE` were copied from the tag's archive
 (`https://codeload.github.com/Swordfish90/LibretroDroid/tar.gz/8835c3098514390a271e36983957f7bb5f40abf1`,

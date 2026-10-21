@@ -11,7 +11,7 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 
 /**
- * Console firmware the owner chose to add. Explicit import only: a file is accepted by its content, against
+ * Console firmware the user chose to add. Explicit import only: a file is accepted by its content, against
  * the dumps a pinned core is known to run or by what the file itself has to show, and stored under the private
  * name that core looks for. Nothing is downloaded, bundled or put in a backup.
  */
@@ -19,7 +19,7 @@ class FirmwareStore(private val directory: File) {
     fun present(firmware: Firmware) = File(directory, firmware.file).isFile
     /** The firmware files of [core] that are in place. */
     fun present(core: Core) = core.firmware.filter(::present)
-    /** [core] narrows the search to the console the owner is setting up, so a refusal can say what it expected. */
+    /** [core] narrows the search to the console the user is setting up, so a refusal can say what it expected. */
     fun import(resolver: ContentResolver, uri: Uri, core: Core? = null): Pair<Core, Firmware> {
         val cores = core?.let(::listOf) ?: Core.entries
         val largest = cores.flatMap { it.firmware }.maxOfOrNull { it.bytes } ?: 0

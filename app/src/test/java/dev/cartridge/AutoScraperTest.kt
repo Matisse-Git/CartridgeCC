@@ -74,7 +74,7 @@ class AutoScraperTest {
         assertEquals(Market.US, Market.of("Orbit Field (Beta)"))
     }
 
-    @Test fun fillPolicyNeverReplacesTheOwnersChoiceUnlessAsked() {
+    @Test fun fillPolicyNeverReplacesTheUsersChoiceUnlessAsked() {
         assertTrue(FillPolicy().replaces(null)); assertFalse(FillPolicy().replaces(true)); assertFalse(FillPolicy().replaces(false))
         val all = FillPolicy(FillMode.All)
         assertTrue(all.replaces(null)); assertTrue(all.replaces(true)); assertFalse(all.replaces(false))
@@ -100,7 +100,7 @@ class AutoScraperTest {
     }
 
     @Test fun addedGamesGetTheirRegionsArtAndMissingDetailsMarkedAutomatic() = runTest {
-        val manual = MetadataValue("Owner's year", "Owner", "", "", "", 1)
+        val manual = MetadataValue("User's year", "User", "", "", "", 1)
         val library = Library(LibraryGame(id('a'), "Orbit Field (Europe)", "content://a", metadata = mapOf("year" to manual)))
         val provider = Provider(); val pending = MemoryPendingScrapes()
         val scraper = scraper(library, provider, pending, backgroundScope, StandardTestDispatcher(testScheduler))
@@ -110,22 +110,22 @@ class AutoScraperTest {
         assertEquals(listOf("https://art.invalid/Orbit Field-eu-wrap"), provider.images)
         assertEquals("box-texture", game.label?.provenance?.type); assertTrue(game.label!!.provenance!!.automatic)
         assertEquals("Orbit Field proper", game.metadata["title"]?.value); assertTrue(game.metadata["title"]!!.automatic)
-        assertEquals(manual, game.metadata["year"]) // Fill missing keeps the owner's value.
+        assertEquals(manual, game.metadata["year"]) // Fill missing keeps the user's value.
         assertEquals(emptySet<String>(), pending.ids)
         assertEquals(1, scraper.status.value.applied); assertFalse(scraper.status.value.running)
     }
 
     @Test fun fillAllReplacesAutomaticChoicesOnlyAndSkipsDownloadsItCannotApply() = runTest {
-        val manualArt = LabelRef(id('e'), provenance = AssetProvenance("Owner", "", "box-2D", "us", "", "", 1))
+        val manualArt = LabelRef(id('e'), provenance = AssetProvenance("User", "", "box-2D", "us", "", "", 1))
         val autoYear = MetadataValue("1990", "Fixture", "", "", "", 1, automatic = true)
-        val ownerTitle = MetadataValue("My title", "Owner", "", "", "", 1)
-        val library = Library(LibraryGame(id('a'), "Orbit Field (USA)", "content://a", manualArt, mapOf("year" to autoYear, "title" to ownerTitle)))
+        val userTitle = MetadataValue("My title", "User", "", "", "", 1)
+        val library = Library(LibraryGame(id('a'), "Orbit Field (USA)", "content://a", manualArt, mapOf("year" to autoYear, "title" to userTitle)))
         val provider = Provider()
         val scraper = scraper(library, provider, MemoryPendingScrapes(), backgroundScope, StandardTestDispatcher(testScheduler))
         scraper.scrape(listOf(id('a')), FillPolicy(FillMode.All)); runCurrent()
         var game = library.game(id('a'))
-        assertEquals("1994", game.metadata["year"]?.value); assertEquals(ownerTitle, game.metadata["title"]); assertEquals(manualArt, game.label)
-        assertTrue(provider.images.isEmpty()) // The owner's art may not be replaced, so it is not downloaded.
+        assertEquals("1994", game.metadata["year"]?.value); assertEquals(userTitle, game.metadata["title"]); assertEquals(manualArt, game.label)
+        assertTrue(provider.images.isEmpty()) // The user's art may not be replaced, so it is not downloaded.
         scraper.scrape(listOf(id('a')), FillPolicy(FillMode.All, replaceManual = true)); runCurrent()
         game = library.game(id('a'))
         assertEquals("Orbit Field proper", game.metadata["title"]?.value)

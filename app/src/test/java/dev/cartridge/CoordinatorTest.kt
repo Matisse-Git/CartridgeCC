@@ -358,7 +358,7 @@ class CoordinatorTest {
         assertEquals(1, engine.saves); assertTrue(engine.status.value.frozen); assertEquals("Quick saved", coordinator.state.value.message)
         coordinator.quickLoad(); runCurrent()
         assertEquals(SessionState.Running, engine.status.value.state); assertFalse(engine.status.value.frozen)
-        // From the pause menu a load still follows the owner's setting.
+        // From the pause menu a load still follows the user's setting.
         coordinator.pause(); runCurrent(); coordinator.quickLoad(resume = false); runCurrent()
         assertEquals(SessionState.Paused, engine.status.value.state)
         coordinator.destroy()

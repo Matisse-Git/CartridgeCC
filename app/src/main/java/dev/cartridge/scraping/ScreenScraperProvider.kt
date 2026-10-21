@@ -37,7 +37,7 @@ class ScreenScraperProvider(private val login: () -> ScreenScraperLogin) : Artwo
                 "romtype" to "rom"), allowMissing = true)
             response?.optJSONObject("response")?.optJSONObject("jeu")?.let { parseGame(it, sums) }
         }
-        // A checksum match is the game; a second request would only spend the owner's daily quota.
+        // A checksum match is the game; a second request would only spend the user's daily quota.
         if (exact?.exactHash == true) return@withContext listOf(exact)
         val found = call("jeuRecherche.php", account, linkedMapOf("recherche" to query.trim(), "systemeid" to system.screenScraper.toString()), allowMissing = true)
         val games = found?.optJSONObject("response")?.optJSONArray("jeux")

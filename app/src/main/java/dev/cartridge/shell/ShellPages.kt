@@ -156,7 +156,7 @@ private fun discSize(bytes: Long) = when {
     bytes >= 1L shl 20 -> "${bytes shr 20} MB"
     else -> "${(bytes shr 10).coerceAtLeast(1)} KB"
 }
-/** One file as Details shows it (ADR 0032): where the owner keeps it, the console, the private copy's size and its tracks. */
+/** One file as Details shows it (ADR 0032): where the user keeps it, the console, the private copy's size and its tracks. */
 private fun fileNote(file: DiscFacts, game: LibraryGame) = listOfNotNull(file.file, game.system.title, discSize(file.bytes),
     file.tracks.takeIf { it > 0 }?.let { plural(it, "track") }, game.discCount.takeIf { game.discs.isEmpty() && it > 1 }?.let { "$it discs" },
     "original missing".takeIf { file.sourceMissing }).joinToString(" · ")
@@ -202,7 +202,7 @@ private fun ConsoleShell.managePage(game: LibraryGame, state: CollectionState): 
         if (game.canUndoEnrichment) add(MenuRow("undo", "Undo last artwork change", enabled = ready, tag = "manage-undo") { coordinator.undoEnrichment() })
         if (game.label != null) add(MenuRow("reset", "Remove label", note = "Returns to the plain printed label", enabled = ready, tag = "manage-reset") { coordinator.removeLabel() })
         add(MenuRow("locate", "Locate game file", note = "If the file moved, choose it again", enabled = ready, tag = "manage-locate") { locateGame() })
-        // The discs of a game are the owner's to correct (ADR 0032); every change here has one Undo.
+        // The discs of a game are the user's to correct (ADR 0032); every change here has one Undo.
         if (game.system.bundle) add(MenuRow("add-disc", "Add a disc…", RowKind.Link, note = "Another game on the shelf that is one of this game's discs",
             enabled = ready, tag = "manage-add-disc") { push(Destination.AddDisc) })
         if (game.discs.size > 1) add(MenuRow("separate", "Separate discs", note = "Each disc becomes a game of its own again", enabled = ready, tag = "manage-separate") {
@@ -286,7 +286,7 @@ private fun ConsoleShell.importPage(): Page {
     }, PageStyle.Dialog)
 }
 
-/** What a console still needs from its owner, with the one thing that supplies it. */
+/** What a console still needs from the user, with the one thing that supplies it. */
 private fun ConsoleShell.setupPage(core: Core): Page = Page("setup", "${core.title} needs its BIOS", buildList {
     core.firmware.filter { it.file !in firmwarePresent }.forEach { firmware ->
         add(MenuRow("bios:${firmware.file}", "Add ${firmware.title}", tag = "setup-${firmware.file.substringAfterLast('/').substringBefore('.')}") { chooseFirmware(core) })
@@ -450,7 +450,7 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
             add(MenuRow("start-slot", "Save to start from", RowKind.Choice, value = if (startLatest) "Newest save" else "Quick save", tag = "settings-start-slot",
                 note = "Where Start from save state begins: the quick save, or whichever save is newest. If that one can't be loaded the game starts from the beginning.",
                 adjust = { changeStartLatest(!startLatest) }))
-            // One heading per core, in the registry's order: the file it needs from the owner, then its options.
+            // One heading per core, in the registry's order: the file it needs from the user, then its options.
             for (core in Core.entries) {
                 add(header(core.title))
                 core.firmware.forEach { firmware ->
@@ -487,7 +487,7 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
 
 // ---- Artwork (ADR 0029) ---------------------------------------------------------------------------------
 
-/** Where case art and details come from, the owner's login, and what the last automatic scrape did. */
+/** Where case art and details come from, the user's login, and what the last automatic scrape did. */
 private fun ConsoleShell.artworkRows(): List<MenuRow>? {
     val settings = artwork ?: return null
     artworkRevision

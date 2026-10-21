@@ -66,8 +66,8 @@ class ProviderContractTest {
         assertNull(provider.parseGame(JSONObject("{}")))
     }
 
-    /** Needs the owner's login typed into this build's Settings, the network and `-e liveProvider true`. */
-    @Test fun liveScreenScraperFindsCaseArtWithTheOwnersLogin(): Unit = runBlocking {
+    /** Needs the user's login typed into this build's Settings, the network and `-e liveProvider true`. */
+    @Test fun liveScreenScraperFindsCaseArtWithTheUsersLogin(): Unit = runBlocking {
         val arguments = InstrumentationRegistry.getArguments()
         if (arguments.getString("liveProvider") != "true") return@runBlocking
         val settings = dev.cartridge.scraping.ArtworkSettings(context)
@@ -132,7 +132,7 @@ class ProviderContractTest {
             assertEquals("c".repeat(64), restored.media["box-2D"]!!.image.assetId)
         } finally { database.close(); context.deleteDatabase(name) }
     }
-    /** ADR 0029: one write and one Undo; a cartridge label is kept as extra media; the owner's choices survive Fill all. */
+    /** ADR 0029: one write and one Undo; a cartridge label is kept as extra media; the user's choices survive Fill all. */
     @Test fun automaticApplyIsOneUndoableWriteThatKeepsTheOldLabel() = runBlocking {
         val name = "automatic-test-${UUID.randomUUID()}.db"
         val database = Room.databaseBuilder(context, LibraryDatabase::class.java, name).build()
@@ -141,7 +141,7 @@ class ProviderContractTest {
             val id = "a".repeat(64)
             repository.initialize(); repository.add(LibraryGame(id, "Orbit Field (USA)", "content://original"))
             val flat = LabelRef("b".repeat(64), provenance = AssetProvenance("Original fixture", "r", "support-texture", "us", "https://example.invalid/flat", "Original fixture", 1))
-            val owner = MetadataValue("Owner's developer", "Owner", "", "", "", 2)
+            val owner = MetadataValue("User's developer", "User", "", "", "", 2)
             repository.setLabel(id, flat); repository.setMetadata(id, mapOf("developer" to owner))
             val wrap = LabelRef("c".repeat(64), provenance = AssetProvenance("Original fixture", "r", "box-texture", "us", "https://example.invalid/wrap", "Original fixture", 3, automatic = true))
             val fields = mapOf("developer" to MetadataValue("Scraped developer", "Original fixture", "r", "", "", 3, automatic = true),

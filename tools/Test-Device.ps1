@@ -78,7 +78,7 @@ try {
     }
     if ($Suite -in @('PS2', 'All')) {
         # The same program on a small disc image, started the way a game is. Two of this console's three tests need
-        # its BIOS, which is the owner's: they read it from files/m1-owner-firmware/pcsx2/bios/ps2-bios.bin in the
+        # its BIOS, which is the user's: they read it from files/m1-owner-firmware/pcsx2/bios/ps2-bios.bin in the
         # app's private storage and are skipped where it is missing (docs/TESTING).
         Invoke-DeviceAdb -Arguments @('push', '.tools/probe/cartridge-probe-ps2.iso', '/data/local/tmp/cartridge-probe-ps2.iso')
         Invoke-DeviceAdb -Arguments @('shell', 'run-as', 'dev.cartridge', 'cp', '/data/local/tmp/cartridge-probe-ps2.iso', 'files/cartridge-probe-ps2.iso')

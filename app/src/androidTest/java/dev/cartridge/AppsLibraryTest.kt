@@ -44,7 +44,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * The Android apps beside the game library: where B leads and where it does not, the real launcher service
  * on this device, a real app started and returned from, and apps that change while they are shown.
- * Games are original probes in an isolated database; the owner's library and HOME choice are not touched.
+ * Games are original probes in an isolated database; the user's library and HOME choice are not touched.
  */
 class AppsLibraryTest {
     @get:Rule val ui = createEmptyComposeRule()
@@ -95,7 +95,7 @@ class AppsLibraryTest {
             assertEquals(listOf("back"), press(KeyEvent.KEYCODE_BUTTON_B))
             assertEquals(listOf("system"), press(KeyEvent.KEYCODE_BACK)); assertEquals(listOf("system"), press(KeyEvent.KEYCODE_ESCAPE))
         }
-        // The owner's confirm/back swap moves the back role, and so the way to Apps, with it.
+        // The user's confirm/back swap moves the back role, and so the way to Apps, with it.
         router.swapMenuButtons = true
         assertEquals(listOf("back"), press(KeyEvent.KEYCODE_BUTTON_A)); assertEquals(listOf("select"), press(KeyEvent.KEYCODE_BUTTON_B))
         assertEquals(listOf("system"), press(KeyEvent.KEYCODE_BACK))

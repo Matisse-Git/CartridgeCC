@@ -141,7 +141,7 @@ class ConsoleEnvironmentTest {
             assertFalse(context.packageManager.queryIntentActivities(query, 0).any { it.activityInfo.name == component.className })
             home.enable(true); assertTrue(home.enabled())
             assertTrue(context.packageManager.queryIntentActivities(query, 0).any { it.activityInfo.name == component.className })
-            assertNotNull(home.requestIntent()) // Never launch the role request or modify the owner's default.
+            assertNotNull(home.requestIntent()) // Never launch the role request or modify the user's default.
             assertEquals(held, roles?.isRoleHeld(RoleManager.ROLE_HOME))
         } finally { context.packageManager.setComponentEnabledSetting(component, previous, PackageManager.DONT_KILL_APP) }
     }

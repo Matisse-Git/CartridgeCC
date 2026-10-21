@@ -1,7 +1,7 @@
 """Original diagnostic for the PlayStation 2 core. Generated locally only; nothing here is Sony's.
 
 A bare program for the console's main processor in an ELF container. The engine starts it the way
-the console starts a game, through the console's own BIOS, which is the owner's and is not here: the
+the console starts a game, through the console's own BIOS, which is the user's and is not here: the
 BIOS's loader reads this file and its GsSetCrt call is the BIOS's. It sets a 640x448 display, and on
 every vertical blank sends the
 graphics chip one small packet through the same DMA channel a game uses: draw state, then a

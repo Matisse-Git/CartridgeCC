@@ -131,7 +131,7 @@ class GameCubeCoreTest {
                 var id = ""
                 scenario.onActivity { activity ->
                     id = activity.coordinator.state.value.selectedGame!!.id
-                    // Nothing of the owner's is needed to start.
+                    // Nothing of the user's is needed to start.
                     assertTrue(activity.shell.firmwareReady(Core.Dolphin)); assertEquals(Media.entries.size * CollectionLayout.POOL, activity.collectionSurface!!.meshInstanceCount)
                 }
                 assertEquals("game.dol", GameFiles.resolve(File(context.filesDir, "roms"), id, GameSystem.GAMECUBE).name)

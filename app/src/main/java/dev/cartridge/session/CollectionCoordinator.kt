@@ -488,7 +488,7 @@ class CollectionCoordinator(
     }
     /**
      * The quick save, from the pause menu or from its combo during play. [resume] returns a paused game to play once it
-     * is done, as the owner's After Quick Save setting asks; a running game simply keeps running.
+     * is done, as the user's After Quick Save setting asks; a running game simply keeps running.
      */
     fun quickSave(resume: Boolean = false) = stateAction("Quick saved", resume) { engine.saveState() }
     /** A frozen game goes on from what it loads: the frame it was frozen on is no longer the game's. */

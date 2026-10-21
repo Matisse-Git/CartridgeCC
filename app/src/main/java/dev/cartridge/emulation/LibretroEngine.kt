@@ -40,7 +40,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     private val sessionShader: (GameRequest) -> File? = { null },
     private val shaderLibrary: File = ShaderLibrary.root(context),
     private val sessionStore: SessionStore? = null,
-    /** Where a core looks for firmware. Tests give it an empty one so diagnostics never depend on the owner's BIOS. */
+    /** Where a core looks for firmware. Tests give it an empty one so diagnostics never depend on the user's BIOS. */
     private val systemDirectory: File = File(context.filesDir, "system")) : EmulationEngine {
     private class SessionOwner : LifecycleOwner {
         val registry = LifecycleRegistry(this)
@@ -105,7 +105,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 // A start that continues from the game's own Save State. A missing or unreadable one is no reason
                 // for the game not to start; a resumed session already has its state.
                 var startNotice: String? = null
-                // Which state is the owner's choice: the quick save, or the newest of all. Never an older one in its place.
+                // Which state is the user's choice: the quick save, or the newest of all. Never an older one in its place.
                 val startState = if (game.resumeState != null || options[GameOptions.START_FROM_STATE] != "enabled") null else try {
                     withContext(Dispatchers.IO) {
                         if (options[GameOptions.START_SLOT] == GameOptions.LATEST) slots.latest(game.id, game.system)?.let { slots.read(game.id, game.system, it.name) }

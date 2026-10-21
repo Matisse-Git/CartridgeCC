@@ -221,7 +221,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
             }
         }
         lifecycleScope.launch {
-            // One line when an automatic run ends, so the owner knows without opening Settings.
+            // One line when an automatic run ends, so the user knows without opening Settings.
             var running = false
             autoScraper.status.collect { run ->
                 if (running && !run.running) coordinator.notify(run.problem ?: if (run.done > 0) "Artwork: ${run.summary}" else "Artwork is up to date")

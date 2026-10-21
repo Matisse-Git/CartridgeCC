@@ -7,7 +7,7 @@ import java.io.File
 enum class ArtworkSource(val title: String) { ScreenScraper("ScreenScraper"), RetroBase("RetroBase") }
 
 /**
- * The owner's ScreenScraper account and the developer ID the API asks every program for. Typed on the device,
+ * The user's ScreenScraper account and the developer ID the API asks every program for. Typed on the device,
  * kept only in this app's private preferences: never in Git, a backup, a scrape pack or a stored URL (ADR 0029).
  */
 data class ScreenScraperLogin(val user: String = "", val password: String = "", val devId: String = "", val devPassword: String = "") {

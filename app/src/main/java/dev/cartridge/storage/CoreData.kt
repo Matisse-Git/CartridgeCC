@@ -8,7 +8,7 @@ import java.util.zip.ZipInputStream
 /**
  * An engine's own data files (fonts it draws with, per-game compatibility settings, a shader). They are built
  * from the pinned source, packaged with the app as one archive, and unpacked into the private system folder
- * once for each build of the core. Nothing of the owner's is kept there.
+ * once for each build of the core. Nothing of the user's is kept there.
  */
 object CoreData {
     private const val MAX_FILES = 8192
