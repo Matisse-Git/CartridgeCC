@@ -66,6 +66,10 @@ class TextSpec(val title: String, val hint: String, val initial: String, val lim
 /** Where the player is. Sheets stack over the stage; opaque destinations replace it until dismissed. */
 sealed class Destination(val key: String, val opaque: Boolean = false) {
     data object SystemMenu : Destination("menu")
+    /** The Systems tab (spec 4.2): a card for each console in the library. */
+    data object Systems : Destination("systems", true)
+    /** One console's core: its options for every game, its buttons and its shader. Y on Systems. */
+    data class ConsoleCore(val system: GameSystem) : Destination("console-core")
     data object Settings : Destination("settings", true)
     data class Folder(val uri: String) : Destination("folder")
     data object Hidden : Destination("hidden", true)

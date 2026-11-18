@@ -44,7 +44,8 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
     if (pause && !shell.overPause(top)) return
     // The Quick menu is its own screen (ui/screens/QuickMenuScreen).
     if (top == Destination.SystemMenu) return
-    if (!pause) shell.base?.let { destination -> shell.page(state, status, destination)?.let { page -> Entering(destination.key) { OpaquePage(page, shell, state, device, top == destination, confirm, back) } } }
+    // Systems is its own screen (ui/screens/SystemsScreen); sheets opened over it are still drawn here.
+    if (!pause && shell.base != Destination.Systems) shell.base?.let { destination -> shell.page(state, status, destination)?.let { page -> Entering(destination.key) { OpaquePage(page, shell, state, device, top == destination, confirm, back) } } }
     val floating = if (top == null || !top.opaque) shell.page(state, status, top) else null
     if (floating != null) {
         val focused = shell.focused(floating)

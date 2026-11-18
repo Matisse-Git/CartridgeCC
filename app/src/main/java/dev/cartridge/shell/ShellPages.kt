@@ -53,6 +53,8 @@ internal fun ConsoleShell.buildPage(state: CollectionState, status: EngineStatus
             else -> null
         }
         Destination.SystemMenu -> systemMenu(state)
+        Destination.Systems -> systemsPage(state)
+        is Destination.ConsoleCore -> consoleCorePage(destination.system)
         Destination.Settings -> Page("settings:${category.name}", "Settings", settingsRows(state, category, status), PageStyle.Settings)
         Destination.Controls -> Page("controls", "Controls", controlRows(state), PageStyle.Page, "Menu buttons are the same everywhere. Each console has its own game buttons.")
         is Destination.Folder -> folderPage(destination.uri)
@@ -106,6 +108,48 @@ internal fun ConsoleShell.buildPage(state: CollectionState, status: EngineStatus
  * Row ids carry where the screen draws them: "tile:" two across, "slider:" one per line, "wide:" a whole line and
  * "act:" two across. Brightness and Do Not Disturb open Android's page to allow them until they are allowed.
  */
+/**
+ * The Systems tab (spec 4.2): a row for each console with games, the most played first. The screen draws them as
+ * cards from the library itself; a row's action opens that console's games on the shelf.
+ */
+private fun ConsoleShell.systemsPage(state: CollectionState): Page {
+    val games = state.allGames
+    val systems = systemOrder(games)
+    return Page("systems", "Systems", systems.map { system ->
+        val count = games.count { it.system == system }
+        MenuRow("system:${system.name}", system.title, RowKind.Link, value = plural(count, "game"), note = system.core.engine.substringBeforeLast(" "),
+            tag = "system-${system.name.lowercase()}") { browseSystem(system) }
+    }, PageStyle.Page, listOf(plural(systems.size, "system"), plural(games.size, "game")).joinToString(" · "))
+}
+
+/** Consoles with games in the library, the most played first, then the most games, then by name. */
+internal fun systemOrder(games: List<LibraryGame>): List<GameSystem> = games.groupBy { it.system }.entries
+    .sortedWith(compareByDescending<Map.Entry<GameSystem, List<LibraryGame>>> { (_, list) -> list.sumOf { it.playMs } }
+        .thenByDescending { it.value.size }.thenBy { it.key.title })
+    .map { it.key }
+
+/**
+ * Y on Systems: what is set for a console as a whole. It has one core, so there is no core to choose; its options
+ * apply to all its games unless a game has its own, and its buttons and shader are reached from here too.
+ */
+private fun ConsoleShell.consoleCorePage(system: GameSystem): Page {
+    optionsRevision // Subscribes this page to stored option changes.
+    val family = system.core
+    val values = GameOptions.resolve(system, options.console(family))
+    val shader = resolveShader(system, null)
+    return Page("console-core", system.title, buildList {
+        GameOptions.all.filter { it.family == family }.forEach { option ->
+            val value = values.getValue(option)
+            add(MenuRow("option:${option.id}", option.title, RowKind.Choice, value = option.title(value),
+                note = option.help + if (option.live || option.variable == null) "" else " Applies from a game's next start.",
+                tag = "console-option-${option.id}", adjust = { delta -> setConsoleOption(option, option.next(value, delta)) }))
+        }
+        add(MenuRow("buttons", "Buttons", RowKind.Link, value = buttonsValue(system), tag = "console-buttons") { push(Destination.ConsoleButtons(system)) })
+        add(MenuRow("shader", "Shader", RowKind.Link, value = shaderValue(shader.path), warn = shaderMissing(shader.path), tag = "console-shader") {
+            openShaderPicker(ShaderTarget.Console(system)) })
+    }, PageStyle.Sheet, "${family.engine} · for all ${system.title} games")
+}
+
 private fun ConsoleShell.systemMenu(state: CollectionState): Page {
     val games = state.allGames
     val resume = state.resumeSession?.let { saved -> games.firstOrNull { it.id == saved.id } }

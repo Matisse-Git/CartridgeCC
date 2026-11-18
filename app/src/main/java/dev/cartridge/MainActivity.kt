@@ -337,6 +337,9 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                             tween(if (state.reducedMotion) 0 else 220), label = "quick-blur")
                         dev.cartridge.ui.design.DesignCanvas(state.reducedMotion, if (blur > 0.dp) Modifier.blur(blur) else Modifier) {
                             dev.cartridge.ui.screens.LibraryScreen(state, shell, device, shell.controls.swapMenuButtons, browsing)
+                            // Systems (spec 4.2) is its own tab over the shelf; sheets opened from it rest on it.
+                            if (state.screen == CollectionScreen.Library && Destination.Systems in shell.stack && !scrape.visible)
+                                dev.cartridge.ui.screens.SystemsScreen(state, shell, device, shell.controls.swapMenuButtons, active = shell.top == Destination.Systems)
                             // Game detail rests on the shelf, and the sheets opened from it rest on Game detail.
                             val detail = state.screen == CollectionScreen.Library && Destination.Details in shell.stack && !scrape.visible
                             AnimatedVisibility(detail, enter = fadeIn(tween(if (state.reducedMotion) 0 else 220)), exit = fadeOut(tween(if (state.reducedMotion) 0 else 180))) {

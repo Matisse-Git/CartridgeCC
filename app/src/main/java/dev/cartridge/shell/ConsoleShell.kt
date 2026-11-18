@@ -75,7 +75,7 @@ interface ShellHost {
 }
 
 /** The top-level tabs (spec 3). [ready] is false for a tab whose screen is not built yet; L2 / R2 skip it. */
-enum class Tab(val title: String, val ready: Boolean = true) { Library("Library"), Systems("Systems", ready = false), Apps("Apps"), Settings("Settings") }
+enum class Tab(val title: String, val ready: Boolean = true) { Library("Library"), Systems("Systems"), Apps("Apps"), Settings("Settings") }
 
 enum class HintMode(val title: String) {
     Auto("Until I know them"), Always("Always"), Hidden("Never");
@@ -420,6 +420,7 @@ class ConsoleShell(
                 else page()?.let { move(it, delta) }
             null -> if (pauseOpen) pauseMove(0, delta) else page()?.let { move(it, delta) }
             Destination.SystemMenu -> quickMove(0, delta)
+            Destination.Systems -> systemsMove(0, delta)
             Destination.SaveStates -> if (pauseOpen) gridMove(0, delta) else page()?.let { move(it, delta) }
             else -> page()?.let { move(it, delta) }
         }
@@ -432,6 +433,7 @@ class ConsoleShell(
             Destination.Details -> detailMove(delta, 0)
             null -> if (pauseOpen) pauseMove(delta, 0) else page()?.let(::focused)?.takeIf { it.enabled }?.adjust?.invoke(delta)
             Destination.SystemMenu -> quickMove(delta, 0)
+            Destination.Systems -> systemsMove(delta, 0)
             Destination.SaveStates -> if (pauseOpen) gridMove(delta, 0)
             Destination.Settings -> if (pane == 0) { if (delta > 0) pane = 1 } else {
                 val row = page()?.let(::focused)
@@ -526,6 +528,8 @@ class ConsoleShell(
             top == Destination.Details -> coordinator.favorite()
             pauseOpen && top == Destination.SaveStates -> focusedSave()?.let { push(Destination.ConfirmSlot(SlotAction.Delete, it)) }
             top == Destination.Apps -> searchApps()
+            top == Destination.Systems -> page()?.let(::focused)?.id?.removePrefix("system:")?.let { id ->
+                GameSystem.entries.firstOrNull { it.name == id }?.let { push(Destination.ConsoleCore(it)) } }
             top == null && inputMode() == InputMode.Library -> coordinator.favorite()
         }
     }
@@ -558,6 +562,7 @@ class ConsoleShell(
     val tab: Tab? get() = when {
         status.state != SessionState.Idle || state.screen != CollectionScreen.Library || !state.loaded -> null
         stack.isEmpty() -> Tab.Library
+        stack.size == 1 && top == Destination.Systems -> Tab.Systems
         stack.size == 1 && top == Destination.Apps -> Tab.Apps
         stack.size == 1 && top == Destination.Settings -> Tab.Settings
         else -> null
@@ -566,7 +571,8 @@ class ConsoleShell(
         if (tab == null || tab == next || !next.ready) return
         home()
         when (next) {
-            Tab.Library, Tab.Systems -> Unit
+            Tab.Library -> Unit
+            Tab.Systems -> push(Destination.Systems)
             Tab.Apps -> push(Destination.Apps)
             Tab.Settings -> push(Destination.Settings)
         }
@@ -616,6 +622,24 @@ class ConsoleShell(
         if (top is Destination.TextEntry || top is Destination.RecordButton) return
         home()
         if (inputMode() == InputMode.Library) { device.refresh(); push(Destination.SystemMenu) }
+    }
+
+    /** The Systems grid: five across, as the screen lays it out. */
+    private fun systemsMove(dx: Int, dy: Int) {
+        val page = page() ?: return
+        val rows = page.rows.filter { it.focusable }
+        if (rows.isEmpty()) return
+        val index = rows.indexOf(focused(page)).coerceAtLeast(0)
+        val next = index + dx + dy * SYSTEM_COLUMNS
+        if (dx != 0 && next / SYSTEM_COLUMNS != index / SYSTEM_COLUMNS) return
+        if (next in rows.indices) focus[page.key] = rows[next].id
+        else if (dy > 0 && index / SYSTEM_COLUMNS < rows.lastIndex / SYSTEM_COLUMNS) focus[page.key] = rows.last().id
+    }
+    /** A on a console: the Library, on that console's chip. */
+    fun browseSystem(system: GameSystem) {
+        home()
+        val shelf = chips.firstOrNull { it is Shelf.Console && it.system == system } ?: return
+        if (shelf != state.shelf || state.searching) coordinator.chooseShelf(shelf)
     }
 
     /** The device's own settings the Quick menu changes. */
@@ -1246,3 +1270,6 @@ class ConsoleShell(
 
 /** Save states across one row of the pause menu's grid. */
 private const val GRID = 3
+
+/** Consoles across one row of the Systems grid (spec 4.2). */
+const val SYSTEM_COLUMNS = 5

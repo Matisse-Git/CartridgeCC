@@ -174,6 +174,7 @@ class ShellNavigationTest {
         assertEquals("Third", before.selectedGame!!.title); assertNull(shell.top); assertFalse(shell.appsOpen)
         // B at the library's root stays where it is; Apps is a tab, on the triggers.
         shell.back(); assertNull(shell.top); assertEquals(Tab.Library, shell.tab)
+        shell.trigger(1); assertEquals(Destination.Systems, shell.top); assertEquals(Tab.Systems, shell.tab)
         shell.trigger(1)
         assertEquals(Destination.Apps, shell.top); assertTrue(shell.appsOpen); assertEquals(Tab.Apps, shell.tab)
         // An opaque page over the library: its buttons are the page's, and the stage waits beneath it.
@@ -220,15 +221,31 @@ class ShellNavigationTest {
 
     @Test fun theTriggersStepThroughTheBuiltTabsAndWrapAround() = runTest {
         val console = Console(this); val shell = console.shell
-        // Systems is not built yet, so the triggers pass over it.
+        shell.trigger(1); assertEquals(Tab.Systems, shell.tab); assertEquals(listOf<Destination>(Destination.Systems), shell.stack.toList())
         shell.trigger(1); assertEquals(Tab.Apps, shell.tab)
         shell.trigger(1); assertEquals(Tab.Settings, shell.tab); assertEquals(listOf<Destination>(Destination.Settings), shell.stack.toList())
         shell.trigger(1); assertEquals(Tab.Library, shell.tab); assertNull(shell.top)
         shell.trigger(-1); assertEquals(Tab.Settings, shell.tab)
         shell.trigger(-1); assertEquals(Tab.Apps, shell.tab)
+        shell.trigger(-1); assertEquals(Tab.Systems, shell.tab)
         // Over anything that is not a tab, such as a menu or a dialog, they do nothing.
         shell.trigger(-1); shell.menu(); assertEquals(Destination.SystemMenu, shell.top)
         shell.trigger(1); assertEquals(Destination.SystemMenu, shell.top)
+        console.coordinator.destroy()
+    }
+
+    @Test fun systemsListsEachConsoleBrowsesItsGamesAndOpensItsCore() = runTest {
+        val console = Console(this); val shell = console.shell
+        shell.openTab(Tab.Systems)
+        val page = shell.page()!!
+        assertEquals(console.state.allGames.map { it.system }.distinct().size, page.rows.size)
+        val system = dev.cartridge.domain.GameSystem.entries.first { "system:${it.name}" == shell.focused(page)!!.id }
+        // Y: the console's core, its options for every game, its buttons and shader.
+        shell.secondary(); assertEquals(Destination.ConsoleCore(system), shell.top)
+        shell.back(); assertEquals(Destination.Systems, shell.top)
+        // A: the shelf, on that console's chip.
+        shell.select(); runCurrent()
+        assertNull(shell.top); assertEquals(dev.cartridge.library.Shelf.Console(system), console.state.shelf)
         console.coordinator.destroy()
     }
 
@@ -279,7 +296,7 @@ class ShellNavigationTest {
         shell.systemBack(); assertNull(shell.top)
         // Everywhere else it closes what the controller's button closes, Apps included.
         shell.menu(); shell.systemBack(); assertNull(shell.top)
-        shell.trigger(1); assertEquals(Destination.Apps, shell.top)
+        shell.openTab(Tab.Apps); assertEquals(Destination.Apps, shell.top)
         shell.systemBack(); assertNull(shell.top)
         console.coordinator.query(console.state.query.copy(search = "third")); runCurrent()
         shell.systemBack(); runCurrent(); assertFalse(console.state.searching); assertNull(shell.top)
@@ -344,7 +361,7 @@ class ShellNavigationTest {
 
     @Test fun appsAreBrowsedSearchedAndStartedThroughTheShellsOwnRoles() = runTest {
         val console = Console(this); val shell = console.shell; val apps = shell.apps
-        shell.trigger(1); runCurrent()
+        shell.openTab(Tab.Apps); runCurrent()
         apps.columns = 2 // Atlas, Field Notes / Harbor Mail, Tide Clock
         assertEquals("Atlas", apps.focused!!.label)
         shell.adjust(1); assertEquals("Field Notes", apps.focused!!.label)
@@ -370,15 +387,15 @@ class ShellNavigationTest {
         shell.back(); assertNull(shell.top)
         // The app left focused is the app found focused next time, in this session and the next.
         assertEquals("example.app0/Main", console.preferences.getString("appsFocus", null))
-        shell.trigger(1); runCurrent(); assertEquals("Tide Clock", apps.focused!!.label)
+        shell.openTab(Tab.Apps); runCurrent(); assertEquals("Tide Clock", apps.focused!!.label)
         val reopened = Console(this, console.preferences)
-        reopened.shell.trigger(1); runCurrent(); assertEquals("Tide Clock", reopened.shell.apps.focused!!.label)
+        reopened.shell.openTab(Tab.Apps); runCurrent(); assertEquals("Tide Clock", reopened.shell.apps.focused!!.label)
         console.coordinator.destroy(); reopened.coordinator.destroy()
     }
 
     @Test fun anAppThatCannotBeStartedIsExplainedAndTheListIsReadAgain() = runTest {
         val console = Console(this); val shell = console.shell; val apps = shell.apps
-        shell.trigger(1); runCurrent(); shell.navigate(1); shell.adjust(1)
+        shell.openTab(Tab.Apps); runCurrent(); shell.navigate(1); shell.adjust(1)
         val focused = apps.focused!!; val reads = console.source.reads
         // Uninstalled by another app while its icon was still on screen.
         console.source.installed.remove(focused)
@@ -405,7 +422,7 @@ class ShellNavigationTest {
         val console = Console(this); val shell = console.shell
         // Never opened: coming back to the foreground costs nothing.
         shell.resumed(); runCurrent(); assertEquals(0, console.source.reads); assertEquals(AppLibrary.Phase.Unread, shell.apps.phase)
-        shell.trigger(1); runCurrent(); assertEquals(1, console.source.reads); assertTrue(console.source.watching)
+        shell.openTab(Tab.Apps); runCurrent(); assertEquals(1, console.source.reads); assertTrue(console.source.watching)
         // Another app installed something while the console was behind it.
         console.source.installed += dev.cartridge.apps.AppEntry("example.new", "Main", "Beacon")
         shell.resumed(); runCurrent()
@@ -419,7 +436,7 @@ class ShellNavigationTest {
         val preferences = Preferences()
         val console = Console(this, preferences)
         assertTrue(console.shell.appsHintVisible)
-        repeat(ConsoleShell.LEARNED_AFTER) { console.shell.trigger(1); console.shell.back() }
+        repeat(ConsoleShell.LEARNED_AFTER) { console.shell.openTab(Tab.Apps); console.shell.back() }
         assertNull(console.shell.top); assertFalse(console.shell.appsHintVisible)
         assertEquals(ConsoleShell.LEARNED_AFTER, preferences.getInt("appsOpened", 0))
         console.shell.changeHints(HintMode.Always); assertTrue(console.shell.appsHintVisible)
