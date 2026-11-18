@@ -99,8 +99,11 @@ class CoordinatorTest {
         val engine = Engine(); val surfaces = Surfaces().apply { picture = CompletableDeferred() }
         val coordinator = CollectionCoordinator(engine, Library(), surfaces, backgroundScope)
         runCurrent(); coordinator.rendererReady(0)
-        coordinator.insert(); runCurrent()
+        coordinator.insert(note = "Restoring Quick save"); runCurrent()
         assertEquals(CollectionScreen.Inserting, coordinator.state.value.screen); assertFalse(coordinator.state.value.curtain)
+        // The Launch screen names the game and what its start does from the first moment.
+        val game = coordinator.state.value.selectedGame!!.id
+        assertEquals(dev.cartridge.session.Launch(game, "Restoring Quick save", 0), coordinator.state.value.launch)
         advanceTimeBy(dev.cartridge.domain.MediaMotion.INSERT_MS.toLong()); runCurrent()
         // The object has gone; the screen closes over a stage that is still whole.
         assertTrue(coordinator.state.value.curtain); assertEquals(CollectionScreen.Inserting, coordinator.state.value.screen)
@@ -110,8 +113,9 @@ class CoordinatorTest {
         // Running, but nothing drawn yet: still closed, and still not the player's to control.
         assertEquals(SessionState.Running, engine.status.value.state)
         assertTrue(coordinator.state.value.curtain); assertTrue(coordinator.state.value.busy)
+        assertEquals(2, coordinator.state.value.launch?.step)
         surfaces.picture!!.complete(Unit); runCurrent()
-        assertFalse(coordinator.state.value.curtain); assertFalse(coordinator.state.value.busy)
+        assertFalse(coordinator.state.value.curtain); assertFalse(coordinator.state.value.busy); assertNull(coordinator.state.value.launch)
         // Leaving closes it again before the game is taken down, and the rebuilt library opens it.
         coordinator.pause(); runCurrent(); coordinator.menuAction(3); runCurrent()
         assertTrue(coordinator.state.value.curtain); assertEquals(0, surfaces.emulatorReleases); assertEquals(CollectionScreen.Emulator, coordinator.state.value.screen)
@@ -498,6 +502,7 @@ class CoordinatorTest {
         val failure = coordinator.state.value.launchFailure!!
         assertEquals(library.two.id, failure.gameId); assertEquals("Missing game", failure.reason); assertEquals("Missing game", coordinator.state.value.message)
         assertEquals(CollectionScreen.Library, coordinator.state.value.screen); assertFalse(coordinator.state.value.busy)
+        assertNull("A failed start leaves no Launch screen behind", coordinator.state.value.launch)
         coordinator.dismissLaunchFailure(); assertNull(coordinator.state.value.launchFailure)
         coordinator.switchShelf(1); runCurrent(); assertEquals(disc(0).id, coordinator.state.value.selectedGame!!.id)
         coordinator.hideSelected(); runCurrent()

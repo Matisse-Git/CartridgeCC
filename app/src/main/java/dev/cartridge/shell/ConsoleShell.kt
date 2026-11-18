@@ -393,7 +393,21 @@ class ConsoleShell(
      */
     private fun start(disc: Int? = null, fromState: Boolean? = null) {
         val core = state.selectedGame?.system?.core
-        if (core != null && !firmwareReady(core)) { home(); push(Destination.Setup(core)) } else coordinator.insert(disc, fromState)
+        if (core != null && !firmwareReady(core)) { home(); push(Destination.Setup(core)) } else coordinator.insert(disc, fromState, launchNote(fromState))
+    }
+    /**
+     * What the Launch screen says this start does. A save is named only when the slots read for this game show which
+     * one the core will restore; otherwise the start is simply "Starting".
+     */
+    private fun launchNote(fromState: Boolean?): String {
+        val game = state.selectedGame ?: return "Starting"
+        val restores = fromState ?: (sessionOptions(game.system, game.id)[GameOptions.START_FROM_STATE] == "enabled")
+        if (fromState == false) return "Starting over"
+        if (!restores) return "Starting"
+        // Resume and "newest state" restore the newest slot; otherwise the setting restores the quick save.
+        if (fromState == true || startLatest) return resumePoint(game, state)?.takeIf { !it.fromSession }?.let { "Restoring ${it.name}" } ?: "Starting"
+        val quick = stateList?.takeIf { it.first == game.id }?.second?.any { it.kind == SlotKind.Quick } == true
+        return if (quick) "Restoring Quick save" else "Starting"
     }
     /** B. Whatever is open closes first; only the library's own root, with nothing to close, leads to Apps. */
     fun back() = dismiss(controller = true)

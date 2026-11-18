@@ -19,6 +19,12 @@ enum class CollectionScreen { Library, Inserting, Handoff, Emulator, Ejecting, L
 data class LabelDraft(val gameId: String, val label: LabelRef)
 data class RemovedEntry(val gameId: String, val position: Int)
 /** A game that did not start. The session is already released; the library entry is untouched. */
+/**
+ * A game on its way in, for the Launch screen (spec 4.4). [note] says what the start does ("Restoring Quick save"),
+ * and [step] how far it has got: 0 starting, 1 the core is loading, 2 the core runs and its first picture is coming.
+ */
+data class Launch(val gameId: String, val note: String?, val step: Int = 0)
+
 data class LaunchFailure(val gameId: String, val title: String, val system: GameSystem, val reason: String)
 data class CollectionState(
     val screen: CollectionScreen = CollectionScreen.Library,
@@ -43,6 +49,8 @@ data class CollectionState(
     val resumeSession: ResumeSession? = null,
     val shelf: Shelf = Shelf.All,
     val launchFailure: LaunchFailure? = null,
+    /** The game being started, while it is; null once its picture shows or the start fails. */
+    val launch: Launch? = null,
     /**
      * The screen is closed while the stage changes hands between the library and a game, so the swap, a
      * loading pause and a core's blank first frames are never seen. It opens on a picture, not on a promise.
@@ -186,19 +194,21 @@ class CollectionCoordinator(
             ?: return notify("The saved game's library entry is missing. Restore the entry or discard this session.")
         launchTarget = null // A failed restore is reported in place; the checkpoint stays available.
         runAction(isLaunch = true) {
+            mutableState.value = state.value.copy(launch = Launch(game.id, "Restoring where you left it"))
             val bytes = withContext(Dispatchers.IO) { checkNotNull(sessionStore).read(saved) }
             val request = repository.gameRequest(game).copy(resumeState = bytes)
             mutableState.value = state.value.copy(shelf = shelfShowing(game))
             previewGameId = game.id; applySnapshot(canonical)
             closeCurtain()
             mutableState.value = state.value.copy(screen = CollectionScreen.Handoff, rendererReady = false)
-            renderers.releaseLibrary(); mutableState.value = state.value.copy(screen = CollectionScreen.Emulator)
+            renderers.releaseLibrary(); mutableState.value = state.value.copy(screen = CollectionScreen.Emulator, launch = state.value.launch?.copy(step = 1))
             playingId = game.id
             engine.prepare(request)
             check(engine.status.value.state == SessionState.Running) { engine.status.value.error ?: "The saved session did not start" }
+            mutableState.value = state.value.copy(launch = state.value.launch?.copy(step = 2))
             engine.pause()
             readResume()
-            mutableState.value = state.value.copy(curtain = false, message = "Session restored")
+            mutableState.value = state.value.copy(curtain = false, launch = null, message = "Session restored")
         }
     }
     /**
@@ -421,14 +431,15 @@ class CollectionCoordinator(
     /**
      * Starts the focused game, on its disc [disc] by its place in the game's discs, or on the disc last in the drive.
      * [fromState] overrides the game's "Start from save state" for this start only (see [GameRequest.startFromState]).
+     * [note] is what the Launch screen says the start does.
      */
-    fun insert(disc: Int? = null, fromState: Boolean? = null) {
+    fun insert(disc: Int? = null, fromState: Boolean? = null, note: String? = null) {
         val selected = state.value
         if (!foreground || !selected.loaded || selected.screen != CollectionScreen.Library || !selected.rendererReady) return
         val game = selected.selectedGame ?: return
         launchTarget = game
         runAction(isLaunch = true) {
-            mutableState.value = state.value.copy(screen = CollectionScreen.Inserting, message = null, launchFailure = null)
+            mutableState.value = state.value.copy(screen = CollectionScreen.Inserting, message = null, launchFailure = null, launch = Launch(game.id, note))
             coroutineScope {
                 val request = async { repository.gameRequest(game, disc).let { if (fromState == null) it else it.copy(startFromState = fromState) } }
                 if (!selected.reducedMotion) delay(dev.cartridge.domain.MediaMotion.INSERT_MS.toLong())
@@ -436,7 +447,7 @@ class CollectionCoordinator(
                 val readyRequest = request.await()
                 mutableState.value = state.value.copy(screen = CollectionScreen.Handoff, rendererReady = false)
                 renderers.releaseLibrary()
-                mutableState.value = state.value.copy(screen = CollectionScreen.Emulator)
+                mutableState.value = state.value.copy(screen = CollectionScreen.Emulator, launch = state.value.launch?.copy(step = 1))
                 playingId = game.id
                 engine.prepare(readyRequest)
                 // The disc a game of several was started on is in the drive, also where the engine cannot change discs.
@@ -444,8 +455,9 @@ class CollectionCoordinator(
                     try { repository.setDisc(game.id, readyRequest.disc, 0) } catch (failure: Exception) { if (failure is CancellationException) throw failure }
             }
             if (engine.status.value.state != SessionState.Running) error(engine.status.value.error ?: "The core did not start")
+            mutableState.value = state.value.copy(launch = state.value.launch?.copy(step = 2))
             renderers.awaitPicture()
-            mutableState.value = state.value.copy(curtain = false)
+            mutableState.value = state.value.copy(curtain = false, launch = null)
         }
     }
     /** Close the screen and give the closing motion its time before the stage beneath it is taken apart. */
@@ -680,7 +692,7 @@ class CollectionCoordinator(
                 } else notify(failure.message ?: "Operation failed")
             } finally {
                 launching = false
-                if (!destroyed) mutableState.value = state.value.copy(busy = false)
+                if (!destroyed) mutableState.value = state.value.copy(busy = false, launch = if (isLaunch) null else state.value.launch)
             }
         }
     }

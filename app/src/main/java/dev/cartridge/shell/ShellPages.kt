@@ -163,7 +163,7 @@ private fun fileNote(file: DiscFacts, game: LibraryGame) = listOfNotNull(file.fi
     "original missing".takeIf { file.sourceMissing }).joinToString(" · ")
 
 /** What Resume continues from on Game detail: the suspended session, or the newest save state. Null when there is neither. */
-internal class ResumePoint(val note: String, val fromSession: Boolean)
+internal class ResumePoint(val note: String, val fromSession: Boolean, val name: String = "")
 
 internal fun ConsoleShell.resumePoint(game: LibraryGame, state: CollectionState): ResumePoint? {
     state.resumeSession?.takeIf { it.id == game.id && it.system == game.system }?.let { return ResumePoint("Where you left it · ${whenLabel(it.savedAt)}", true) }
@@ -172,7 +172,7 @@ internal fun ConsoleShell.resumePoint(game: LibraryGame, state: CollectionState)
     val newest = slots.filter { it.kind != SlotKind.Previous }.maxByOrNull { it.savedAt } ?: return null
     val saved = slots.filter { it.kind == SlotKind.Saved }.sortedBy { it.savedAt }
     val name = if (newest.kind == SlotKind.Quick) "Quick save" else "Save ${saved.indexOf(newest) + 1}"
-    return ResumePoint("$name · ${whenLabel(newest.savedAt)}", false)
+    return ResumePoint("$name · ${whenLabel(newest.savedAt)}", false, name)
 }
 
 /**

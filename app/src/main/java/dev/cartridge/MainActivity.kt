@@ -353,7 +353,13 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                 ShellOverlays(shell, state, status, device, confirm, back)
                 if (scrape.visible) ScrapePanel(scrape, scraper, confirm, back)
                 // Over everything the stage and its menus draw; only notices sit above it.
-                Curtain(state.curtain, shell.transition)
+                // A game on its way in has its own screen (spec 4.4) in place of the curtain; the curtain still covers the way out.
+                Curtain(state.curtain && state.launch == null, shell.transition)
+                CompositionLocalProvider(dev.cartridge.ui.design.LocalGameMedia provides gameMedia) {
+                    dev.cartridge.ui.design.DesignCanvas(state.reducedMotion) {
+                        dev.cartridge.ui.screens.LaunchScreen(state, if (state.alternateShortcut) "Start + Select" else dev.cartridge.ui.screens.STICKS)
+                    }
+                }
                 Notices(state.message.takeIf { state.launchFailure == null && shell.import == null },
                     listOfNotNull(status.saveWarning, state.historyWarning).joinToString("\n").ifEmpty { null },
                     beside = when (shell.top) {
