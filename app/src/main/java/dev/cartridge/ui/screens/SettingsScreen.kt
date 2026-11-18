@@ -75,17 +75,18 @@ import dev.cartridge.ui.design.Typo.tabular
             val scroll = rememberScrollState()
             LaunchedEffect(shell.category) { scroll.scrollTo(0) }
             Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = 16.dp)) {
-                val groups = remember(page.rows) { groups(page.rows) }
+                val groups = remember(page.rows) { rowGroups(page.rows) }
+                val open = { row: MenuRow -> shell.enterRows(); shell.activate(page, row) }
                 if (shell.category == SettingsCategory.Library) {
                     Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                            groups.filter { it.title != BOX_ART }.forEach { Group(it, page, focused, shell) }
+                            groups.filter { it.title != BOX_ART }.forEach { RowCard(it, focused, buttons = BUTTONS, onClick = open) }
                         }
                         groups.firstOrNull { it.title == BOX_ART }?.let { art ->
-                            Group(art, page, focused, shell, Modifier.width(340.dp)) { Preview(state) }
+                            RowCard(art, focused, Modifier.width(340.dp), buttons = BUTTONS, top = { Preview(state) }, onClick = open)
                         }
                     }
-                } else Column(verticalArrangement = Arrangement.spacedBy(20.dp)) { groups.forEach { Group(it, page, focused, shell) } }
+                } else Column(verticalArrangement = Arrangement.spacedBy(20.dp)) { groups.forEach { RowCard(it, focused, buttons = BUTTONS, onClick = open) } }
             }
         }
         val hints = buildList {
@@ -105,19 +106,6 @@ import dev.cartridge.ui.design.Typo.tabular
     }
 }
 
-/** A card of rows under its heading; rows before the first heading form a card with none. */
-private class Group(val title: String?, val rows: List<MenuRow>)
-
-private fun groups(rows: List<MenuRow>): List<Group> {
-    val out = mutableListOf<Group>()
-    var title: String? = null
-    var current = mutableListOf<MenuRow>()
-    fun flush() { if (current.isNotEmpty() || title != null) out += Group(title, current); current = mutableListOf() }
-    rows.forEach { row -> if (row.kind == RowKind.Header) { flush(); title = row.title } else current += row }
-    flush()
-    return out.filter { it.rows.isNotEmpty() }
-}
-
 @Composable private fun Sections(shell: ConsoleShell, focusedHere: Boolean, modifier: Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         SettingsCategory.entries.forEach { category ->
@@ -131,101 +119,12 @@ private fun groups(rows: List<MenuRow>): List<Group> {
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 val (tile, icon) = sectionLook(category)
                 Box(Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(tile), contentAlignment = Alignment.Center) {
-                    Icon(icon, Color.White, 16.dp, 2.2f)
+                    OutlineIcon(icon, Color.White, 16.dp, 2.2f)
                 }
                 Text(category.title, Typo.Body.copy(fontWeight = if (current) FontWeight.SemiBold else FontWeight.Medium),
                     color = if (lit) Palette.Canvas else Palette.Label, lines = 1)
             }
         }
-    }
-}
-
-@Composable private fun Group(group: Group, page: Page, focused: MenuRow?, shell: ConsoleShell, modifier: Modifier = Modifier, top: (@Composable () -> Unit)? = null) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        group.title?.let { Text(it.uppercase(), Typo.Section, Modifier.padding(start = 16.dp), Palette.Tertiary, lines = 1) }
-        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Palette.Surface2)) {
-            top?.invoke()
-            Column(Modifier.padding(4.dp)) {
-                // Folders read as a list of places, the rest as settings divided by hairlines.
-                val lined = group.rows.none { it.id.startsWith("folder:") || it.kind == RowKind.Add }
-                group.rows.forEachIndexed { index, row ->
-                    val next = group.rows.getOrNull(index + 1)
-                    Line(row, row === focused, page, shell)
-                    if (lined && next != null && row !== focused && next !== focused)
-                        Box(Modifier.padding(start = 12.dp, end = 8.dp).fillMaxWidth().height(1.dp).background(Palette.Separator))
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable private fun Line(row: MenuRow, focused: Boolean, page: Page, shell: ConsoleShell) {
-    val bring = remember { BringIntoViewRequester() }
-    LaunchedEffect(focused) { if (focused) bring.bringIntoView() }
-    val fill by animateColorAsState(if (focused) Palette.Label else Color.Transparent, label = "row-fill")
-    val ink = when {
-        focused -> if (row.kind == RowKind.Danger) Palette.Destructive else Palette.Canvas
-        row.kind == RowKind.Danger -> Palette.DestructiveText
-        row.kind == RowKind.Add -> Palette.AccentText
-        else -> Palette.Label
-    }
-    val sub = if (focused) Palette.OnLabelSecondary else Palette.Tertiary
-    val folder = row.id.startsWith("folder:")
-    Row(Modifier.fillMaxWidth().heightIn(min = if (row.detail != null) 52.dp else 48.dp).bringIntoViewRequester(bring)
-        .clip(RoundedCornerShape(12.dp)).background(fill)
-        .tap(row.tag, enabled = row.focusable) { shell.enterRows(); shell.activate(page, row) }
-        .semantics { selected = focused }.padding(horizontal = 12.dp, vertical = 6.dp).alpha(if (row.enabled) 1f else .42f),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (folder) Icon(FOLDER, ink, 20.dp, 2f)
-        if (row.kind == RowKind.Add) Icon(PLUS, if (focused) Palette.Canvas else Palette.AccentText, 20.dp, 2.2f)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(row.title, Typo.Callout.copy(fontWeight = if (folder || row.kind == RowKind.Add) FontWeight.SemiBold else FontWeight.Medium), color = ink, lines = 1)
-            row.detail?.let { Text(it, Typo.Small.tabular(), color = if (row.warn && !focused) Palette.DestructiveText else sub, lines = 1) }
-        }
-        when (row.kind) {
-            RowKind.Toggle -> Switch(row.checked == true)
-            RowKind.Choice -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (focused) Text("‹", Typo.Callout, color = sub, lines = 1)
-                Text(row.value.orEmpty(), Typo.Callout.copy(fontWeight = FontWeight.Normal).tabular(), color = if (focused) Palette.Canvas else Palette.Secondary, lines = 1)
-                if (focused) Text("›", Typo.Callout, color = sub, lines = 1)
-            }
-            RowKind.Link -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.value?.let { Text(it, Typo.Caption.tabular(), color = if (row.warn && !focused) Palette.DestructiveText else sub, lines = 1) }
-                Chevron(sub)
-            }
-            // Other actions open something (a keyboard, a file picker, a download): their value is where they stand.
-            RowKind.Action -> if (row.id !in BUTTONS) row.value?.let {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(it, Typo.Caption.tabular(), color = if (row.warn && !focused) Palette.DestructiveText else sub, lines = 1)
-                    Chevron(sub)
-                }
-            } else row.value?.let { label ->
-                // An action that does one thing at once, as Scan now, is drawn as the button it is.
-                Box(Modifier.height(32.dp).clip(RoundedCornerShape(16.dp)).background(if (focused) Color(0x14000000) else Color(0x1FFFFFFF)).padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.Center) {
-                    Text(label, Typo.Caption.copy(fontWeight = FontWeight.SemiBold), color = if (focused) Palette.Canvas else Palette.Label, lines = 1)
-                }
-            }
-            RowKind.Info -> row.value?.let { Text(it, Typo.Callout.copy(fontWeight = FontWeight.Normal).tabular(), color = if (row.warn && !focused) Palette.DestructiveText else sub, lines = 1) }
-            else -> row.value?.let { Text(it, Typo.Callout.copy(fontWeight = FontWeight.Normal), color = sub, lines = 1) }
-        }
-    }
-}
-
-@Composable private fun Switch(on: Boolean) {
-    val track by animateColorAsState(if (on) Palette.Success else Color(0x52787880), label = "switch-track")
-    val knob by animateDpAsState(if (on) 20.dp else 2.dp, label = "switch-knob")
-    Box(Modifier.size(44.dp, 26.dp).clip(RoundedCornerShape(13.dp)).background(track)) {
-        Box(Modifier.padding(start = knob, top = 2.dp).size(22.dp).clip(RoundedCornerShape(11.dp)).background(Color.White))
-    }
-}
-
-@Composable private fun Chevron(color: Color) {
-    Canvas(Modifier.size(8.dp, 12.dp)) {
-        val k = size.width / 8f
-        drawLine(color, Offset(2 * k, 2 * k), Offset(6 * k, 6 * k), 2 * k, StrokeCap.Round)
-        drawLine(color, Offset(6 * k, 6 * k), Offset(2 * k, 10 * k), 2 * k, StrokeCap.Round)
     }
 }
 
@@ -251,15 +150,6 @@ private fun groups(rows: List<MenuRow>): List<Group> {
     GameBox(look, (w * .5f).dp, (h * .5f).dp, 12.dp, angle, Modifier.semantics { contentDescription = look.title }, focused = true, reflection = false)
 }
 
-/** A 24-unit outline icon from the mockup's SVG paths. */
-@Composable private fun Icon(path: String, color: Color, size: Dp, stroke: Float) {
-    val parsed = remember(path) { PathParser().parsePathString(path).toPath() }
-    Canvas(Modifier.size(size)) {
-        val k = this.size.width / 24f
-        scale(k, k, Offset.Zero) { drawPath(parsed, color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)) }
-    }
-}
-
 /** Each section's tile colour and icon, as Settings.dc.html draws them. */
 private fun sectionLook(category: SettingsCategory): Pair<Color, String> = when (category) {
     SettingsCategory.Library -> Color(0xFF0A84FF) to "M4 5h4v14H4zM10 5h4v14h-4zM16 6l3.5-1 2.5 13.5-3.5 1z"
@@ -274,7 +164,5 @@ private fun sectionLook(category: SettingsCategory): Pair<Color, String> = when 
     SettingsCategory.About -> Color(0xFF8E8E93) to "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v6M12 7.5h.01"
 }
 
-private const val FOLDER = "M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"
-private const val PLUS = "M12 5v14M5 12h14"
 /** The rows whose value is a verb, drawn as a button: Library's Scan now and Check. */
 private val BUTTONS = setOf("refresh", "verify")

@@ -76,7 +76,8 @@ enum class Pad(val label: String) {
                             lineTo(15 * s, 14 * s); lineTo(9 * s, 14 * s); lineTo(9 * s, 20 * s); lineTo(4 * s, 20 * s); close() }
                         drawPath(path, ink, style = Stroke(2.6f * s, cap = StrokeCap.Round, join = StrokeJoin.Round))
                     }
-                    Pad.DpadX, Pad.DpadY -> Canvas(Modifier.size(size * .58f, size * .42f)) {
+                    // The same pair of chevrons, turned upright for up / down.
+                    Pad.DpadX, Pad.DpadY -> Canvas(Modifier.size(size * .58f, size * .42f).graphicsLayer { rotationZ = if (pad == Pad.DpadY) 90f else 0f }) {
                         val sx = this.size.width / 24f; val sy = this.size.height / 16f
                         val stroke = Stroke(3f * sx, cap = StrokeCap.Round, join = StrokeJoin.Round)
                         drawPath(Path().apply { moveTo(7 * sx, 3 * sy); lineTo(2 * sx, 8 * sy); lineTo(7 * sx, 13 * sy) }, ink, style = stroke)

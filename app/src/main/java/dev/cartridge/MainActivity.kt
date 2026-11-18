@@ -332,8 +332,9 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                 if (state.screen in listOf(CollectionScreen.Library, CollectionScreen.Inserting, CollectionScreen.Ejecting, CollectionScreen.LabelPreview)) {
                     val browsing = state.screen == CollectionScreen.Library && shell.top == null && !scrape.visible && status.state == SessionState.Idle
                     CompositionLocalProvider(dev.cartridge.ui.design.LocalGameMedia provides gameMedia) {
-                        // The Quick menu (spec 4.6) rests on the launcher blurred behind it.
-                        val quick = shell.top == Destination.SystemMenu && !scrape.visible
+                        // The Quick menu (spec 4.6), and every sheet and dialog, rests on the launcher blurred behind it;
+                        // the label preview's subject is the box itself, so it stays sharp.
+                        val quick = !scrape.visible && shell.top.let { it == Destination.SystemMenu || it != null && !it.opaque && it != Destination.Details && it.key != "label" }
                         val blur by androidx.compose.animation.core.animateDpAsState(if (quick && android.os.Build.VERSION.SDK_INT >= 31) 40.dp else 0.dp,
                             tween(if (state.reducedMotion) 0 else 220), label = "quick-blur")
                         dev.cartridge.ui.design.DesignCanvas(state.reducedMotion, if (blur > 0.dp) Modifier.blur(blur) else Modifier) {
@@ -384,16 +385,16 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                         dev.cartridge.ui.screens.LaunchScreen(state, if (state.alternateShortcut) "Start + Select" else dev.cartridge.ui.screens.STICKS)
                     }
                 }
-                Notices(state.message.takeIf { state.launchFailure == null && shell.import == null },
-                    listOfNotNull(status.saveWarning, state.historyWarning).joinToString("\n").ifEmpty { null },
-                    beside = when (shell.top) {
-                        Destination.SystemMenu -> 448.dp
-                        Destination.Manage, Destination.GameMore -> 400.dp
-                        Destination.Options -> if (status.state == SessionState.Paused) 340.dp else 400.dp
-                        else -> 0.dp
-                    },
-                    // Over a running game a quick save or load is confirmed in a glance.
-                    lingerMs = if (status.state == SessionState.Running) 1500 else 4200)
+                dev.cartridge.ui.design.DesignCanvas(state.reducedMotion) {
+                    Box(Modifier.fillMaxSize()) {
+                        val sheet = shell.top == Destination.SystemMenu || shell.top?.opaque == false && shell.page()?.style == dev.cartridge.shell.PageStyle.Sheet
+                        Notices(state.message.takeIf { state.launchFailure == null && shell.import == null },
+                            listOfNotNull(status.saveWarning, state.historyWarning).joinToString("\n").ifEmpty { null },
+                            beside = if (sheet) dev.cartridge.ui.SHEET_CLEARANCE else 0.dp,
+                            // Over a running game a quick save or load is confirmed in a glance.
+                            lingerMs = if (status.state == SessionState.Running) 1500 else 4200)
+                    }
+                }
             }
         } }
     }

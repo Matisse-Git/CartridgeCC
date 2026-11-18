@@ -140,49 +140,10 @@ class Hint(val glyph: String, val label: String, val tag: String? = null, val ac
     }
 }
 
-/** A scrolling list of rows that keeps the focused row, and a little of what surrounds it, in view. */
-@Composable fun RowList(rows: List<MenuRow>, focused: MenuRow?, modifier: Modifier = Modifier, showNotes: Boolean = true, activate: (MenuRow) -> Unit) {
-    val margin = with(LocalDensity.current) { 56.dp.toPx() }
-    val rowHeight = with(LocalDensity.current) { Space.Row.toPx() }
-    val requesters = remember(rows.map { it.id }) { rows.associate { it.id to BringIntoViewRequester() } }
-    LaunchedEffect(focused?.id, rows.size) {
-        val first = rows.firstOrNull { it.focusable }
-        // Reveal the heading above the first row instead of stopping just beneath it.
-        requesters[focused?.id]?.bringIntoView(Rect(0f, if (focused?.id == first?.id) -margin * 4 else -margin, 1f, rowHeight + margin))
-    }
-    Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        rows.forEach { row ->
-            Box(Modifier.bringIntoViewRequester(requesters.getValue(row.id))) {
-                RowItem(row, row.id == focused?.id, showNotes) { activate(row) }
-            }
-        }
-    }
-}
-
-/** A panel at the trailing edge. The stage stays visible beside it. */
-@Composable fun BoxScope.SidePanel(width: Dp, tag: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(width).background(Ink.Surface).testTag(tag)
-        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.End))
-        .padding(horizontal = Space.L, vertical = Space.L), content = content)
-}
-
-@Composable fun Scrim(modifier: Modifier = Modifier, dismiss: (() -> Unit)? = null) {
-    Box(modifier.fillMaxSize().background(Ink.Scrim).then(if (dismiss != null) Modifier.tap("scrim", action = dismiss) else Modifier))
-}
-
 @Composable fun ProgressLine(fraction: Float?, modifier: Modifier = Modifier) {
     val accent = LocalAccent.current
     Box(modifier.fillMaxWidth().height(3.dp).clip(CircleShape).background(Ink.Line)) {
         val shown by animateFloatAsState(fraction ?: 0f, LocalMotion.current.enter(), label = "progress")
         if (fraction != null) Box(Modifier.fillMaxHeight().fillMaxWidth(shown.coerceIn(0f, 1f)).clip(CircleShape).background(accent))
-    }
-}
-
-/** A short line that confirms something happened, or a warning that stays until its cause is gone. */
-@Composable fun Notice(text: String, warning: Boolean, tag: String, modifier: Modifier = Modifier) {
-    Row(modifier.clip(RoundedCornerShape(Radius.Row)).background(Ink.Raised).padding(horizontal = 16.dp, vertical = 10.dp).widthIn(max = 520.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
-        if (warning) Box(Modifier.size(6.dp).clip(CircleShape).background(Ink.Warning))
-        Txt(text, Type.Label.copy(lineHeight = Type.Body.lineHeight), if (warning) Ink.Warning else Ink.Text, Modifier.testTag(tag), lines = 4)
     }
 }
