@@ -359,6 +359,30 @@ class ShellNavigationTest {
         console.coordinator.destroy()
     }
 
+    @Test fun xPinsAnAppIntoItsOwnRowThatIsKeptAndBrowsedApart() = runTest {
+        val console = Console(this); val shell = console.shell; val apps = shell.apps
+        shell.openTab(Tab.Apps); runCurrent()
+        apps.columns = 2
+        // Tide Clock, the last app, pinned: it leads in a row of its own and stays focused.
+        shell.navigate(1); shell.adjust(1); assertEquals("Tide Clock", apps.focused!!.label)
+        shell.alternate()
+        assertEquals(listOf("Tide Clock", "Atlas", "Field Notes", "Harbor Mail"), apps.entries.map { it.label })
+        assertEquals(1, apps.pinnedCount); assertEquals("Tide Clock", apps.focused!!.label)
+        assertEquals("example.app0/Main", console.preferences.getString("appsPinned", null))
+        // Down from the Pinned row lands in the first column of all apps; Up returns.
+        shell.navigate(1); assertEquals("Atlas", apps.focused!!.label)
+        shell.adjust(1); shell.navigate(-1); assertEquals("Tide Clock", apps.focused!!.label)
+        // While searching there is one list, and X does nothing.
+        shell.secondary(); "a".forEach(shell::type); shell.finishText()
+        assertEquals(0, apps.pinnedCount); shell.alternate(); assertEquals(listOf("example.app0/Main"), apps.pins)
+        shell.back()
+        // X again unpins it, back into its place among the others.
+        apps.focus(apps.entries.first { it.label == "Tide Clock" }); shell.alternate()
+        assertEquals(listOf("Atlas", "Field Notes", "Harbor Mail", "Tide Clock"), apps.entries.map { it.label })
+        assertEquals("", console.preferences.getString("appsPinned", null))
+        console.coordinator.destroy()
+    }
+
     @Test fun appsAreBrowsedSearchedAndStartedThroughTheShellsOwnRoles() = runTest {
         val console = Console(this); val shell = console.shell; val apps = shell.apps
         shell.openTab(Tab.Apps); runCurrent()
@@ -367,8 +391,8 @@ class ShellNavigationTest {
         shell.adjust(1); assertEquals("Field Notes", apps.focused!!.label)
         shell.navigate(1); assertEquals("Tide Clock", apps.focused!!.label)
         shell.adjust(-1); shell.navigate(-1); assertEquals("Atlas", apps.focused!!.label)
-        // Buttons that belong to the library do nothing here.
-        shell.menu(); shell.alternate(); shell.shoulder(1)
+        // The shoulders belong to the library's chips and do nothing here.
+        shell.shoulder(1)
         assertEquals(Destination.Apps, shell.top); assertEquals("Atlas", apps.focused!!.label)
         // A starts the focused app as a home screen would, and the console stays where it is behind it.
         shell.navigate(1); shell.select()

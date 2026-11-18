@@ -46,6 +46,18 @@ class AppLibrary(
     /** There is something to look through, or a search to change. */
     val searchable get() = phase == Phase.Ready && (entries.isNotEmpty() || searching)
     val focusIndex get() = entries.indexOfFirst { it.id == focusId }.coerceAtLeast(0)
+    /** The player's pinned apps by id, in the order they were pinned (spec 4.7). */
+    var pins by mutableStateOf(emptyList<String>()); private set
+    /** How many of [entries] lead as the Pinned row: none while searching, which shows one list. */
+    val pinnedCount get() = if (searching) 0 else entries.count { it.id in pins }
+    fun pinned(entry: AppEntry) = entry.id in pins
+    /** Sets the pins, from storage or from a pin or unpin; the focus stays on the app it was on. */
+    fun pin(ids: List<String>) {
+        pins = ids.distinct()
+        if (phase == Phase.Ready) entries = visible()
+    }
+    /** The rows as drawn: the pinned apps, then all the others, each filling rows of [columns]. */
+    fun lines(): List<List<AppEntry>> = entries.take(pinnedCount).chunked(columns) + entries.drop(pinnedCount).chunked(columns)
     val focused get() = entries.getOrNull(focusIndex)
 
     private var reading: Job? = null
@@ -86,7 +98,12 @@ class AppLibrary(
         if (entries.none { it.id == focusId }) entries.getOrNull(index.coerceAtMost(entries.lastIndex))?.let { focusId = it.id }
         icons.keys.retainAll(kept)
     }
-    private fun visible() = if (!searching) all else fold(query).let { wanted -> all.filter { wanted in fold(it.label) } }
+    private fun visible(): List<AppEntry> {
+        if (searching) return fold(query).let { wanted -> all.filter { wanted in fold(it.label) } }
+        val byId = all.associateBy { it.id }
+        val pinned = pins.mapNotNull(byId::get)
+        return pinned + all.filter { it.id !in pins }
+    }
     private fun changed(packageName: String?) {
         if (packageName == null) icons.clear() else icons.keys.removeAll { it.startsWith("$packageName/") }
         iconEpoch++
@@ -94,7 +111,15 @@ class AppLibrary(
     }
 
     fun move(dx: Int, dy: Int) {
-        if (entries.isNotEmpty()) focusId = entries[gridMove(focusIndex, entries.size, columns, dx, dy)].id
+        if (entries.isEmpty()) return
+        if (pinnedCount == 0) { focusId = entries[gridMove(focusIndex, entries.size, columns, dx, dy)].id; return }
+        // The Pinned row and the rest are separate grids: up and down keep the column across the gap between them.
+        val lines = lines()
+        val current = entries[focusIndex]
+        val line = lines.indexOfFirst { current in it }
+        val column = lines[line].indexOf(current)
+        val next = lines[(line + dy).coerceIn(0, lines.lastIndex)]
+        focusId = next[(column + dx).coerceIn(0, next.lastIndex)].id
     }
     fun focus(entry: AppEntry) { if (entries.any { it.id == entry.id }) focusId = entry.id }
     /** An empty text shows every app again. The focused app stays focused while it is still shown. */

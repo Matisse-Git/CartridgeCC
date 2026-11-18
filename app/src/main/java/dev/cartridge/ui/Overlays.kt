@@ -45,7 +45,7 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
     // The Quick menu is its own screen (ui/screens/QuickMenuScreen).
     if (top == Destination.SystemMenu) return
     // Systems is its own screen (ui/screens/SystemsScreen); sheets opened over it are still drawn here.
-    if (!pause && shell.base != Destination.Systems) shell.base?.let { destination -> shell.page(state, status, destination)?.let { page -> Entering(destination.key) { OpaquePage(page, shell, state, device, top == destination, confirm, back) } } }
+    if (!pause && shell.base != Destination.Systems && shell.base != Destination.Apps) shell.base?.let { destination -> shell.page(state, status, destination)?.let { page -> Entering(destination.key) { OpaquePage(page, shell, state, device, top == destination, confirm, back) } } }
     val floating = if (top == null || !top.opaque) shell.page(state, status, top) else null
     if (floating != null) {
         val focused = shell.focused(floating)
@@ -79,7 +79,7 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
             PageStyle.Settings -> SettingsPage(page, shell, state, confirm, back)
             PageStyle.Keyboard -> Keyboard(page, shell, confirm, back)
             PageStyle.Reader -> Reader(page, shell, back)
-            PageStyle.Apps -> AppsPage(shell, device, confirm, back)
+            PageStyle.Apps -> Unit
             else -> {
                 val focused = shell.focused(page)
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Space.XL)) {

@@ -150,7 +150,9 @@ class ConsoleShell(
         }
     }
     /** Installed Android apps: the library's sibling, reached with Back from its root. Never mixed with games. */
-    val apps = AppLibrary(appSource, scope, preferences.getString("appsFocus", null), appDispatcher)
+    val apps = AppLibrary(appSource, scope, preferences.getString("appsFocus", null), appDispatcher).apply {
+        pin(preferences.getString("appsPinned", null)?.split('\n')?.filter(String::isNotBlank).orEmpty())
+    }
     /** Times Apps has been opened, counted only until its hint has been learned. */
     var appsOpened by mutableIntStateOf(preferences.getInt("appsOpened", 0)); private set
     /** Android recreated the console while Apps was open: return there once the library is back. */
@@ -514,6 +516,7 @@ class ConsoleShell(
             }
             top is Destination.TextEntry -> backspace()
             top == Destination.Details -> push(Destination.Options)
+            top == Destination.Apps -> togglePin()
             pauseOpen && top == Destination.SaveStates -> focusedSave()?.let { push(Destination.ConfirmSlot(SlotAction.Overwrite, it)) }
             pauseOpen && top == Destination.CoreSettings -> resetCoreOption()
             pauseOpen && top is Destination.ConsoleButtons -> (top as Destination.ConsoleButtons).let { if (it.system in controls.buttons) resetButtons(it.system) }
@@ -548,6 +551,7 @@ class ConsoleShell(
             scraper.state.value.visible -> Unit
             top is Destination.TextEntry -> finishText()
             top == Destination.SystemMenu -> pop()
+            top == Destination.Apps -> appInfo()
             top == null && inputMode() == InputMode.Library -> openMenu()
         }
     }
@@ -681,6 +685,25 @@ class ConsoleShell(
     }
     fun searchApps() {
         if (top == Destination.Apps && apps.searchable) push(Destination.TextEntry(TextSpec("Search apps", "App name", apps.query, 40, "apps-search-text") { value -> apps.search(value) }))
+    }
+    /** X on Apps: the focused app into the Pinned row, or out of it. The row holds one line of icons. */
+    fun togglePin(entry: AppEntry? = apps.focused) {
+        if (top != Destination.Apps || entry == null || apps.searching) return
+        val pins = if (apps.pinned(entry)) apps.pins - entry.id else {
+            if (apps.pins.size >= PINS) return coordinator.notify("Up to $PINS apps can be pinned. Unpin one first.")
+            apps.pins + entry.id
+        }
+        apps.pin(pins)
+        preferences.edit { putString("appsPinned", pins.joinToString("\n")) }
+    }
+    /** Menu on Apps: Android's page for the focused app, to see its storage, permissions or uninstall it. */
+    fun appInfo(entry: AppEntry? = apps.focused) {
+        if (top != Destination.Apps || entry == null) return
+        val opened = runCatching {
+            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.parse("package:${entry.packageName}")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
+        if (!opened) coordinator.notify("App info couldn't be opened for ${entry.label}")
     }
     private fun rememberApp() { apps.focused?.let { preferences.edit { putString("appsFocus", it.id) } } }
     /** The console is in front again: another app may have installed, removed or changed something meanwhile. */
@@ -1246,6 +1269,8 @@ class ConsoleShell(
         fun shifted(character: Char) = when (character) { '\'' -> '!'; ',' -> '_'; '.' -> '@'; '-' -> '+'; else -> character.uppercaseChar() }
         /** Hints retire on their own once this many games have been started. */
         const val LEARNED_AFTER = 5
+        /** The Pinned row: one line of the Apps grid (spec 4.7). */
+        const val PINS = 8
         const val RECORD_TIMEOUT_MS = 5_000L
         /** The name a state of another disc is confirmed under: `disc:<disc id>:<state name>`. */
         const val DISC_STATE = "disc:"

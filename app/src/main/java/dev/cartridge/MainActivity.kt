@@ -340,6 +340,9 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                             // Systems (spec 4.2) is its own tab over the shelf; sheets opened from it rest on it.
                             if (state.screen == CollectionScreen.Library && Destination.Systems in shell.stack && !scrape.visible)
                                 dev.cartridge.ui.screens.SystemsScreen(state, shell, device, shell.controls.swapMenuButtons, active = shell.top == Destination.Systems)
+                            // Apps (spec 4.7) likewise; its search keyboard rests on it.
+                            if (state.screen == CollectionScreen.Library && Destination.Apps in shell.stack && !scrape.visible)
+                                dev.cartridge.ui.screens.AppsScreen(shell, device, shell.controls.swapMenuButtons, active = shell.top == Destination.Apps)
                             // Game detail rests on the shelf, and the sheets opened from it rest on Game detail.
                             val detail = state.screen == CollectionScreen.Library && Destination.Details in shell.stack && !scrape.visible
                             AnimatedVisibility(detail, enter = fadeIn(tween(if (state.reducedMotion) 0 else 220)), exit = fadeOut(tween(if (state.reducedMotion) 0 else 180))) {
