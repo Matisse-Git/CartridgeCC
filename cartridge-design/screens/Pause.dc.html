@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cartridge — Pause menu, save states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="position: relative; width: 1280px; height: 720px; overflow: hidden; background: #000000; font-family: Inter, -apple-system, system-ui, sans-serif; color: #F5F5F7;">
+
+  <div aria-hidden="true" style="position: absolute; left: 100px; top: 0px; width: 1080px; height: 720px; filter: blur({{blur}}px) brightness(0.55);">
+    <dc-import name="Media" scene="forest" w="{{gw}}" h="{{gh}}" hint-size="1080px,720px"></dc-import>
+  </div>
+  <div aria-hidden="true" style="position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; background: rgba(0,0,0,0.25);"></div>
+
+  <div style="position: absolute; left: 24px; top: 24px;">
+    <dc-import name="PauseMenu" sel="{{sel}}" hint-size="300px,672px"></dc-import>
+  </div>
+
+  <section aria-labelledby="pane-title" style="position: absolute; left: 348px; right: 24px; top: 24px; bottom: 88px; padding: 28px 32px; box-sizing: border-box; border-radius: 28px; background: rgba(28,28,30,0.74); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); border: 1px solid rgba(255,255,255,0.08);">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <h2 id="pane-title" style="margin: 0px; font-size: 26px; font-weight: 700; letter-spacing: -0.02em;">Save States</h2>
+        <span style="font-size: 13px; color: #A1A1A6;">5 of 10 slots used · auto-saves every 5 minutes</span>
+      </div>
+      <label style="display: inline-flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 500; color: #C7C7CC; cursor: pointer;">
+        Auto-save on quit
+        <input type="checkbox" checked style="position: absolute; opacity: 0; width: 1px; height: 1px;">
+        <span aria-hidden="true" style="position: relative; width: 50px; height: 30px; border-radius: 15px; background: #30D158; display: inline-block;"><span style="position: absolute; right: 2px; top: 2px; width: 26px; height: 26px; border-radius: 13px; background: #FFFFFF; box-shadow: 0px 2px 6px rgba(0,0,0,0.3);"></span></span>
+      </label>
+    </div>
+
+    <div style="margin-top: 22px; display: grid; grid-template-columns: repeat(3, 268px); gap: 16px 18px;">
+      <button type="button" style="display: flex; flex-direction: column; gap: 10px; padding: 0px; border: 0px; background: none; text-align: left; cursor: pointer; font-family: Inter, sans-serif; color: #F5F5F7;">
+        <span style="width: 268px; height: 179px; border-radius: 14px; border: 1.5px dashed rgba(255,255,255,0.28); box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #C7C7CC;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          <span style="font-size: 14px; font-weight: 600;">New save state</span>
+        </span>
+        <span style="display: flex; justify-content: space-between; font-size: 13px;"><span style="font-weight: 600;">Slot 6</span><span style="color: #8E8E93;">Empty</span></span>
+      </button>
+      <sc-for list="{{slots}}" as="s" hint-placeholder-count="5">
+        <button type="button" aria-label="{{s.name}}, {{s.where}}, saved {{s.when}}" style="display: flex; flex-direction: column; gap: 10px; padding: 0px; border: 0px; background: none; text-align: left; cursor: pointer; font-family: Inter, sans-serif; color: #F5F5F7; transform: {{s.tf}}; transition: transform 250ms cubic-bezier(.2,.8,.2,1);">
+          <span style="position: relative; display: block; width: 268px; height: 179px; border-radius: 14px; overflow: hidden; box-shadow: {{s.ring}};">
+            <dc-import name="Media" scene="{{s.scene}}" w="{{tw}}" h="{{th}}" hint-size="268px,179px"></dc-import>
+            <sc-if value="{{s.auto}}" hint-placeholder-val="{{false}}">
+              <span style="position: absolute; left: 10px; top: 10px; padding: 3px 8px; border-radius: 6px; background: rgba(0,0,0,0.6); font-size: 11px; font-weight: 700; letter-spacing: 0.04em;">AUTO</span>
+            </sc-if>
+          </span>
+          <span style="display: flex; justify-content: space-between; font-size: 13px;"><span style="font-weight: 600;">{{s.name}} · {{s.where}}</span><span style="color: #8E8E93; font-variant-numeric: tabular-nums;">{{s.when}}</span></span>
+        </button>
+      </sc-for>
+    </div>
+  </section>
+
+  <footer style="position: absolute; left: 348px; right: 24px; bottom: 24px; height: 48px; padding: 0px 8px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between;">
+    <span style="font-size: 13px; color: #C7C7CC; font-variant-numeric: tabular-nums;">Slot 2 · Minish Woods · saved today 19:32</span>
+    <div style="display: flex; align-items: center; gap: 24px;">
+      <a href="Launch.dc.html" style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #F5F5F7; text-decoration: none;"><span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 12px; background: #F5F5F7; color: #000000; font-size: 12px; font-weight: 800;">A</span>Load</a>
+      <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500;"><span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 12px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box; font-size: 11px; font-weight: 700;">X</span>Overwrite</span>
+      <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500;"><span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 12px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box; font-size: 11px; font-weight: 700;">Y</span>Delete</span>
+      <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500;"><span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 12px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box; font-size: 11px; font-weight: 700;">B</span>Resume</span>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"blur":{"editor":"range","default":28,"min":0,"max":60,"step":1,"unit":"px"},"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const slots = [
+      { name: 'Slot 2', where: 'Minish Woods', when: 'Today 19:32', scene: 'forest', focused: true },
+      { name: 'Auto', where: 'Hyrule Town', when: 'Today 19:30', scene: 'town', auto: true },
+      { name: 'Slot 1', where: 'Mt. Crenel', when: 'Mon 22:04', scene: 'dusk' },
+      { name: 'Slot 3', where: 'Lake Hylia', when: 'Sun 14:11', scene: 'sea' },
+      { name: 'Slot 4', where: 'Cave of Flames', when: 'Oct 30', scene: 'cave' }
+    ];
+    return {
+      sel: 1, gw: 1080, gh: 720, tw: 268, th: 179,
+      blur: this.props.blur ?? 28,
+      slots: slots.map((s) => Object.assign({}, s, {
+        auto: !!s.auto,
+        tf: s.focused ? 'scale(1.04)' : 'scale(1)',
+        ring: s.focused ? '0px 0px 0px 3px #F5F5F7, 0px 18px 40px rgba(0,0,0,0.6)' : '0px 0px 0px 1px rgba(255,255,255,0.1)'
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

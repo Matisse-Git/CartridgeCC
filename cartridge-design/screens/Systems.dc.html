@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cartridge — Systems</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="position: relative; width: 1280px; height: 720px; overflow: hidden; background: #000000; font-family: Inter, -apple-system, system-ui, sans-serif; color: #F5F5F7;">
+
+  <header style="position: absolute; left: 0px; top: 0px; width: 1280px; height: 76px; padding: 0px 40px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between;">
+    <div style="width: 260px; display: flex; align-items: center; gap: 10px;">
+      <svg width="22" height="24" viewBox="0 0 22 24" aria-hidden="true"><path d="M4 1h14a2.5 2.5 0 0 1 2.5 2.5V21a2 2 0 0 1-2 2h-3v-2.5h-9V23h-3a2 2 0 0 1-2-2V3.5A2.5 2.5 0 0 1 4 1z" fill="#F5F5F7"></path><rect x="5" y="5" width="12" height="8" rx="1.5" fill="#000000"></rect><rect x="6" y="16" width="2" height="2.5" rx="0.6" fill="#000000"></rect><rect x="10" y="16" width="2" height="2.5" rx="0.6" fill="#000000"></rect><rect x="14" y="16" width="2" height="2.5" rx="0.6" fill="#000000"></rect></svg>
+      <span style="font-size: 17px; font-weight: 700; letter-spacing: -0.01em;">Cartridge</span>
+    </div>
+    <nav aria-label="Main" style="display: flex; align-items: center; gap: 12px;">
+      <span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 22px; border-radius: 7px; border: 1.5px solid rgba(245,245,247,0.35); box-sizing: border-box; font-size: 10px; font-weight: 700; color: #A1A1A6;">L1</span>
+      <div style="display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.06);">
+        <a href="Main.dc.html" style="padding: 8px 18px; border-radius: 999px; color: #F5F5F7; font-size: 14px; font-weight: 500; text-decoration: none;">Library</a>
+        <a href="Systems.dc.html" aria-current="page" style="padding: 8px 18px; border-radius: 999px; background: #F5F5F7; color: #000000; font-size: 14px; font-weight: 600; text-decoration: none;">Systems</a>
+        <a href="Apps.dc.html" style="padding: 8px 18px; border-radius: 999px; color: #F5F5F7; font-size: 14px; font-weight: 500; text-decoration: none;">Apps</a>
+        <a href="Settings.dc.html" style="padding: 8px 18px; border-radius: 999px; color: #F5F5F7; font-size: 14px; font-weight: 500; text-decoration: none;">Settings</a>
+      </div>
+      <span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 22px; border-radius: 7px; border: 1.5px solid rgba(245,245,247,0.35); box-sizing: border-box; font-size: 10px; font-weight: 700; color: #A1A1A6;">R1</span>
+    </nav>
+    <div style="width: 260px; display: flex; justify-content: flex-end; align-items: center; gap: 14px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;">
+      <svg width="18" height="14" viewBox="0 0 24 18" fill="none" stroke="#F5F5F7" stroke-width="2.2" stroke-linecap="round" role="img" aria-label="Wi-Fi connected"><path d="M2 6.5a15 15 0 0 1 20 0"></path><path d="M5.5 10a10 10 0 0 1 13 0"></path><path d="M9 13.5a5 5 0 0 1 6 0"></path><circle cx="12" cy="16.5" r="1" fill="#F5F5F7"></circle></svg>
+      <span style="display: inline-flex; align-items: center; gap: 6px; color: #A1A1A6;">82%
+        <svg width="26" height="13" viewBox="0 0 26 13" aria-hidden="true"><rect x="0.75" y="0.75" width="21.5" height="11.5" rx="3.5" fill="none" stroke="#F5F5F7" stroke-opacity="0.45" stroke-width="1.5"></rect><rect x="3" y="3" width="15" height="7" rx="1.5" fill="#F5F5F7"></rect><path d="M24 4.5v4" stroke="#F5F5F7" stroke-opacity="0.45" stroke-width="1.6" stroke-linecap="round"></path></svg>
+      </span>
+      <span>21:47</span>
+    </div>
+  </header>
+
+  <div style="position: absolute; left: 40px; right: 40px; top: 96px; display: flex; align-items: baseline; justify-content: space-between;">
+    <div style="display: flex; align-items: baseline; gap: 14px;">
+      <h1 style="margin: 0px; font-size: 28px; font-weight: 700; letter-spacing: -0.02em;">Systems</h1>
+      <span style="font-size: 15px; color: #A1A1A6; font-variant-numeric: tabular-nums;">10 systems · 1,284 games</span>
+    </div>
+    <span style="font-size: 13px; color: #8E8E93;">Sorted by most played</span>
+  </div>
+
+  <div style="position: absolute; left: 40px; top: 148px; width: 1200px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 20px;">
+    <sc-for list="{{systems}}" as="s" hint-placeholder-count="10">
+      <button type="button" aria-label="{{s.name}}, {{s.count}} games" style="position: relative; height: 222px; padding: 18px; box-sizing: border-box; border-radius: 22px; border: 0px; text-align: left; font-family: Inter, sans-serif; color: #F5F5F7; cursor: pointer; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; background: {{s.bg}}; transform: {{s.tf}}; box-shadow: {{s.shadow}}; transition: transform 300ms cubic-bezier(.2,.8,.2,1);">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span style="font-size: 12px; font-weight: 600; color: {{s.subFg}}; letter-spacing: 0.02em;">{{s.maker}} · {{s.year}}</span>
+          <span style="font-size: 20px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.15;">{{s.name}}</span>
+        </div>
+        <div aria-label="Recently played, then A to Z" style="display: flex; align-items: flex-end; gap: 3px; height: 82px;">
+          <sc-for list="{{s.spines}}" as="sp" hint-placeholder-count="9">
+            <span title="{{sp.t}}" style="display: flex; justify-content: center; flex-shrink: 0; width: 17px; height: 82px; margin-left: {{sp.ml}}px; padding: 6px 0px; box-sizing: border-box; border-radius: 2px; overflow: hidden; background: linear-gradient(90deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0) 30%, rgba(0,0,0,0.25) 100%), {{sp.c}}; opacity: {{sp.op}}; box-shadow: inset 0px 0px 0px 1px rgba(255,255,255,0.06);">
+              <span style="writing-mode: vertical-rl; max-height: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8px; font-weight: 700; letter-spacing: 0.02em; color: rgba(255,255,255,0.92);">{{sp.t}}</span>
+            </span>
+          </sc-for>
+        </div>
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <span style="font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em;">{{s.count}}<span style="font-size: 13px; font-weight: 500; color: {{s.subFg}}; margin-left: 6px; letter-spacing: 0em;">games</span></span>
+          <span style="font-size: 11px; font-weight: 600; color: {{s.subFg}};">{{s.core}}</span>
+        </div>
+      </button>
+    </sc-for>
+  </div>
+
+  <footer style="position: absolute; left: 0px; bottom: 0px; width: 1280px; height: 64px; padding: 0px 40px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between;">
+    <span style="font-size: 13px; color: #8E8E93;">Super Nintendo · default core Snes9x · 214 games on SD card</span>
+    <div style="display: flex; align-items: center; gap: 26px;">
+      <a href="Main.dc.html" style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #F5F5F7; text-decoration: none;"><span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 12px; background: #F5F5F7; color: #000000; font-size: 12px; font-weight: 800;">A</span>Browse games</a>
+      <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500;"><span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 12px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box; font-size: 11px; font-weight: 700;">Y</span>Choose core</span>
+      <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500;"><span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 12px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box; font-size: 11px; font-weight: 700;">B</span>Back</span>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const defs = [
+      ['Super Nintendo', 'Nintendo', '1990', '214', 'Snes9x', ['#6D28D9', '#EA580C', '#FBBF24', '#1D4ED8', '#E5484D', '#0F9F74']],
+      ['Game Boy Advance', 'Nintendo', '2001', '187', 'mGBA', ['#0F9F74', '#7C3AED', '#F59E0B', '#0EA5E9', '#DB2777', '#84CC16']],
+      ['Genesis', 'Sega', '1988', '142', 'Genesis Plus GX', ['#1D4ED8', '#020617', '#DC2626', '#475569', '#0EA5E9', '#F8FAFC']],
+      ['PlayStation', 'Sony', '1994', '96', 'SwanStation', ['#9D174D', '#1E3A5F', '#18181B', '#64748B', '#F9A8D4', '#334155']],
+      ['Nintendo 64', 'Nintendo', '1996', '58', 'Mupen64Plus', ['#0891B2', '#16A34A', '#DC2626', '#FACC15', '#1D4ED8', '#0F172A']],
+      ['NES', 'Nintendo', '1983', '231', 'Mesen', ['#E5484D', '#F4EBDA', '#1F3A5F', '#A3A3A3', '#111111', '#F59E0B']],
+      ['Game Boy', 'Nintendo', '1989', '104', 'Gambatte', ['#8BAC0F', '#306230', '#0F380F', '#9BBC0F', '#A7C41A', '#4B5563']],
+      ['Game Boy Color', 'Nintendo', '1998', '88', 'Gambatte', ['#A855F7', '#22C55E', '#F43F5E', '#EAB308', '#06B6D4', '#F97316']],
+      ['PlayStation 2', 'Sony', '2000', '64', 'LRPS2', ['#DC2626', '#111827', '#F3F4F6', '#2563EB', '#6B7280', '#B91C1C']],
+      ['Arcade', 'Various', '1980–99', '117', 'FinalBurn Neo', ['#F59E0B', '#7C3AED', '#10B981', '#EF4444', '#3B82F6', '#EC4899']]
+    ];
+    const LIB = [
+      [['Chrono Trigger', 'Super Metroid'], ['ActRaiser', 'Breath of Fire II', 'Contra III', 'Donkey Kong Country', 'EarthBound', 'F-Zero', 'Final Fantasy III', 'Mega Man X', 'Secret of Mana']],
+      [['The Minish Cap', 'A Link to the Past', 'Golden Sun'], ['Metroid Fusion', 'Advance Wars', 'Aria of Sorrow', 'Fire Emblem', 'Mario & Luigi', 'Wario Land 4']],
+      [['Streets of Rage 2', 'Sonic the Hedgehog 2'], ['Gunstar Heroes', 'Comix Zone', 'Ecco the Dolphin', 'Phantasy Star IV', 'Ristar', 'Shining Force II', 'Bloodlines']],
+      [['Symphony of the Night'], ['Final Fantasy VII', 'Crash Bandicoot', 'Metal Gear Solid', 'Final Fantasy IX', 'Silent Hill', 'Resident Evil 2', 'Parasite Eve', 'Spyro the Dragon']],
+      [['Ocarina of Time', 'Super Mario 64'], ['Paper Mario', 'Banjo-Kazooie', 'Majora’s Mask', 'F-Zero X', 'GoldenEye 007', 'Mario Kart 64', 'Conker’s Bad Fur Day']],
+      [['Super Mario Bros. 3', 'Mega Man 2'], ['Metroid', 'Castlevania', 'DuckTales', 'Contra', 'Final Fantasy', 'Dragon Warrior', 'Kirby’s Adventure']],
+      [['Link’s Awakening'], ['Tetris', 'Metroid II', 'Pokémon Red', 'Super Mario Land 2', 'Kirby’s Dream Land', 'Wario Land', 'Super Mario Land']],
+      [['Oracle of Seasons', 'Pokémon Crystal'], ['Shantae', 'Oracle of Ages', 'Pokémon Gold', 'Wario Land 3', 'Dragon Warrior III', 'Link’s Awakening DX']],
+      [['Final Fantasy X', 'Final Fantasy XII', 'Kingdom Hearts'], ['Okami', 'Ico', 'Persona 4', 'God of War', 'Dragon Quest VIII', 'Kingdom Hearts II']],
+      [['Metal Slug'], ['Street Fighter II', 'Galaga', '1942', 'Bubble Bobble', 'Pac-Man', 'Marvel vs. Capcom', 'Final Fight']]
+    ];
+    const KNOWN = { 'Final Fantasy X': '#5E7D8C', 'Final Fantasy XII': '#8A7357', 'Kingdom Hearts': '#5A6890', 'The Minish Cap': '#7C9273', 'A Link to the Past': '#7F7091', 'Golden Sun': '#A38C5E', 'Metroid Fusion': '#56656E', 'Chrono Trigger': '#6E7B5E', 'Super Metroid': '#675259', 'Symphony of the Night': '#575063' };
+    const MUTED = ['#5E7D8C', '#8A7357', '#7C9273', '#7F7091', '#A38C5E', '#56656E', '#5A6890', '#6E7B5E', '#675259', '#575063', '#9A8F80', '#4E6470', '#7A6A62', '#5F6B57'];
+    const tone = (t) => KNOWN[t] || MUTED[Array.from(t).reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 9973, 7) % MUTED.length];
+    const SHOW = 9;
+    const systems = defs.map((d, i) => {
+      const focused = i === 0;
+      const recent = LIB[i][0];
+      const az = LIB[i][1].slice().sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })).slice(0, SHOW - recent.length);
+      const spines = recent.map((t) => ({ t, c: tone(t), op: 1, ml: 0 }))
+        .concat(az.map((t, j) => ({ t, c: tone(t), op: 0.62, ml: j === 0 ? 6 : 0 })));
+      return {
+        name: d[0], maker: d[1], year: d[2], count: d[3], core: d[4], spines,
+        bg: focused ? '#2C2C2E' : '#141416',
+        subFg: focused ? '#C7C7CC' : '#8E8E93',
+        tf: focused ? 'scale(1.05)' : 'scale(1)',
+        shadow: focused ? '0px 24px 48px rgba(0,0,0,0.7), 0px 0px 0px 2px rgba(255,255,255,0.9)' : '0px 0px 0px 1px rgba(255,255,255,0.05)'
+      };
+    });
+    return { systems };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cartridge — Foundations</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width: 1280px; height: 900px; box-sizing: border-box; padding: 56px; background: #000000; font-family: Inter, -apple-system, system-ui, sans-serif; color: #F5F5F7; display: flex; flex-direction: column; gap: 40px;">
+  <div style="display: flex; align-items: flex-end; justify-content: space-between;">
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <span style="font-size: 13px; font-weight: 600; color: #8E8E93; letter-spacing: 0.06em; text-transform: uppercase;">Cartridge design language</span>
+      <h1 style="margin: 0px; font-size: 44px; font-weight: 800; letter-spacing: -0.03em;">Foundations</h1>
+    </div>
+    <p style="margin: 0px; max-width: 460px; font-size: 15px; line-height: 1.5; color: #A1A1A6; text-align: right;">True black canvas. Content brings the color. Focus is white, lifted and unmistakable from three metres away. Every action has a button glyph.</p>
+  </div>
+
+  <section aria-labelledby="c-h" style="display: flex; flex-direction: column; gap: 14px;">
+    <h2 id="c-h" style="margin: 0px; font-size: 13px; font-weight: 600; color: #8E8E93; letter-spacing: 0.04em; text-transform: uppercase;">Color</h2>
+    <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px;">
+      <sc-for list="{{colors}}" as="c" hint-placeholder-count="12">
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="height: 56px; border-radius: 14px; background: {{c.v}}; box-shadow: 0px 0px 0px 1px rgba(255,255,255,0.12);"></div>
+          <div style="display: flex; justify-content: space-between; font-size: 12px;"><span style="font-weight: 600;">{{c.name}}</span><span style="color: #8E8E93; font-variant-numeric: tabular-nums;">{{c.hex}}</span></div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px;">
+    <section aria-labelledby="t-h" style="display: flex; flex-direction: column; gap: 14px;">
+      <h2 id="t-h" style="margin: 0px; font-size: 13px; font-weight: 600; color: #8E8E93; letter-spacing: 0.04em; text-transform: uppercase;">Type · Inter</h2>
+      <div style="border-radius: 20px; background: #141416; padding: 8px 20px;">
+        <sc-for list="{{type}}" as="t" hint-placeholder-count="6">
+          <div style="height: {{t.row}}px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <span style="font-size: {{t.size}}px; font-weight: {{t.weight}}; letter-spacing: {{t.track}}em; color: {{t.color}}; text-transform: {{t.case}};">{{t.sample}}</span>
+            <span style="font-size: 12px; color: #8E8E93; font-variant-numeric: tabular-nums;">{{t.spec}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <div style="display: flex; flex-direction: column; gap: 28px;">
+      <section aria-labelledby="f-h" style="display: flex; flex-direction: column; gap: 14px;">
+        <h2 id="f-h" style="margin: 0px; font-size: 13px; font-weight: 600; color: #8E8E93; letter-spacing: 0.04em; text-transform: uppercase;">Focus engine</h2>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;">
+          <div style="display: flex; flex-direction: column; gap: 10px; align-items: center;">
+            <div style="width: 100%; height: 44px; border-radius: 12px; display: flex; align-items: center; padding: 0px 14px; box-sizing: border-box; font-size: 14px; font-weight: 500; background: rgba(255,255,255,0.06);">Save States</div>
+            <span style="font-size: 12px; color: #8E8E93;">Rest</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px; align-items: center;">
+            <div style="width: 100%; height: 44px; border-radius: 12px; display: flex; align-items: center; padding: 0px 14px; box-sizing: border-box; font-size: 14px; font-weight: 600; background: #F5F5F7; color: #000000; transform: scale(1.04); box-shadow: 0px 12px 28px rgba(0,0,0,0.6);">Save States</div>
+            <span style="font-size: 12px; color: #F5F5F7; font-weight: 600;">Focused · white, scale 1.04</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px; align-items: center;">
+            <div style="width: 100%; height: 44px; border-radius: 12px; display: flex; align-items: center; padding: 0px 14px; box-sizing: border-box; font-size: 14px; font-weight: 600; background: #D1D1D6; color: #000000; transform: scale(0.97);">Save States</div>
+            <span style="font-size: 12px; color: #8E8E93;">Pressed · scale 0.97</span>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="g-h" style="display: flex; flex-direction: column; gap: 14px;">
+        <h2 id="g-h" style="margin: 0px; font-size: 13px; font-weight: 600; color: #8E8E93; letter-spacing: 0.04em; text-transform: uppercase;">Button glyphs</h2>
+        <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 16px; background: #F5F5F7; color: #000000; font-size: 14px; font-weight: 800;">A</span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 16px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box; font-size: 13px; font-weight: 700;">B</span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 16px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box; font-size: 13px; font-weight: 700;">X</span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 16px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box; font-size: 13px; font-weight: 700;">Y</span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 26px; border-radius: 8px; border: 1.5px solid rgba(245,245,247,0.4); box-sizing: border-box; font-size: 11px; font-weight: 700; color: #C7C7CC;">L1</span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 26px; border-radius: 8px; border: 1.5px solid rgba(245,245,247,0.4); box-sizing: border-box; font-size: 11px; font-weight: 700; color: #C7C7CC;">R1</span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 16px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#F5F5F7" stroke-width="3" stroke-linecap="round" aria-label="Menu" role="img"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 16px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F5F5F7" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-label="Home" role="img"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"></path></svg></span>
+          <span style="font-size: 12px; color: #8E8E93; margin-left: 6px;">Primary action is always A and always filled.</span>
+        </div>
+      </section>
+
+      <section aria-labelledby="m-h" style="display: flex; flex-direction: column; gap: 14px;">
+        <h2 id="m-h" style="margin: 0px; font-size: 13px; font-weight: 600; color: #8E8E93; letter-spacing: 0.04em; text-transform: uppercase;">Shape &amp; motion</h2>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;">
+          <div style="border-radius: 20px; background: #141416; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: flex-end; gap: 10px;">
+              <span style="width: 28px; height: 28px; border-radius: 8px; background: #2C2C2E;"></span>
+              <span style="width: 34px; height: 34px; border-radius: 12px; background: #2C2C2E;"></span>
+              <span style="width: 40px; height: 40px; border-radius: 16px; background: #2C2C2E;"></span>
+              <span style="width: 46px; height: 46px; border-radius: 22px; background: #2C2C2E;"></span>
+              <span style="width: 64px; height: 34px; border-radius: 999px; background: #2C2C2E;"></span>
+            </div>
+            <span style="font-size: 12px; color: #A1A1A6;">Radii 8 · 12 · 16 · 22 · 28 · pill</span>
+          </div>
+          <div style="border-radius: 20px; background: #141416; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #A1A1A6; font-variant-numeric: tabular-nums;">
+            <span><span style="color: #F5F5F7; font-weight: 600;">Shelf slide</span> 450 ms · ease-out (.2,.8,.2,1)</span>
+            <span><span style="color: #F5F5F7; font-weight: 600;">Focus lift</span> 250 ms · scale + shadow</span>
+            <span><span style="color: #F5F5F7; font-weight: 600;">Pause open</span> 220 ms · game blurs to 28 px</span>
+            <span><span style="color: #F5F5F7; font-weight: 600;">Launch</span> box flies forward, fades to game</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const colors = [
+      ['Canvas', '#000000'], ['Surface 1', '#141416'], ['Surface 2', '#1C1C1E'], ['Surface 3', '#2C2C2E'], ['Separator', '#FFFFFF14'], ['Glass', '#1C1C1EB8'],
+      ['Label', '#F5F5F7'], ['Secondary', '#A1A1A6'], ['Tertiary', '#8E8E93'], ['Accent', '#0A84FF'], ['On / Success', '#30D158'], ['Destructive', '#FF453A']
+    ].map((c) => ({ name: c[0], hex: c[1], v: c[1] }));
+    const type = [
+      ['Starfall Drift', 60, 800, -0.035, '#F5F5F7', 'none', 'Display 60 / 800', 92],
+      ['Save States', 28, 700, -0.02, '#F5F5F7', 'none', 'Title 28 / 700', 60],
+      ['Starfall Drift', 17, 700, -0.01, '#F5F5F7', 'none', 'Headline 17 / 700', 50],
+      ['Resume from Slot 2', 15, 500, 0, '#F5F5F7', 'none', 'Body 15 / 500', 46],
+      ['SNES · 1994 · Racing', 13, 500, 0, '#A1A1A6', 'none', 'Caption 13 / 500', 44],
+      ['Performance', 12, 600, 0.04, '#8E8E93', 'uppercase', 'Section 12 / 600', 44]
+    ].map((t) => ({ sample: t[0], size: t[1], weight: t[2], track: t[3], color: t[4], case: t[5], spec: t[6], row: t[7] }));
+    return { colors, type };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>3D game box</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="padding: {{pad}}px; display: inline-block; vertical-align: bottom; font-family: Inter, -apple-system, system-ui, sans-serif; color: #F5F5F7;">
+  <div style="position: relative; width: {{w}}px; height: {{h}}px; transform-style: preserve-3d; transform: perspective({{persp}}px) translateZ({{tz}}px) rotateY({{ry}}deg); transition: transform 450ms cubic-bezier(.2,.8,.2,1), width 450ms cubic-bezier(.2,.8,.2,1), height 450ms cubic-bezier(.2,.8,.2,1);">
+
+    <div aria-hidden="true" style="position: absolute; left: {{spineLeft}}px; top: 0px; width: {{d}}px; height: {{h}}px; transform: rotateY(-90deg) translateZ({{hw}}px); background: {{g.t2}}; overflow: hidden;">
+      <div style="position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; background: linear-gradient(90deg, rgba(0,0,0,0.55), rgba(0,0,0,0.25));"></div>
+      <div style="position: absolute; left: 0px; top: {{spinePad}}px; width: {{d}}px; display: flex; justify-content: center;">
+        <span style="writing-mode: vertical-rl; font-size: {{spineFs}}px; font-weight: 700; color: rgba(255,255,255,0.88); letter-spacing: 0.02em; white-space: nowrap;">{{g.short}}</span>
+      </div>
+      <div style="position: absolute; left: 0px; bottom: {{spinePad}}px; width: {{d}}px; display: flex; justify-content: center;">
+        <span style="writing-mode: vertical-rl; font-size: {{spineSys}}px; font-weight: 800; letter-spacing: 0.12em; color: rgba(255,255,255,0.6);">{{g.sys}}</span>
+      </div>
+    </div>
+
+    <div aria-hidden="true" style="position: absolute; left: {{spineLeft}}px; top: 0px; width: {{d}}px; height: {{h}}px; transform: rotateY(90deg) translateZ({{hw}}px); background: linear-gradient(90deg, #1A1A1C, #0B0B0C);"></div>
+
+    <div aria-hidden="true" style="position: absolute; left: 0px; top: {{topTop}}px; width: {{w}}px; height: {{d}}px; transform: rotateX(90deg) translateZ({{hh}}px); background: {{g.t1}};">
+      <div style="position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; background: rgba(255,255,255,0.08);"></div>
+    </div>
+
+    <div style="position: absolute; left: 0px; top: 0px; width: {{w}}px; height: {{h}}px; transform: translateZ({{hd}}px); border-radius: 3px; overflow: hidden; background: linear-gradient(160deg, {{g.t1}} 0%, {{g.t2}} 100%); box-shadow: {{shadow}};">
+      <sc-if value="{{hasArt}}" hint-placeholder-val="{{false}}">
+        <img src="{{g.art}}" alt="" style="position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; object-fit: cover;">
+      </sc-if>
+      <sc-if value="{{noArt}}" hint-placeholder-val="{{true}}">
+        <div style="position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; background: radial-gradient(120% 80% at 25% 0%, rgba(255,255,255,0.16), rgba(255,255,255,0) 60%);"></div>
+        <div style="position: absolute; left: 0px; top: 0px; right: 0px; height: {{bandH}}px; padding: 0px {{bandPad}}px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.18); font-size: {{bandFs}}px; font-weight: 700; letter-spacing: 0.14em; color: rgba(255,255,255,0.72); text-transform: uppercase;">
+          <span>{{g.sys}}</span><span>{{g.year}}</span>
+        </div>
+        <svg width="{{iconS}}" height="{{iconS}}" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.32)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%);"><path d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9h.01"></path></svg>
+        <div style="position: absolute; left: {{inset}}px; right: {{inset}}px; bottom: {{titleBottom}}px; display: flex; flex-direction: column; gap: {{titleGap}}px;">
+          <sc-if value="{{hasSeries}}" hint-placeholder-val="{{false}}">
+            <span style="font-size: {{seriesFs}}px; font-weight: 600; color: rgba(255,255,255,0.62); letter-spacing: 0.08em; text-transform: uppercase;">{{g.series}}</span>
+          </sc-if>
+          <span style="font-size: {{titleFs}}px; font-weight: 700; line-height: 1.1; letter-spacing: -0.01em; color: rgba(255,255,255,0.95);">{{g.short}}</span>
+        </div>
+      </sc-if>
+      <div style="position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; box-shadow: inset 0px 0px 0px 1px rgba(255,255,255,0.08); border-radius: 3px;"></div>
+      <div style="position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; background: rgba(0,0,0,{{dim}}); transition: background 300ms ease;"></div>
+      <sc-if value="{{focused}}" hint-placeholder-val="{{false}}">
+        <div style="position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; background: linear-gradient(118deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.04) 30%, rgba(255,255,255,0) 42%);"></div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"game":{"editor":null},"w":{"editor":"int","default":236,"min":60,"max":600},"h":{"editor":"int","default":262,"min":60,"max":800},"d":{"editor":"int","default":26,"min":6,"max":60},"ry":{"editor":"range","default":22,"min":-80,"max":80,"step":1,"unit":"°"},"tz":{"editor":"int","default":0},"dim":{"editor":"float","default":0,"min":0,"max":1},"focused":{"editor":"boolean","default":true},"pad":{"editor":null},"$preview":{"width":320,"height":420}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const DEFAULT = { title: 'The Legend of Zelda: The Minish Cap', series: 'The Legend of Zelda', short: 'The Minish Cap', sys: 'GBA', year: '2004', t1: '#3E5744', t2: '#7C9273' };
+    const g = this.props.game || DEFAULT;
+    const w = Number(this.props.w ?? 236);
+    const h = Number(this.props.h ?? 262);
+    const d = Number(this.props.d ?? 26);
+    const pad = this.props.pad === undefined || this.props.pad === null ? 40 : Number(this.props.pad);
+    const k = Math.min(w, h * 0.9) / 180;
+    const focused = this.props.focused ?? true;
+    return {
+      g, w, h, d, pad, focused,
+      hasArt: !!g.art, noArt: !g.art, hasSeries: !!g.series,
+      persp: 1100,
+      tz: Number(this.props.tz ?? 0),
+      ry: Number(this.props.ry ?? 22),
+      dim: Number(this.props.dim ?? 0),
+      hw: w / 2, hh: h / 2, hd: d / 2,
+      spineLeft: (w - d) / 2,
+      topTop: (h - d) / 2,
+      spinePad: Math.round(12 * k),
+      spineFs: Math.max(6, Math.round(d * 0.36)),
+      spineSys: Math.max(5, Math.round(d * 0.28)),
+      bandH: Math.round(20 * k),
+      bandPad: Math.round(9 * k),
+      bandFs: Math.max(5, Math.round(7.5 * k * 10) / 10),
+      iconS: Math.round(30 * k),
+      inset: Math.round(13 * k),
+      titleBottom: Math.round(14 * k),
+      titleGap: Math.max(1, Math.round(3 * k)),
+      seriesFs: Math.max(5, Math.round(8 * k * 10) / 10),
+      titleFs: Math.round(16 * k * 10) / 10,
+      shadow: focused ? '0px 30px 60px rgba(0,0,0,0.6), 0px 0px 0px 1px rgba(255,255,255,0.12)' : '0px 0px 0px 1px rgba(255,255,255,0.05)'
+    };
+  }
+}
+</script>
+</body>
+</html>

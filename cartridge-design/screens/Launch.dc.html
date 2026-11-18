@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cartridge — Launching game</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="position: relative; width: 1280px; height: 720px; overflow: hidden; background: #000000; font-family: Inter, -apple-system, system-ui, sans-serif; color: #F5F5F7;">
+  <div aria-hidden="true" style="position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; opacity: 0.5; filter: blur(2px);">
+    <dc-import name="Media" scene="forest" w="{{mw}}" h="{{mh}}" hint-size="1280px,720px"></dc-import>
+  </div>
+  <div aria-hidden="true" style="position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; background: radial-gradient(ellipse 60% 70% at 50% 42%, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.85) 70%, #000000 100%);"></div>
+
+  <div style="position: absolute; left: 522px; top: 140px;">
+    <dc-import name="Box" game="{{game}}" w="{{bw}}" h="{{bh}}" d="{{bd}}" ry="{{bry}}" tz="{{tz}}" dim="{{zero}}" focused="{{yes}}" pad="{{zero}}" hint-size="236px,262px"></dc-import>
+  </div>
+
+  <div style="position: absolute; left: 0px; top: 456px; width: 1280px; display: flex; flex-direction: column; align-items: center; gap: 4px;">
+    <span style="font-size: 13px; font-weight: 600; color: #C7C7CC;">The Legend of Zelda</span>
+    <div style="font-size: 28px; font-weight: 700; letter-spacing: -0.02em;">The Minish Cap</div>
+    <div style="margin-top: 4px; font-size: 14px; color: #A1A1A6;">Restoring Slot 2 · Minish Woods · mGBA</div>
+    <div role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{progress}}" style="margin-top: 18px; width: 220px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.16); overflow: hidden;">
+      <div style="width: {{progress}}%; height: 4px; border-radius: 2px; background: #F5F5F7;"></div>
+    </div>
+  </div>
+
+  <a href="Pause.dc.html" style="position: absolute; left: 50%; bottom: 36px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 999px; background: rgba(255,255,255,0.08); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); font-size: 13px; font-weight: 500; color: #D1D1D6; text-decoration: none; white-space: nowrap;">
+    <span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 11px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#F5F5F7" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"></path></svg></span>
+    Press Home during play to open the pause menu
+  </a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"progress":{"editor":"range","default":64,"min":0,"max":100,"step":1,"unit":"%"},"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const game = { title: 'The Legend of Zelda: The Minish Cap', series: 'The Legend of Zelda', short: 'The Minish Cap', sys: 'GBA', year: '2004', t1: '#3E5744', t2: '#7C9273' };
+    return { game, zero: 0, yes: true, bw: 236, bh: 262, bd: 28, bry: -8, tz: 60, mw: 1280, mh: 720, progress: this.props.progress ?? 64 };
+  }
+}
+</script>
+</body>
+</html>

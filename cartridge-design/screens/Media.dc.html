@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Game media — screenshot or video frame</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div style="position: relative; width: {{w}}px; height: {{h}}px; overflow: hidden; background: #000000;">
+  <sc-if value="{{hasSrc}}" hint-placeholder-val="{{false}}">
+    <img src="{{src}}" alt="" style="position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; object-fit: cover;">
+  </sc-if>
+  <sc-if value="{{noSrc}}" hint-placeholder-val="{{true}}">
+    <div style="position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; background: {{s.sky}};"></div>
+    <div style="position: absolute; left: {{s.sun.x}}%; top: {{s.sun.y}}%; width: {{s.sun.s}}%; aspect-ratio: 1 / 1; border-radius: 50%; background: {{s.sun.c}}; opacity: {{s.sun.op}}; box-shadow: 0px 0px {{glow}}px {{s.sun.c}};"></div>
+    <sc-for list="{{s.layers}}" as="l" hint-placeholder-count="3">
+      <div style="position: absolute; left: 0px; right: 0px; top: {{l.top}}%; height: {{l.h}}%; background: {{l.c}}; clip-path: {{l.clip}};"></div>
+    </sc-for>
+  </sc-if>
+  <div style="position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; box-shadow: inset 0px 0px {{vig}}px rgba(0,0,0,0.35);"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"scene":{"editor":"enum","options":["meadow","forest","dusk","sea","cave","town"],"default":"meadow"},"w":{"editor":"int","default":480,"min":40,"max":2000},"h":{"editor":"int","default":320,"min":30,"max":1200},"src":{"editor":null},"$preview":{"width":480,"height":320}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const SCENES = {
+      meadow: {
+        sky: 'linear-gradient(180deg, #9FB3BD 0%, #CBCBBE 58%, #D6CFBB 100%)',
+        sun: { x: 72, y: 12, s: 9, c: '#F3ECD8', op: 0.75 },
+        layers: [
+          { c: '#8EA08A', top: 40, h: 24, clip: 'polygon(0% 100%, 0% 55%, 10% 40%, 22% 50%, 35% 30%, 48% 45%, 60% 28%, 74% 46%, 86% 34%, 100% 48%, 100% 100%)' },
+          { c: '#6F8A66', top: 52, h: 20, clip: 'polygon(0% 100%, 0% 50%, 15% 35%, 30% 55%, 45% 40%, 62% 60%, 80% 38%, 100% 52%, 100% 100%)' },
+          { c: '#5A7550', top: 66, h: 34, clip: 'none' },
+          { c: '#B3A586', top: 66, h: 34, clip: 'polygon(47% 0%, 51% 0%, 60% 40%, 50% 70%, 62% 100%, 42% 100%, 40% 70%, 49% 40%)' }
+        ]
+      },
+      forest: {
+        sky: 'linear-gradient(180deg, #7E9088 0%, #AEB7A6 60%)',
+        sun: { x: 20, y: 10, s: 8, c: '#E8E4D3', op: 0.5 },
+        layers: [
+          { c: '#61746A', top: 28, h: 42, clip: 'polygon(0% 100%, 0% 40%, 4% 20%, 8% 42%, 12% 15%, 17% 40%, 22% 22%, 27% 45%, 32% 12%, 37% 40%, 43% 25%, 48% 44%, 54% 14%, 59% 40%, 65% 20%, 70% 45%, 76% 16%, 81% 40%, 87% 22%, 92% 42%, 96% 18%, 100% 38%, 100% 100%)' },
+          { c: '#46594B', top: 42, h: 36, clip: 'polygon(0% 100%, 0% 30%, 6% 10%, 11% 36%, 16% 6%, 22% 34%, 29% 12%, 35% 40%, 41% 8%, 47% 36%, 53% 16%, 60% 42%, 67% 10%, 73% 38%, 80% 14%, 86% 40%, 93% 8%, 100% 34%, 100% 100%)' },
+          { c: '#34433A', top: 74, h: 26, clip: 'none' },
+          { c: '#8C7F66', top: 74, h: 26, clip: 'polygon(45% 0%, 55% 0%, 70% 100%, 30% 100%)' }
+        ]
+      },
+      dusk: {
+        sky: 'linear-gradient(180deg, #323A4E 0%, #7D6A6B 50%, #C9A486 78%)',
+        sun: { x: 46, y: 44, s: 10, c: '#EBCB9F', op: 0.85 },
+        layers: [
+          { c: '#4A4A58', top: 46, h: 22, clip: 'polygon(0% 100%, 0% 60%, 14% 20%, 26% 50%, 40% 10%, 55% 45%, 68% 25%, 82% 55%, 100% 30%, 100% 100%)' },
+          { c: '#383946', top: 58, h: 18, clip: 'polygon(0% 100%, 0% 40%, 20% 60%, 38% 30%, 56% 55%, 74% 35%, 90% 60%, 100% 45%, 100% 100%)' },
+          { c: '#272832', top: 72, h: 28, clip: 'none' }
+        ]
+      },
+      sea: {
+        sky: 'linear-gradient(180deg, #8EA5B2 0%, #CFD0C8 62%)',
+        sun: { x: 78, y: 14, s: 8, c: '#F4EFE2', op: 0.7 },
+        layers: [
+          { c: '#6F8279', top: 44, h: 12, clip: 'polygon(58% 100%, 64% 40%, 70% 10%, 77% 50%, 84% 100%)' },
+          { c: '#5D7C8C', top: 55, h: 22, clip: 'none' },
+          { c: '#A9BCC0', top: 76, h: 2, clip: 'none' },
+          { c: '#CBBD9C', top: 77, h: 23, clip: 'none' }
+        ]
+      },
+      cave: {
+        sky: 'radial-gradient(ellipse at 50% 70%, #5A4B3E 0%, #2A2420 55%, #171412 100%)',
+        sun: { x: 43, y: 50, s: 14, c: '#C9A274', op: 0.22 },
+        layers: [
+          { c: '#14110F', top: 0, h: 24, clip: 'polygon(0% 0%, 100% 0%, 100% 40%, 94% 100%, 88% 45%, 80% 80%, 72% 35%, 63% 90%, 55% 40%, 46% 70%, 38% 30%, 30% 85%, 22% 40%, 14% 75%, 6% 35%, 0% 60%)' },
+          { c: '#1D1916', top: 72, h: 28, clip: 'polygon(0% 30%, 20% 10%, 40% 25%, 60% 5%, 80% 22%, 100% 8%, 100% 100%, 0% 100%)' }
+        ]
+      },
+      town: {
+        sky: 'linear-gradient(180deg, #232A3A 0%, #46506A 70%)',
+        sun: { x: 74, y: 12, s: 7, c: '#E6E1D3', op: 0.9 },
+        layers: [
+          { c: '#323A4E', top: 40, h: 32, clip: 'polygon(0% 100%, 0% 50%, 6% 30%, 12% 50%, 12% 40%, 20% 40%, 20% 55%, 28% 25%, 36% 55%, 40% 45%, 48% 45%, 48% 30%, 52% 12%, 56% 30%, 56% 50%, 64% 35%, 72% 50%, 78% 30%, 84% 50%, 90% 38%, 100% 50%, 100% 100%)' },
+          { c: '#262C3B', top: 56, h: 26, clip: 'polygon(0% 100%, 0% 40%, 8% 15%, 16% 40%, 22% 40%, 22% 25%, 32% 25%, 32% 45%, 42% 10%, 52% 45%, 60% 45%, 60% 30%, 70% 30%, 70% 50%, 80% 18%, 90% 50%, 100% 35%, 100% 100%)' },
+          { c: '#1B202B', top: 80, h: 20, clip: 'none' }
+        ]
+      }
+    };
+    const w = Number(this.props.w ?? 480);
+    const h = Number(this.props.h ?? 320);
+    const src = this.props.src;
+    return {
+      w, h, src,
+      hasSrc: !!src, noSrc: !src,
+      s: SCENES[this.props.scene] || SCENES.meadow,
+      glow: Math.round(h * 0.12),
+      vig: Math.round(Math.min(w, h) * 0.18)
+    };
+  }
+}
+</script>
+</body>
+</html>

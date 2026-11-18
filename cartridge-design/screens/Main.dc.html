@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cartridge — Library</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="position: relative; width: 1280px; height: 720px; overflow: hidden; background: #000000; font-family: Inter, -apple-system, system-ui, sans-serif; color: #F5F5F7;">
+
+  <sc-if value="{{preview}}" hint-placeholder-val="{{true}}">
+    <div aria-hidden="true" style="position: absolute; left: 0px; top: 0px; width: 1280px; height: 540px; opacity: {{previewOp}}; transition: opacity 500ms ease;">
+      <dc-import name="Media" scene="{{focus.scene}}" src="{{focus.shot}}" w="{{mw}}" h="{{mh}}" hint-size="1280px,540px"></dc-import>
+    </div>
+    <div aria-hidden="true" style="position: absolute; left: 0px; top: 0px; width: 1280px; height: 541px; background: linear-gradient(180deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.2) 24%, rgba(0,0,0,0.15) 50%, rgba(0,0,0,0.85) 82%, #000000 100%);"></div>
+    <div style="position: absolute; right: 40px; top: 142px; height: 28px; padding: 0px 12px; border-radius: 14px; background: rgba(0,0,0,0.45); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: #E5E5EA;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E5E5EA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4zM17 9l4 6M21 9l-4 6"></path></svg>
+      Gameplay preview
+      <span aria-hidden="true" style="width: 40px; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.25); overflow: hidden; display: inline-block;"><span style="display: block; width: 45%; height: 3px; background: #E5E5EA;"></span></span>
+    </div>
+  </sc-if>
+
+  <header style="position: absolute; left: 0px; top: 0px; width: 1280px; height: 76px; padding: 0px 40px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between;">
+    <div style="width: 260px; display: flex; align-items: center; gap: 10px;">
+      <svg width="22" height="24" viewBox="0 0 22 24" aria-hidden="true"><path d="M4 1h14a2.5 2.5 0 0 1 2.5 2.5V21a2 2 0 0 1-2 2h-3v-2.5h-9V23h-3a2 2 0 0 1-2-2V3.5A2.5 2.5 0 0 1 4 1z" fill="#F5F5F7"></path><rect x="5" y="5" width="12" height="8" rx="1.5" fill="#000000"></rect><rect x="6" y="16" width="2" height="2.5" rx="0.6" fill="#000000"></rect><rect x="10" y="16" width="2" height="2.5" rx="0.6" fill="#000000"></rect><rect x="14" y="16" width="2" height="2.5" rx="0.6" fill="#000000"></rect></svg>
+      <span style="font-size: 17px; font-weight: 700; letter-spacing: -0.01em;">Cartridge</span>
+    </div>
+    <nav aria-label="Main" style="display: flex; align-items: center; gap: 12px;">
+      <span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 22px; border-radius: 7px; border: 1.5px solid rgba(245,245,247,0.35); box-sizing: border-box; font-size: 10px; font-weight: 700; color: #A1A1A6;">L1</span>
+      <div style="display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(40,40,42,0.6); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.06);">
+        <a href="Main.dc.html" aria-current="page" style="padding: 8px 18px; border-radius: 999px; background: #F5F5F7; color: #000000; font-size: 14px; font-weight: 600; text-decoration: none;">Library</a>
+        <a href="Systems.dc.html" style="padding: 8px 18px; border-radius: 999px; color: #F5F5F7; font-size: 14px; font-weight: 500; text-decoration: none;">Systems</a>
+        <a href="Apps.dc.html" style="padding: 8px 18px; border-radius: 999px; color: #F5F5F7; font-size: 14px; font-weight: 500; text-decoration: none;">Apps</a>
+        <a href="Settings.dc.html" style="padding: 8px 18px; border-radius: 999px; color: #F5F5F7; font-size: 14px; font-weight: 500; text-decoration: none;">Settings</a>
+      </div>
+      <span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 22px; border-radius: 7px; border: 1.5px solid rgba(245,245,247,0.35); box-sizing: border-box; font-size: 10px; font-weight: 700; color: #A1A1A6;">R1</span>
+    </nav>
+    <div style="width: 260px; display: flex; justify-content: flex-end; align-items: center; gap: 14px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;">
+      <svg width="18" height="14" viewBox="0 0 24 18" fill="none" stroke="#F5F5F7" stroke-width="2.2" stroke-linecap="round" role="img" aria-label="Wi-Fi connected"><path d="M2 6.5a15 15 0 0 1 20 0"></path><path d="M5.5 10a10 10 0 0 1 13 0"></path><path d="M9 13.5a5 5 0 0 1 6 0"></path><circle cx="12" cy="16.5" r="1" fill="#F5F5F7"></circle></svg>
+      <span style="display: inline-flex; align-items: center; gap: 6px; color: #C7C7CC;">82%
+        <svg width="26" height="13" viewBox="0 0 26 13" aria-hidden="true"><rect x="0.75" y="0.75" width="21.5" height="11.5" rx="3.5" fill="none" stroke="#F5F5F7" stroke-opacity="0.45" stroke-width="1.5"></rect><rect x="3" y="3" width="15" height="7" rx="1.5" fill="#F5F5F7"></rect><path d="M24 4.5v4" stroke="#F5F5F7" stroke-opacity="0.45" stroke-width="1.6" stroke-linecap="round"></path></svg>
+      </span>
+      <span>21:47</span>
+    </div>
+  </header>
+
+  <div style="position: absolute; left: 40px; right: 40px; top: 92px; display: flex; align-items: center; justify-content: space-between;">
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <sc-for list="{{chips}}" as="chip" hint-placeholder-count="8">
+        <button type="button" style="height: 34px; padding: 0px 14px; border-radius: 17px; border: 0px; background: {{chip.bg}}; color: {{chip.fg}}; font-family: Inter, sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);">{{chip.label}}<span style="color: {{chip.countFg}}; font-weight: 500;">{{chip.count}}</span></button>
+      </sc-for>
+    </div>
+    <button type="button" style="height: 34px; padding: 0px 12px; border-radius: 17px; border: 0px; background: transparent; color: #C7C7CC; font-family: Inter, sans-serif; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"></path></svg>
+      Last played
+    </button>
+  </div>
+
+  <div style="position: absolute; left: 0px; top: 150px; width: 1280px; height: 330px;">
+    <sc-for list="{{items}}" as="item" hint-placeholder-count="7">
+      <div style="position: absolute; left: {{item.left}}px; bottom: 22px; z-index: {{item.z}}; opacity: {{item.op}}; transition: left 450ms cubic-bezier(.2,.8,.2,1), opacity 300ms ease;">
+        <button type="button" aria-label="{{item.label}}" onClick="{{item.pick}}" style="display: block; padding: 0px; margin: 0px; border: 0px; background: none; cursor: pointer; -webkit-box-reflect: below 8px linear-gradient(transparent 76%, rgba(255,255,255,0.11));">
+          <dc-import name="Box" game="{{item.g}}" w="{{item.w}}" h="{{item.h}}" d="{{item.d}}" ry="{{item.ry}}" tz="{{item.tz}}" dim="{{item.dim}}" focused="{{item.focused}}" pad="{{zero}}" hint-size="180px,250px"></dc-import>
+        </button>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="position: absolute; left: 0px; top: 500px; width: 1280px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+    <div style="font-size: 30px; font-weight: 700; letter-spacing: -0.02em;">{{focus.title}}</div>
+    <div style="font-size: 15px; font-weight: 500; color: #A1A1A6;">{{focus.meta}}</div>
+    <div style="margin-top: 6px; display: flex; gap: 18px; font-size: 13px; color: #8E8E93; font-variant-numeric: tabular-nums;">
+      <span>Last played {{focus.last}}</span>
+      <span aria-hidden="true">·</span>
+      <span>{{focus.time}} played</span>
+      <span aria-hidden="true">·</span>
+      <span>{{focus.saves}} save states</span>
+    </div>
+  </div>
+
+  <footer style="position: absolute; left: 0px; bottom: 0px; width: 1280px; height: 64px; padding: 0px 40px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between;">
+    <span style="font-size: 13px; color: #8E8E93; font-variant-numeric: tabular-nums;">{{position}} · Recently Played</span>
+    <div style="display: flex; align-items: center; gap: 26px;">
+      <a href="Launch.dc.html" style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #F5F5F7; text-decoration: none;"><span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 12px; background: #F5F5F7; color: #000000; font-size: 12px; font-weight: 800;">A</span>Play</a>
+      <a href="GameDetail.dc.html" style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: #F5F5F7; text-decoration: none;"><span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 12px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box; font-size: 11px; font-weight: 700;">X</span>Details</a>
+      <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500;"><span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 12px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box; font-size: 11px; font-weight: 700;">Y</span>Favorite</span>
+      <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500;"><span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 24px; border-radius: 12px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box; font-size: 10px; font-weight: 700;">R3</span>Sound</span>
+      <a href="QuickMenu.dc.html" style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: #F5F5F7; text-decoration: none;"><span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 12px; border: 1.5px solid rgba(245,245,247,0.55); box-sizing: border-box;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#F5F5F7" stroke-width="3" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></span>Quick menu</a>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"sideAngle":{"editor":"range","default":50,"min":20,"max":75,"step":1,"unit":"°","section":"Shelf"},"preview":{"editor":"boolean","default":true,"section":"Preview"},"previewOpacity":{"editor":"range","default":70,"min":0,"max":100,"step":5,"unit":"%","section":"Preview"},"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  state = { focus: 2 };
+  renderVals() {
+    const PS2 = [176, 248], GBA = [190, 211], SNES = [240, 172], PS1 = [204, 180];
+    const G = (title, series, short, sys, size, year, genre, t1, t2, scene, last, time, saves) =>
+      ({ title, series, short, sys, w: size[0], h: size[1], year, genre, t1, t2, scene, last, time, saves });
+    const GAMES = [
+      G('Final Fantasy X', '', 'Final Fantasy X', 'PS2', PS2, '2001', 'RPG', '#2C4452', '#5E7D8C', 'sea', 'yesterday', '62h 10m', 14),
+      G('Final Fantasy XII', '', 'Final Fantasy XII', 'PS2', PS2, '2006', 'RPG', '#4E4232', '#8A7357', 'dusk', '4 days ago', '38h 45m', 9),
+      G('The Legend of Zelda: The Minish Cap', 'The Legend of Zelda', 'The Minish Cap', 'GBA', GBA, '2004', 'Action-adventure', '#3E5744', '#7C9273', 'meadow', '2 hours ago', '9h 12m', 6),
+      G('The Legend of Zelda: A Link to the Past', 'The Legend of Zelda', 'A Link to the Past', 'GBA', GBA, '2002', 'Action-adventure', '#4A3F57', '#7F7091', 'forest', 'last week', '14h 03m', 5),
+      G('Golden Sun', '', 'Golden Sun', 'GBA', GBA, '2001', 'RPG', '#6A5636', '#A38C5E', 'town', 'last week', '21h 40m', 4),
+      G('Metroid Fusion', '', 'Metroid Fusion', 'GBA', GBA, '2002', 'Action', '#2E3A42', '#56656E', 'cave', '2 weeks ago', '6h 18m', 3),
+      G('Kingdom Hearts', '', 'Kingdom Hearts', 'PS2', PS2, '2002', 'Action RPG', '#2A3350', '#5A6890', 'sea', '3 weeks ago', '31h 02m', 8),
+      G('Chrono Trigger', '', 'Chrono Trigger', 'SNES', SNES, '1995', 'RPG', '#3C4838', '#6E7B5E', 'forest', 'last month', '24h 55m', 7),
+      G('Super Metroid', '', 'Super Metroid', 'SNES', SNES, '1994', 'Action', '#3A2E33', '#675259', 'cave', 'last month', '7h 41m', 2),
+      G('Castlevania: Symphony of the Night', 'Castlevania', 'Symphony of the Night', 'PS1', PS1, '1997', 'Action RPG', '#2D2935', '#575063', 'town', 'last month', '12h 20m', 5)
+    ];
+    const f = this.state.focus;
+    const angle = this.props.sideAngle ?? 50;
+    const items = GAMES.map((g, i) => {
+      const off = i - f;
+      const a = Math.abs(off);
+      const s = Math.sign(off);
+      const focused = off === 0;
+      const k = focused ? 1.24 : 1;
+      const w = Math.round(g.w * k);
+      const h = Math.round(g.h * k);
+      const cx = 640 + s * (a === 0 ? 0 : 260 + (a - 1) * 150);
+      return {
+        g, w, h, focused,
+        d: focused ? 26 : 20,
+        ry: focused ? 16 : (s < 0 ? angle : -angle),
+        tz: focused ? 30 : 0,
+        dim: focused ? 0 : (a === 1 ? 0.3 : 0.5),
+        left: Math.round(cx - w / 2),
+        z: 20 - a,
+        op: a > 3 ? 0 : (a === 3 ? 0.55 : 1),
+        label: g.title + ', ' + g.sys,
+        pick: () => this.setState({ focus: i })
+      };
+    });
+    const fg = GAMES[f];
+    const chipDefs = [['Recently Played', ''], ['Favorites', '24'], ['All Games', '1,284'], ['GBA', '187'], ['PS2', '64'], ['SNES', '214'], ['PS1', '96'], ['N64', '58']];
+    const chips = chipDefs.map((c, i) => ({
+      label: c[0], count: c[1],
+      bg: i === 0 ? 'rgba(255,255,255,0.2)' : 'rgba(40,40,42,0.55)',
+      fg: i === 0 ? '#FFFFFF' : '#D1D1D6',
+      countFg: i === 0 ? '#D1D1D6' : '#A1A1A6'
+    }));
+    return {
+      items, chips, zero: 0,
+      mw: 1280, mh: 540,
+      preview: this.props.preview ?? true,
+      previewOp: (this.props.previewOpacity ?? 70) / 100,
+      position: (f + 1) + ' of ' + GAMES.length,
+      focus: Object.assign({}, fg, { meta: fg.sys + ' · ' + fg.year + ' · ' + fg.genre })
+    };
+  }
+}
+</script>
+</body>
+</html>
