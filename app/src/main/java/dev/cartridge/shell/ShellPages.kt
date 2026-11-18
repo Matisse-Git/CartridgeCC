@@ -1,5 +1,6 @@
 package dev.cartridge.shell
 
+import kotlin.math.roundToInt
 import android.text.format.DateUtils
 import dev.cartridge.domain.ButtonMap
 import dev.cartridge.domain.CollectionLayout
@@ -100,21 +101,39 @@ internal fun ConsoleShell.buildPage(state: CollectionState, status: EngineStatus
     }
 }
 
+/**
+ * The Quick menu (spec 4.6), from Home or Menu outside a game: the device's own controls, then what the library can do.
+ * Row ids carry where the screen draws them: "tile:" two across, "slider:" one per line, "wide:" a whole line and
+ * "act:" two across. Brightness and Do Not Disturb open Android's page to allow them until they are allowed.
+ */
 private fun ConsoleShell.systemMenu(state: CollectionState): Page {
     val games = state.allGames
     val resume = state.resumeSession?.let { saved -> games.firstOrNull { it.id == saved.id } }
     val consoles = games.map { it.system }.distinct().size
     val ready = state.loaded && !state.busy
-    return Page("menu", "Menu", buildList {
-        if (resume != null) add(MenuRow("resume", "Continue ${resume.title}", note = "Paused where you left it", enabled = ready, tag = "system-resume") { home(); coordinator.resumeSavedSession() })
-        if (state.removedEntry != null) add(MenuRow("undo-hide", "Restore hidden game", note = "Bring back the game you just hid", enabled = ready, tag = "system-undo-hide") { home(); coordinator.undoHide() })
-        add(MenuRow("add", "Add Games", enabled = ready, tag = "system-add") { addGames() })
+    val device = device
+    return Page("menu", "Quick menu", buildList {
+        add(MenuRow("tile:wifi", "Wi-Fi", RowKind.Link, value = if (device.wifi) "Connected" else "Not connected", checked = device.wifi, tag = "quick-wifi") {
+            if (!device.openWifi()) coordinator.notify("Wi-Fi settings could not be opened on this device") })
+        add(MenuRow("tile:bluetooth", "Bluetooth", RowKind.Link, value = when (device.controllers) { 0 -> "No controllers"; else -> plural(device.controllers, "controller") },
+            checked = device.controllers > 0, tag = "quick-bluetooth") { if (!device.openBluetooth()) coordinator.notify("Bluetooth settings could not be opened on this device") })
+        add(MenuRow("tile:quiet", "Do Not Disturb", RowKind.Toggle, value = when { !device.quietAllowed -> "Allow access"; device.quiet -> "On"; else -> "Off" },
+            checked = device.quiet, tag = "quick-quiet") { if (!device.toggleQuiet()) device.allowQuiet() })
+        add(MenuRow("tile:android", "Android", RowKind.Link, value = "All settings", tag = "quick-android") { host.openAndroidSettings() })
+        add(MenuRow("slider:brightness", "Brightness", RowKind.Choice, value = if (device.brightnessAllowed) "${(device.brightness * 100).roundToInt()}%" else "Allow access",
+            note = if (device.brightnessAllowed) null else "Allow Cartridge to change system settings, then come back", tag = "quick-brightness",
+            adjust = { delta -> if (!device.changeBrightness(delta)) device.allowBrightness() }) { if (!device.brightnessAllowed) device.allowBrightness() })
+        add(MenuRow("slider:volume", "Volume", RowKind.Choice, value = "${(device.volume * 100).roundToInt()}%", tag = "quick-volume",
+            adjust = { delta -> device.changeVolume(delta) }) {})
+        if (resume != null) add(MenuRow("wide:resume", "Continue ${resume.title}", note = "Paused where you left it", enabled = ready, tag = "system-resume") { home(); coordinator.resumeSavedSession() })
+        add(MenuRow("act:add", "Add Games", enabled = ready, tag = "system-add") { addGames() })
         if (games.isNotEmpty()) {
-            add(MenuRow("search", "Search", value = state.query.search.takeIf(String::isNotBlank), enabled = ready, tag = "system-search") { search() })
-            add(MenuRow("artwork", "Artwork & Info", enabled = ready, tag = "system-artwork") { openScraper() })
+            add(MenuRow("act:search", "Search", value = state.query.search.takeIf(String::isNotBlank), enabled = ready, tag = "system-search") { search() })
+            add(MenuRow("act:artwork", "Artwork & Info", enabled = ready, tag = "system-artwork") { openScraper() })
         }
-        if (roots.isNotEmpty()) add(MenuRow("refresh", "Refresh Library", enabled = ready, tag = "system-refresh") { refreshLibrary() })
-        add(MenuRow("settings", "Settings", RowKind.Link, tag = "system-settings") { push(Destination.Settings) })
+        if (roots.isNotEmpty()) add(MenuRow("act:refresh", "Refresh Library", enabled = ready, tag = "system-refresh") { refreshLibrary() })
+        if (state.removedEntry != null) add(MenuRow("act:undo-hide", "Restore Hidden", note = "Bring back the game you just hid", enabled = ready, tag = "system-undo-hide") { home(); coordinator.undoHide() })
+        add(MenuRow("act:settings", "Settings", RowKind.Link, tag = "system-settings") { push(Destination.Settings) })
     }, PageStyle.Sheet, if (games.isEmpty()) null else "${plural(games.size, "game")} · ${plural(consoles, "console")}")
 }
 

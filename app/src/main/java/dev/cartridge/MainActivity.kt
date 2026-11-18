@@ -64,6 +64,7 @@ import dev.cartridge.scraping.*
 import dev.cartridge.session.*
 import dev.cartridge.shell.ConsoleShell
 import dev.cartridge.shell.Destination
+import androidx.compose.ui.draw.blur
 import dev.cartridge.shell.ShellHost
 import dev.cartridge.storage.*
 import dev.cartridge.ui.*
@@ -330,7 +331,11 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                 if (state.screen in listOf(CollectionScreen.Library, CollectionScreen.Inserting, CollectionScreen.Ejecting, CollectionScreen.LabelPreview)) {
                     val browsing = state.screen == CollectionScreen.Library && shell.top == null && !scrape.visible && status.state == SessionState.Idle
                     CompositionLocalProvider(dev.cartridge.ui.design.LocalGameMedia provides gameMedia) {
-                        dev.cartridge.ui.design.DesignCanvas(state.reducedMotion) {
+                        // The Quick menu (spec 4.6) rests on the launcher blurred behind it.
+                        val quick = shell.top == Destination.SystemMenu && !scrape.visible
+                        val blur by androidx.compose.animation.core.animateDpAsState(if (quick && android.os.Build.VERSION.SDK_INT >= 31) 40.dp else 0.dp,
+                            tween(if (state.reducedMotion) 0 else 220), label = "quick-blur")
+                        dev.cartridge.ui.design.DesignCanvas(state.reducedMotion, if (blur > 0.dp) Modifier.blur(blur) else Modifier) {
                             dev.cartridge.ui.screens.LibraryScreen(state, shell, device, shell.controls.swapMenuButtons, browsing)
                             // Game detail rests on the shelf, and the sheets opened from it rest on Game detail.
                             val detail = state.screen == CollectionScreen.Library && Destination.Details in shell.stack && !scrape.visible
@@ -356,6 +361,9 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                         }
                     }
                 }
+                if (shell.top == Destination.SystemMenu && !scrape.visible) dev.cartridge.ui.design.DesignCanvas(state.reducedMotion) {
+                    dev.cartridge.ui.screens.QuickMenuScreen(shell, device, shell.controls.swapMenuButtons)
+                }
                 ShellOverlays(shell, state, status, device, confirm, back)
                 if (scrape.visible) ScrapePanel(scrape, scraper, confirm, back)
                 // Over everything the stage and its menus draw; only notices sit above it.
@@ -369,7 +377,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                 Notices(state.message.takeIf { state.launchFailure == null && shell.import == null },
                     listOfNotNull(status.saveWarning, state.historyWarning).joinToString("\n").ifEmpty { null },
                     beside = when (shell.top) {
-                        Destination.SystemMenu -> 300.dp
+                        Destination.SystemMenu -> 448.dp
                         Destination.Manage, Destination.GameMore -> 400.dp
                         Destination.Options -> if (status.state == SessionState.Paused) 340.dp else 400.dp
                         else -> 0.dp
@@ -468,8 +476,20 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         }
     }
 
+    /** True from the moment the console left the screen until it is back in front. */
+    private var leftScreen = true
+    override fun onStop() { leftScreen = true; super.onStop() }
+    /**
+     * Home arrives here as a new intent, as it does at any home screen. Pressed while Cartridge was already on screen it
+     * toggles the Quick menu (spec 4.6); coming back from another app it only brings Cartridge back.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (!leftScreen && intent.hasCategory(Intent.CATEGORY_HOME) && ::shell.isInitialized) shell.homePressed()
+    }
     override fun onResume() {
         super.onResume()
+        leftScreen = false
         if (::coordinator.isInitialized) coordinator.foreground()
         if (::shell.isInitialized) shell.resumed()
         Choreographer.getInstance().removeFrameCallback(inputFrames)

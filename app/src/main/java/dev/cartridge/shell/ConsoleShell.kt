@@ -419,6 +419,7 @@ class ConsoleShell(
             Destination.Settings -> if (pane == 0) category = SettingsCategory.entries[(category.ordinal + delta).coerceIn(0, SettingsCategory.entries.lastIndex)]
                 else page()?.let { move(it, delta) }
             null -> if (pauseOpen) pauseMove(0, delta) else page()?.let { move(it, delta) }
+            Destination.SystemMenu -> quickMove(0, delta)
             Destination.SaveStates -> if (pauseOpen) gridMove(0, delta) else page()?.let { move(it, delta) }
             else -> page()?.let { move(it, delta) }
         }
@@ -430,6 +431,7 @@ class ConsoleShell(
             Destination.Apps -> apps.move(delta, 0)
             Destination.Details -> detailMove(delta, 0)
             null -> if (pauseOpen) pauseMove(delta, 0) else page()?.let(::focused)?.takeIf { it.enabled }?.adjust?.invoke(delta)
+            Destination.SystemMenu -> quickMove(delta, 0)
             Destination.SaveStates -> if (pauseOpen) gridMove(delta, 0)
             Destination.Settings -> if (pane == 0) { if (delta > 0) pane = 1 } else {
                 val row = page()?.let(::focused)
@@ -542,7 +544,7 @@ class ConsoleShell(
             scraper.state.value.visible -> Unit
             top is Destination.TextEntry -> finishText()
             top == Destination.SystemMenu -> pop()
-            top == null && inputMode() == InputMode.Library -> push(Destination.SystemMenu)
+            top == null && inputMode() == InputMode.Library -> openMenu()
         }
     }
     /** L2 / R2: the top-level tabs (spec 3), wherever a tab is showing and nothing is stacked over it. */
@@ -603,7 +605,42 @@ class ConsoleShell(
     /** How many save states a game has, for the library's line about it. Read on the IO threads. */
     suspend fun saveCount(game: LibraryGame): Int = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { slots.list(game.id, game.system).size } }.getOrDefault(0)
     fun openDetails() { if (state.selectedGame != null && state.screen == CollectionScreen.Library && !state.busy) push(Destination.Details) }
-    fun openMenu() { if (top == null && inputMode() == InputMode.Library) push(Destination.SystemMenu) }
+    fun openMenu() { if (top == null && inputMode() == InputMode.Library) { device.refresh(); push(Destination.SystemMenu) } }
+    /**
+     * Android's Home while Cartridge is already in front (spec 4.6): outside a game it opens the Quick menu, or closes
+     * it. In a game the pause menu stays where it is; Home there is handled by pausing when the console leaves the front.
+     */
+    fun homePressed() {
+        if (scraper.state.value.visible || status.state != SessionState.Idle || state.screen != CollectionScreen.Library) return
+        if (top == Destination.SystemMenu) return pop()
+        if (top is Destination.TextEntry || top is Destination.RecordButton) return
+        home()
+        if (inputMode() == InputMode.Library) { device.refresh(); push(Destination.SystemMenu) }
+    }
+
+    /** The device's own settings the Quick menu changes. */
+    val device = dev.cartridge.environment.DeviceControls(context)
+    private var quickColumn = 0
+    /** The Quick menu's rows as the screen lays them out: tiles two across, sliders one, the library's actions two. */
+    fun quickLines(page: Page): List<List<MenuRow>> {
+        val rows = page.rows.filter { it.focusable }
+        fun group(prefix: String) = rows.filter { it.id.startsWith(prefix) }
+        return group("tile:").chunked(2) + group("slider:").map(::listOf) + group("wide:").map(::listOf) + group("act:").chunked(2)
+    }
+    /** Up and Down between lines, keeping the column; Left and Right along a line, or along a slider. */
+    private fun quickMove(dx: Int, dy: Int) {
+        val page = page() ?: return
+        val lines = quickLines(page)
+        val current = focused(page) ?: return
+        val line = lines.indexOfFirst { current in it }.takeIf { it >= 0 } ?: return
+        val column = lines[line].indexOf(current)
+        if (lines[line].size > 1) quickColumn = column
+        when {
+            dy != 0 -> lines.getOrNull(line + dy)?.let { next -> focus[page.key] = next[quickColumn.coerceAtMost(next.lastIndex)].id }
+            dx != 0 && lines[line].size > 1 -> lines[line].getOrNull(column + dx)?.let { focus[page.key] = it.id; quickColumn = column + dx }
+            dx != 0 -> current.takeIf { it.enabled }?.adjust?.invoke(dx)
+        }
+    }
 
     // ---- Apps -------------------------------------------------------------------------------------------
 
@@ -623,7 +660,7 @@ class ConsoleShell(
     }
     private fun rememberApp() { apps.focused?.let { preferences.edit { putString("appsFocus", it.id) } } }
     /** The console is in front again: another app may have installed, removed or changed something meanwhile. */
-    fun resumed() { if (apps.phase != AppLibrary.Phase.Unread) apps.refresh() }
+    fun resumed() { if (apps.phase != AppLibrary.Phase.Unread) apps.refresh(); device.refresh() }
     /** Leaving the foreground may be the last this console instance hears: keep the app the player was on. */
     fun paused() { if (appsOpen) rememberApp() }
 

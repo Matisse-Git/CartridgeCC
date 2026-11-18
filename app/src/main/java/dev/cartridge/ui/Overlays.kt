@@ -42,6 +42,8 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
     // The pause screen draws its own sidebar and sections; only a question asked over it is drawn here.
     val pause = shell.pauseOpen
     if (pause && !shell.overPause(top)) return
+    // The Quick menu is its own screen (ui/screens/QuickMenuScreen).
+    if (top == Destination.SystemMenu) return
     if (!pause) shell.base?.let { destination -> shell.page(state, status, destination)?.let { page -> Entering(destination.key) { OpaquePage(page, shell, state, device, top == destination, confirm, back) } } }
     val floating = if (top == null || !top.opaque) shell.page(state, status, top) else null
     if (floating != null) {
