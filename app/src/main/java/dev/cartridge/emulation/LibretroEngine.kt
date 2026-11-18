@@ -81,7 +81,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
         machine.transition(next)
         val live = next in setOf(SessionState.Running, SessionState.Paused)
         mutableStatus.value = EngineStatus(next, error, if (live) status.value.saveWarning else null,
-            frozen = frozen && next == SessionState.Paused, speed = if (live) speed else 1,
+            frozen = frozen && next == SessionState.Paused, speed = if (live) speed else 1, muted = muted,
             disc = if (live) disc else 0, discs = if (live) discs else 0)
     }
 
@@ -259,6 +259,7 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 // A state names the disc it was made on, and the engine puts that disc back as it loads it.
                 if (discs > 0) readDisc()
                 session.registry.currentState = Lifecycle.State.RESUMED
+                if (muted) view.audioEnabled = false
                 withTimeout(15_000) { ready.await() }
                 transition(SessionState.Running)
                 listOfNotNull(startNotice, shaderNotice).takeIf { it.isNotEmpty() }?.let {
@@ -318,7 +319,20 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
     private fun applySpeed(frames: Int) {
         if (speed == frames) return
         speed = frames
-        mutableSurface.value?.let { view -> view.frameSpeed = frames; view.audioEnabled = frames == 1 }
+        mutableSurface.value?.let { view -> view.frameSpeed = frames; view.audioEnabled = frames == 1 && !muted }
+    }
+    /** Muted from the pause menu: no sound at any speed, for this game and the next, until turned back on. */
+    private var muted = false
+    override suspend fun mute(muted: Boolean) = withContext(Dispatchers.Main.immediate) {
+        mutex.withLock {
+            this@LibretroEngine.muted = muted
+            mutableSurface.value?.audioEnabled = speed == 1 && !muted
+            mutableStatus.value = status.value.copy(muted = muted)
+        }
+    }
+    override suspend fun reset() = pausedOperation {
+        onGl { reset(false) }
+        checkpointWithWarning()
     }
     private suspend fun capturePresentedFrame(): Bitmap? {
         val view = mutableSurface.value ?: return null

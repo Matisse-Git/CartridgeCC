@@ -101,6 +101,10 @@ sealed class Destination(val key: String, val opaque: Boolean = false) {
     data class ConsoleButtons(val system: GameSystem) : Destination("buttons:${system.name}", true)
     /** Listening for the physical button [button] of [system] is to be pressed with; every controller button goes to it. */
     data class RecordButton(val system: GameSystem, val button: dev.cartridge.domain.PadKey) : Destination("record-button")
+    /** The pause menu's Core Settings and Display & Shaders (spec 4.5): the core's options for this game or its console. */
+    data object CoreSettings : Destination("core")
+    /** Reset Game asks once: progress since the last save is lost. */
+    data object ConfirmReset : Destination("confirm-reset")
     /** The paused game's discs, for putting another in the drive (ADR 0032). */
     data object Discs : Destination("discs")
     /** The games of one disc on the focused game's console, one of which joins it as a disc. */

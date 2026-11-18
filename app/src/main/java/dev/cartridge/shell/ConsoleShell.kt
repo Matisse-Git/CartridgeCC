@@ -186,6 +186,67 @@ class ConsoleShell(
     var shaderChecking by mutableStateOf<String?>(null); private set
     /** Bumped whenever a stored option changes, so pages built from [options] recompose. */
     var optionsRevision by mutableIntStateOf(0); private set
+    /** Core Settings' switch (spec 4.5): false changes this game's options, true every game of its console. L1 / R1. */
+    var coreForConsole by mutableStateOf(false); private set
+    fun changeCoreScope(console: Boolean) { coreForConsole = console }
+    /** Display & Shaders opens Core Settings on its shader row; Core Settings opens on its first row. */
+    fun focusCoreRow(id: String?) { if (id == null) focus.remove("core") else focus["core"] = id }
+
+    /** The game's running time since it was started, for the pause menu's header. Paused time does not count. */
+    private var sessionStart = 0L
+    private var sessionBanked = 0L
+    fun sessionMillis(now: Long = android.os.SystemClock.elapsedRealtime()) = sessionBanked + if (sessionStart > 0) now - sessionStart else 0L
+
+    /**
+     * The pause menu's own screen (ui/screens/PauseScreen) is showing: its sidebar, a section beside it, or a question
+     * asked over it. Anything else opened from it, like the shader library, covers it as before.
+     */
+    val pauseOpen: Boolean get() = status.state == SessionState.Paused && !status.frozen && stack.all { pausePanel(it) || overPause(it) }
+    /** A pause destination drawn as the panel beside the sidebar. */
+    fun pausePanel(destination: Destination?) = destination == Destination.SaveStates || destination == Destination.CoreSettings ||
+        destination is Destination.ConsoleButtons || destination is Destination.RecordButton
+    /** A pause destination still drawn by the overlays, over the pause screen. */
+    fun overPause(destination: Destination?) = destination is Destination.ConfirmSlot || destination == Destination.ConfirmReset || destination == Destination.Discs
+
+    /** The sidebar: Up and Down through its rows, Left and Right along the quick actions, Right into a section. */
+    private fun pauseMove(dx: Int, dy: Int) {
+        val page = page() ?: return
+        val rows = page.rows.filter { it.focusable }
+        val quick = rows.filter { it.id.startsWith("quick:") }
+        val menu = rows - quick.toSet()
+        val current = focused(page) ?: return
+        if (current in quick) {
+            if (dx != 0) focus[page.key] = quick[(quick.indexOf(current) + dx).coerceIn(0, quick.lastIndex)].id
+            if (dy > 0) menu.firstOrNull()?.let { focus[page.key] = it.id }
+            return
+        }
+        val index = menu.indexOf(current)
+        when {
+            dy < 0 && index == 0 && quick.isNotEmpty() -> focus[page.key] = quick.first().id
+            dy != 0 -> focus[page.key] = menu[(index + dy).coerceIn(0, menu.lastIndex)].id
+            dx > 0 && current.kind == RowKind.Link -> activate(page, current)
+        }
+    }
+    /** The save-state grid: three across, Left from its first column back to the sidebar. */
+    private fun gridMove(dx: Int, dy: Int) {
+        val page = page() ?: return
+        val rows = page.rows.filter { it.focusable }
+        if (rows.isEmpty()) return
+        val index = rows.indexOf(focused(page)).coerceAtLeast(0)
+        if (dx < 0 && index % GRID == 0) return pop()
+        val next = index + dx + dy * GRID
+        if (next in rows.indices) focus[page.key] = rows[next].id
+        else if (dy > 0 && index / GRID < rows.lastIndex / GRID) focus[page.key] = rows.last().id
+    }
+    /** The focused save, when it is one of the player's own: the quick saves cannot be overwritten or deleted. */
+    private fun focusedSave(): String? = page()?.let(::focused)?.takeIf { it.id.startsWith("slot:") && it.kind == RowKind.Link }?.id?.removePrefix("slot:")
+    /** X on Core Settings: the focused option back to what it follows. */
+    private fun resetCoreOption() {
+        val game = state.selectedGame ?: return
+        val id = page()?.let(::focused)?.id?.substringAfter(':') ?: return
+        val option = GameOptions.forSystem(game.system).firstOrNull { it.id == id } ?: return
+        if (coreForConsole) setConsoleOption(option, option.default) else setGameOption(game, option, null)
+    }
     var homeEnabled by mutableStateOf(host.homeEnabled); private set
     /** Private names of the console files the user has added. */
     var firmwarePresent by mutableStateOf<Set<String>>(emptySet()); private set
@@ -328,9 +389,15 @@ class ConsoleShell(
         if (lastScreen == CollectionScreen.LabelPreview && state.screen == CollectionScreen.Library)
             scraper.previewFinished(applied = state.lastLabelAppliedTo == scraper.state.value.current?.game?.id)
         lastScreen = state.screen
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (status.state == SessionState.Preparing) { sessionBanked = 0L; sessionStart = 0L }
+        if (status.state == SessionState.Running && sessionStart == 0L) sessionStart = now
+        if (status.state != SessionState.Running && sessionStart > 0L) { sessionBanked += now - sessionStart; sessionStart = 0L }
         if (status.state == SessionState.Running && lastSession == SessionState.Preparing) {
             launches++; preferences.edit { putInt("launches", launches) }
         }
+        // Each pause opens on Resume, so A straight away goes back to the game.
+        if (status.state == SessionState.Paused && lastSession == SessionState.Running) focus["pause"] = "resume"
         lastSession = status.state
         // A finished pause-menu operation may have written a state; show its time without asking.
         if (lastBusy && !state.busy && scene == Scene.Game) playingId?.let { loadFacts(it); loadSlots(it) }
@@ -351,6 +418,8 @@ class ConsoleShell(
             Destination.Details -> detailMove(0, delta)
             Destination.Settings -> if (pane == 0) category = SettingsCategory.entries[(category.ordinal + delta).coerceIn(0, SettingsCategory.entries.lastIndex)]
                 else page()?.let { move(it, delta) }
+            null -> if (pauseOpen) pauseMove(0, delta) else page()?.let { move(it, delta) }
+            Destination.SaveStates -> if (pauseOpen) gridMove(0, delta) else page()?.let { move(it, delta) }
             else -> page()?.let { move(it, delta) }
         }
     }
@@ -360,6 +429,8 @@ class ConsoleShell(
             is Destination.TextEntry -> moveKey(delta, 0)
             Destination.Apps -> apps.move(delta, 0)
             Destination.Details -> detailMove(delta, 0)
+            null -> if (pauseOpen) pauseMove(delta, 0) else page()?.let(::focused)?.takeIf { it.enabled }?.adjust?.invoke(delta)
+            Destination.SaveStates -> if (pauseOpen) gridMove(delta, 0)
             Destination.Settings -> if (pane == 0) { if (delta > 0) pane = 1 } else {
                 val row = page()?.let(::focused)
                 if (row?.adjust != null && row.enabled) row.adjust.invoke(delta) else if (delta < 0) pane = 0
@@ -439,6 +510,9 @@ class ConsoleShell(
             }
             top is Destination.TextEntry -> backspace()
             top == Destination.Details -> push(Destination.Options)
+            pauseOpen && top == Destination.SaveStates -> focusedSave()?.let { push(Destination.ConfirmSlot(SlotAction.Overwrite, it)) }
+            pauseOpen && top == Destination.CoreSettings -> resetCoreOption()
+            pauseOpen && top is Destination.ConsoleButtons -> (top as Destination.ConsoleButtons).let { if (it.system in controls.buttons) resetButtons(it.system) }
             top == null && inputMode() == InputMode.Library -> openDetails()
         }
     }
@@ -448,6 +522,7 @@ class ConsoleShell(
             scraper.state.value.visible -> Unit
             top is Destination.TextEntry -> type(' ')
             top == Destination.Details -> coordinator.favorite()
+            pauseOpen && top == Destination.SaveStates -> focusedSave()?.let { push(Destination.ConfirmSlot(SlotAction.Delete, it)) }
             top == Destination.Apps -> searchApps()
             top == null && inputMode() == InputMode.Library -> coordinator.favorite()
         }
@@ -457,6 +532,7 @@ class ConsoleShell(
         when {
             scraper.state.value.visible -> Unit
             top == Destination.Settings -> category = SettingsCategory.entries[Math.floorMod(category.ordinal + delta, SettingsCategory.entries.size)]
+            pauseOpen && top == Destination.CoreSettings -> coreForConsole = delta > 0
             top == null && inputMode() == InputMode.Library -> stepChip(delta)
         }
     }
@@ -1130,3 +1206,6 @@ class ConsoleShell(
         }
     }
 }
+
+/** Save states across one row of the pause menu's grid. */
+private const val GRID = 3

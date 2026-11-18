@@ -11,6 +11,8 @@ import java.io.File
  */
 data class EngineStatus(val state: SessionState = SessionState.Idle, val error: String? = null, val saveWarning: String? = null, val notice: String? = null,
     val frozen: Boolean = false, val speed: Int = 1,
+    /** The player turned the game's sound off from the pause menu; it stays off for every game until turned on. */
+    val muted: Boolean = false,
     /** The disc in the drive and how many the engine can change between (ADR 0032); 0 discs where it cannot. */
     val disc: Int = 0, val discs: Int = 0)
 /**
@@ -35,6 +37,10 @@ interface EmulationEngine {
     /** A running game runs [frames] frames for each one shown, with no sound above 1, where its core allows it. */
     suspend fun speed(frames: Int): Unit = error("Fast-forward is not available")
     suspend fun resume()
+    /** Sound off or on, over what fast-forward does to it. Kept for later games until changed. */
+    suspend fun mute(muted: Boolean): Unit = error("Muting is not available")
+    /** The paused game starts again from power-on. Its battery save and its states are kept. */
+    suspend fun reset(): Unit = error("Reset is not available")
     suspend fun stop()
     fun key(action: Int, androidKeyCode: Int)
     fun motion(x: Float, y: Float)

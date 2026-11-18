@@ -489,6 +489,23 @@ class CollectionCoordinator(
         if (!system.core.fastForward) return notify("Fast-forward isn't available for ${system.title}")
         runAction { engine.speed(if (status.speed > 1) 1 else frames) }
     }
+    /** Fast 2× from the pause menu: the game goes on at [frames] times its speed, on a core that allows it. */
+    fun resumeFast(frames: Int) {
+        val status = engine.status.value
+        if (status.state != SessionState.Paused || status.frozen) return
+        runAction { engine.resume(); engine.speed(frames) }
+    }
+    /** The pause menu's Mute: the game's sound off or on, kept for later games. */
+    fun toggleMute() {
+        val status = engine.status.value
+        if (status.state != SessionState.Paused && status.state != SessionState.Running) return
+        runAction { engine.mute(!status.muted) }
+    }
+    /** Reset Game: the paused game starts again from power-on and goes on. Battery saves and states are kept. */
+    fun resetGame() {
+        if (engine.status.value.state != SessionState.Paused) return
+        runAction { engine.reset(); engine.resume(); notify("Game reset") }
+    }
     /** 0 resume · 1 save state · 2 load state · 3 eject. Positions are a stable contract for the pause menu. */
     fun menuAction(index: Int) {
         if (engine.status.value.state != SessionState.Paused) return

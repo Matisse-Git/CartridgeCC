@@ -10,6 +10,7 @@ import dev.cartridge.domain.LaunchTransition
 import dev.cartridge.domain.SessionState
 import dev.cartridge.emulation.EngineStatus
 import dev.cartridge.environment.ConsoleSettings
+import dev.cartridge.environment.GameOption
 import dev.cartridge.environment.GameOptions
 import dev.cartridge.input.ButtonCombo
 import dev.cartridge.input.QuickCombo
@@ -90,6 +91,11 @@ internal fun ConsoleShell.buildPage(state: CollectionState, status: EngineStatus
         is Destination.ConsoleButtons -> buttonsPage(destination)
         is Destination.RecordButton -> recordButtonPage(destination)
         Destination.Discs -> game?.let { discsPage(it, state, status) }
+        Destination.CoreSettings -> game?.let { coreSettingsPage(it) }
+        Destination.ConfirmReset -> Page("confirm-reset", "Reset the game?", listOf(
+            MenuRow("confirm", "Reset", RowKind.Danger, enabled = !state.busy, tag = "reset-confirm") { home(); coordinator.resetGame() },
+            MenuRow("cancel", "Cancel", tag = "reset-cancel") { pop() }), PageStyle.Dialog,
+            body = "It starts again from the beginning. Progress since you last saved is lost, unless an in-game save kept it. Your saves and save states are kept.")
         Destination.AddDisc -> game?.let { addDiscPage(it, state) }
     }
 }
@@ -112,27 +118,73 @@ private fun ConsoleShell.systemMenu(state: CollectionState): Page {
     }, PageStyle.Sheet, if (games.isEmpty()) null else "${plural(games.size, "game")} · ${plural(consoles, "console")}")
 }
 
+/**
+ * The pause menu's sidebar (spec 4.5): its round quick actions, then Resume, the sections shown in the panel beside it,
+ * Reset Game and Quit Game. Only what the game's core really does is offered: Fast 2x where it can fast-forward, Save
+ * States where it can make one, Change Disc where it changes discs.
+ */
 private fun ConsoleShell.pausePage(state: CollectionState, status: EngineStatus): Page {
     val game = state.selectedGame
-    val known = facts?.takeIf { it.first == game?.id }?.second
     val ready = !state.busy
     // A console whose state cannot be captured is not offered one; its games keep their own saves.
     val states = game?.system?.core?.snapshots != dev.cartridge.domain.Snapshots.Never
-    val saved = stateList?.takeIf { it.first == game?.id }?.second?.count { it.kind == SlotKind.Saved }
+    val count = stateList?.takeIf { it.first == game?.id }?.second?.count { it.kind != SlotKind.Previous }
+    val shader = game?.let { resolveShader(it.system, it.id) }
     return Page("pause", game?.title ?: "Paused", listOfNotNull(
+        if (game?.system?.core?.fastForward == true) MenuRow("quick:fast", "Fast ${controls.fastForwardSpeed}×", enabled = ready, tag = "pause-fast") {
+            coordinator.resumeFast(controls.fastForwardSpeed) } else null,
+        MenuRow("quick:mute", if (status.muted) "Sound off" else "Mute", RowKind.Toggle, checked = status.muted, enabled = ready, tag = "pause-mute") { coordinator.toggleMute() },
         MenuRow("resume", "Resume", enabled = ready, tag = "menu-0") { coordinator.menuAction(0) },
-        if (states) MenuRow("save", "Quick Save", enabled = ready, tag = "menu-1") { coordinator.quickSave(resume = controls.returnToGame) } else null,
-        if (states) MenuRow("load", "Quick Load", value = known?.stateAt?.takeIf { it > 0 }?.let { "Saved ${whenLabel(it)}" },
-            note = if (known != null && known.stateAt <= 0) "Nothing saved yet" else null, enabled = ready && (known == null || known.stateAt > 0), tag = "menu-2") {
-            coordinator.quickLoad(resume = controls.returnToGame) } else null,
-        if (states) MenuRow("states", "Save States", RowKind.Link, value = saved?.let { if (it == 0) null else plural(it, "save") }, enabled = ready, tag = "menu-5") {
+        if (states) MenuRow("states", "Save States", RowKind.Link, value = count?.takeIf { it > 0 }?.toString(), enabled = ready, tag = "menu-5") {
             push(Destination.SaveStates) } else null,
+        game?.let { MenuRow("controls", "Controls", RowKind.Link, value = "P1", enabled = ready, tag = "pause-controls") { push(Destination.ConsoleButtons(it.system)) } },
+        MenuRow("core", "Core Settings", RowKind.Link, enabled = ready, tag = "pause-core") { focusCoreRow(null); push(Destination.CoreSettings) },
+        MenuRow("display", "Display & Shaders", RowKind.Link, value = shader?.let { shaderValue(it.path) }, enabled = ready, tag = "pause-display") {
+            focusCoreRow("display:shader"); push(Destination.CoreSettings) },
         // Only an engine that changes discs, with more than one to change between (ADR 0032).
         if (game?.system?.core?.discs == true && status.discs > 1) MenuRow("disc", "Change Disc", RowKind.Link,
             value = "Disc ${discNumber(game, status.disc)}", enabled = ready, tag = "menu-6") { push(Destination.Discs) } else null,
-        MenuRow("options", "Game Options", RowKind.Link, enabled = ready, tag = "menu-4") { push(Destination.Options) },
-        MenuRow("eject", "Return to Library", enabled = ready, tag = "menu-3") { coordinator.menuAction(3) }),
+        MenuRow("reset", "Reset Game", enabled = ready, tag = "pause-reset") { push(Destination.ConfirmReset) },
+        MenuRow("eject", "Quit Game", RowKind.Danger, enabled = ready, tag = "menu-3") { coordinator.menuAction(3) }),
         PageStyle.Pause, game?.system?.title)
+}
+
+/**
+ * Core Settings (spec 4.5): the core's options for this game alone or for every game of its console, as [coreForConsole]
+ * says, then its display: the screen effect and the shader. Row ids carry their group: "start:", "emu:" or "display:".
+ */
+private fun ConsoleShell.coreSettingsPage(game: LibraryGame): Page {
+    optionsRevision // Subscribes this page to stored option changes.
+    val family = game.system.core
+    val console = GameOptions.resolve(game.system, options.console(family))
+    val overrides = options.game(game.id)
+    val shader = resolveShader(game.system, game.id)
+    val everyGame = coreForConsole
+    // In the order the screen shows them: Starting, then Emulation, then Display, so Up and Down follow the eye.
+    fun group(option: GameOption) = when (option.key) { GameOptions.SCREEN_EFFECT -> "display"; GameOptions.START_FROM_STATE -> "start"; else -> "emu" }
+    val ordered = console.toList().sortedBy { (option, _) -> listOf("start", "emu", "display").indexOf(group(option)) }
+    return Page("core", "Core Settings", buildList {
+        ordered.forEach { (option, consoleValue) ->
+            val override = overrides[option.id]?.takeIf { value -> option.choices.any { it.value == value } }
+            val current = if (everyGame) consoleValue else override ?: consoleValue
+            val group = group(option)
+            val replaced = option.key == GameOptions.SCREEN_EFFECT && shader.path != null
+            add(MenuRow("$group:${option.id}", option.title, RowKind.Choice, value = if (replaced) "Under the shader" else option.title(current),
+                note = listOfNotNull(
+                    if (replaced) "${ShaderResolution.title(shader.path!!)} is drawn instead" else option.help,
+                    when { everyGame -> null; override == null -> "Same as all ${game.system.title} games"; else -> "This game only" },
+                    if (!option.live) "From the next start" else null).joinToString(" · "),
+                tag = "core-${option.id}", adjust = { delta ->
+                    val next = option.next(current, delta)
+                    // For one game, landing back on the console's value follows the console again.
+                    if (everyGame) setConsoleOption(option, next) else setGameOption(game, option, next.takeIf { it != consoleValue })
+                }))
+        }
+        val target = if (everyGame) ShaderTarget.Console(game.system) else ShaderTarget.Game(game.id, game.system, game.title)
+        add(MenuRow("display:shader", "Shader", RowKind.Link, value = shaderValue(shader.path),
+            note = shaderNote(shader, shaderChoices.get(target) != ShaderChoice.Inherit) + " · shows when the game resumes",
+            warn = shaderMissing(shader.path), tag = "core-shader") { openShaderPicker(target) })
+    }, PageStyle.Page, family.engine)
 }
 
 private fun ConsoleShell.labelPage(state: CollectionState): Page {
@@ -679,36 +731,40 @@ private fun slotTitle(slot: StateSlot) = when (slot.kind) {
 }
 private const val OTHER_BUILD = "Made by a different core build. It can't be loaded; the file is kept."
 
+/**
+ * Save States (spec 4.5) as a grid: New save state first, then the quick save, the one it replaced, and the saves newest
+ * first, each with its thumbnail. A save is "Save N" by the order it was made, as Resume names it. A loads (asking
+ * first), X overwrites a save and Y deletes one; the quick saves are only loaded.
+ */
 private fun ConsoleShell.saveStatesPage(game: LibraryGame, state: CollectionState): Page {
     val ready = !state.busy
     val list = stateList?.takeIf { it.first == game.id }?.second
-    fun row(slot: StateSlot) = MenuRow("slot:${slot.name}", slotTitle(slot) ?: dateLabel(slot.savedAt), RowKind.Link,
-        value = whenLabel(slot.savedAt), note = if (slot.compatible) sizeLabel(slot.size) else OTHER_BUILD, warn = !slot.compatible, enabled = ready,
-        tag = "slot-${slot.name}", picture = RowPicture(slot.thumbnail, slot.thumbnail?.lastModified() ?: slot.savedAt)) { push(Destination.SlotActions(slot.name)) }
-    return Page("states", "Save states", buildList {
-        add(MenuRow("new", "New save", note = "Keeps this moment beside your others", enabled = ready, tag = "slots-new") { newSlot() })
-        when {
-            list == null -> add(MenuRow("reading", "Reading saves…", RowKind.Info))
+    val saved = list.orEmpty().filter { it.kind == SlotKind.Saved }.sortedBy { it.savedAt }
+    fun name(slot: StateSlot) = slotTitle(slot) ?: "Save ${saved.indexOf(slot) + 1}"
+    fun row(slot: StateSlot) = MenuRow("slot:${slot.name}", name(slot), if (slot.kind == SlotKind.Saved) RowKind.Link else RowKind.Action,
+        value = whenLabel(slot.savedAt), note = if (slot.compatible) "${dateLabel(slot.savedAt)} · ${sizeLabel(slot.size)}" else OTHER_BUILD,
+        warn = !slot.compatible, enabled = ready && slot.compatible, tag = "slot-${slot.name}",
+        picture = RowPicture(slot.thumbnail, slot.thumbnail?.lastModified() ?: slot.savedAt)) { push(Destination.ConfirmSlot(SlotAction.Load, slot.name)) }
+    val quick = list.orEmpty().firstOrNull { it.kind == SlotKind.Quick }
+    return Page("states", "Save States", buildList {
+        add(MenuRow("new", "New save state", note = "Keeps the moment you paused on beside your others", enabled = ready, tag = "slots-new") { newSlot() })
+        when (list) {
+            null -> add(MenuRow("reading", "Reading saves…", RowKind.Info))
             else -> {
-                list.filter { it.kind != SlotKind.Saved }.forEach { add(row(it)) }
-                val saved = list.filter { it.kind == SlotKind.Saved }
-                add(MenuRow("header:saves", if (saved.isEmpty()) "Saves" else "Saves · ${saved.size}", RowKind.Header))
-                if (saved.isEmpty()) add(MenuRow("none", "No saves yet", RowKind.Info, note = "New save keeps the moment you paused on."))
-                saved.forEach { add(row(it)) }
+                list.filter { it.kind == SlotKind.Quick }.forEach { add(row(it)) }
+                list.filter { it.kind == SlotKind.Previous }.forEach { add(row(it)) }
+                saved.reversed().forEach { add(row(it)) }
             }
         }
         // States the other discs made while each was a game of its own: loaded with that disc in the drive, never changed.
         val others = discStates?.takeIf { it.first == game.id }?.second.orEmpty().filter { it.second.kind != SlotKind.Previous }
-        others.groupBy { it.first }.forEach { (disc, entries) ->
-            add(MenuRow("header:disc-${disc.number}", "From disc ${disc.number} on its own", RowKind.Header))
-            entries.forEach { (_, slot) ->
-                add(MenuRow("disc-slot:${disc.id}:${slot.name}", slotTitle(slot) ?: dateLabel(slot.savedAt), RowKind.Link, value = whenLabel(slot.savedAt),
-                    note = if (slot.compatible) "Loads with disc ${disc.number} in the drive" else OTHER_BUILD, warn = !slot.compatible, enabled = ready && slot.compatible,
-                    tag = "disc-slot-${disc.number}-${slot.name}", picture = RowPicture(slot.thumbnail, slot.thumbnail?.lastModified() ?: slot.savedAt)) {
-                    push(Destination.ConfirmSlot(SlotAction.Load, "${ConsoleShell.DISC_STATE}${disc.id}:${slot.name}")) })
-            }
+        others.forEach { (disc, slot) ->
+            add(MenuRow("disc-slot:${disc.id}:${slot.name}", "Disc ${disc.number} · ${slotTitle(slot) ?: "Save"}", RowKind.Action, value = whenLabel(slot.savedAt),
+                note = if (slot.compatible) "Loads with disc ${disc.number} in the drive" else OTHER_BUILD, warn = !slot.compatible, enabled = ready && slot.compatible,
+                tag = "disc-slot-${disc.number}-${slot.name}", picture = RowPicture(slot.thumbnail, slot.thumbnail?.lastModified() ?: slot.savedAt)) {
+                push(Destination.ConfirmSlot(SlotAction.Load, "${ConsoleShell.DISC_STATE}${disc.id}:${slot.name}")) })
         }
-    }, PageStyle.Page, game.title,
+    }, PageStyle.Page, listOfNotNull(if (saved.isEmpty()) "No saves yet" else plural(saved.size, "save"), quick?.let { "quick save ${whenLabel(it.savedAt)}" }).joinToString(" \u00b7 "),
         "Quick Save replaces the quick save; the one it replaced stays here until the next. Your saves are kept until you delete them.\n\n" +
             "During a game, ${ButtonCombo.title(controls.quickSave)} quick saves and ${ButtonCombo.title(controls.quickLoad)} quick loads.")
 }

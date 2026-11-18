@@ -39,7 +39,10 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
 /** Draws whatever the shell's stack says is open: the nearest opaque page, then the sheet resting on it. */
 @Composable fun BoxScope.ShellOverlays(shell: ConsoleShell, state: CollectionState, status: EngineStatus, device: DeviceStatus, confirm: String, back: String) {
     val top = shell.top
-    shell.base?.let { destination -> shell.page(state, status, destination)?.let { page -> Entering(destination.key) { OpaquePage(page, shell, state, device, top == destination, confirm, back) } } }
+    // The pause screen draws its own sidebar and sections; only a question asked over it is drawn here.
+    val pause = shell.pauseOpen
+    if (pause && !shell.overPause(top)) return
+    if (!pause) shell.base?.let { destination -> shell.page(state, status, destination)?.let { page -> Entering(destination.key) { OpaquePage(page, shell, state, device, top == destination, confirm, back) } } }
     val floating = if (top == null || !top.opaque) shell.page(state, status, top) else null
     if (floating != null) {
         val focused = shell.focused(floating)

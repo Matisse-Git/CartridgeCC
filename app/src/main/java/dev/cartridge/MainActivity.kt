@@ -349,6 +349,12 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                     if (status.state == SessionState.Running) Box(Modifier.align(Alignment.TopEnd).size(72.dp).tap("pause") { coordinator.pause() })
                     if (status.state == SessionState.Paused) frozenFrame?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
                     if (state.screen == CollectionScreen.Emulator) GameBadge(status, Modifier.align(Alignment.TopEnd), state.discBadge)
+                    // The pause menu (spec 4.5) is its own screen over the frozen frame; questions asked from it still float above.
+                    if (shell.pauseOpen) CompositionLocalProvider(dev.cartridge.ui.design.LocalGameMedia provides gameMedia) {
+                        dev.cartridge.ui.design.DesignCanvas(state.reducedMotion) {
+                            dev.cartridge.ui.screens.PauseScreen(shell, state, status, frozenFrame, shell.controls.swapMenuButtons)
+                        }
+                    }
                 }
                 ShellOverlays(shell, state, status, device, confirm, back)
                 if (scrape.visible) ScrapePanel(scrape, scraper, confirm, back)
