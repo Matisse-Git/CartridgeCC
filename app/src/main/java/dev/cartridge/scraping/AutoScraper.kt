@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 
 /** One automatic run as Settings and the library's notice describe it. [problem] is why it stopped early, if it did. */
+/** What an automatic scrape fetches beside case art and details. */
+data class ExtraMedia(val screenshots: Boolean = true, val videos: Boolean = true)
+
 data class AutoScrapeStatus(val running: Boolean = false, val done: Int = 0, val total: Int = 0, val applied: Int = 0,
     val notFound: Int = 0, val failed: Int = 0, val current: String? = null, val problem: String? = null) {
     val summary get() = buildList {
@@ -52,6 +55,10 @@ class AutoScraper(
     /** Copies a downloaded image into the accepted store and names it. Runs on [ioDispatcher]. */
     private val importImage: (source: String, bytes: ByteArray) -> LabelRef,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /** Where downloaded gameplay videos are kept; none in tests that do not look at videos. */
+    private val videos: dev.cartridge.storage.VideoStore? = null,
+    /** Which extra media to fetch beside the case art: read at each game, so a change in Settings applies to the next. */
+    private val extras: () -> ExtraMedia = { ExtraMedia() },
 ) {
     private val mutableStatus = MutableStateFlow(AutoScrapeStatus())
     val status = mutableStatus.asStateFlow()
@@ -132,7 +139,33 @@ class AutoScraper(
                 asset.region, asset.originalUrl ?: asset.url, "Artwork rights remain with their owners; provider grants no image licence. Data: ${ranked.license}",
                 now, automatic = true))
         }
-        return if (repository.applyScraped(id, label, metadata, policy) > 0) Outcome.Applied else Outcome.Unchanged
+        var changed = repository.applyScraped(id, label, metadata, policy)
+        val wanted = extras()
+        // Screenshots: each one the game lacks (or an automatic one, under Fill all). One failed image never costs the rest.
+        if (wanted.screenshots) {
+            val shots = chooseShots(ranked.artwork, market).filter { (type, _) ->
+                policy.replaces(game.media[type]?.let { it.image.provenance?.automatic ?: false }) }
+            val accepted = shots.mapNotNull { (type, asset) ->
+                try {
+                    val bytes = provider.image(asset)
+                    type to MediaSelection(withContext(ioDispatcher) { importImage(asset.url, bytes) }.copy(provenance = AssetProvenance(source, ranked.id,
+                        asset.type, asset.region, asset.originalUrl ?: asset.url, "Artwork rights remain with their owners; provider grants no image licence. Data: ${ranked.license}",
+                        now, automatic = true)), type, asset.region)
+                } catch (failure: ProviderUnavailable) { throw failure }
+                catch (failure: CancellationException) { throw failure }
+                catch (failure: Exception) { android.util.Log.w("CartridgeScrape", "A screenshot could not be fetched: ${failure.message}"); null }
+            }.toMap()
+            if (accepted.isNotEmpty()) changed += repository.applyScrapedMedia(id, accepted, policy)
+        }
+        // A gameplay video only where the game has none yet: they are large, and the user's quota counts them.
+        val store = videos
+        if (wanted.videos && store != null && !store.has(id)) chooseVideo(ranked.videos, market)?.let { asset ->
+            try { withContext(ioDispatcher) { store.save(id) { file -> provider.download(asset, file) } }; changed++ }
+            catch (failure: ProviderUnavailable) { throw failure }
+            catch (failure: CancellationException) { throw failure }
+            catch (failure: Exception) { android.util.Log.w("CartridgeScrape", "A video could not be fetched: ${failure.message}") }
+        }
+        return if (changed > 0) Outcome.Applied else Outcome.Unchanged
     }
 
     companion object {
@@ -143,6 +176,15 @@ class AutoScraper(
         fun chooseArt(artwork: List<ArtworkCandidate>, market: Market): ArtworkCandidate? = artwork.filter { it.type in CASE_ART }
             .minWithOrNull(compareBy<ArtworkCandidate>({ market.artRegions.indexOf(it.region.lowercase()).let { rank -> if (rank < 0) market.artRegions.size else rank } },
                 { if (it.type == "box-texture") 0 else 1 }))
+        private fun regionRank(asset: ArtworkCandidate, market: Market) =
+            market.artRegions.indexOf(asset.region.lowercase()).let { rank -> if (rank < 0) market.artRegions.size else rank }
+        /** One image per screenshot type, in the market's region order; fan art only when there is no in-game screenshot. */
+        fun chooseShots(artwork: List<ArtworkCandidate>, market: Market): Map<String, ArtworkCandidate> {
+            val best = SHOT_TYPES.mapNotNull { type -> artwork.filter { it.type == type }.minByOrNull { regionRank(it, market) }?.let { type to it } }.toMap()
+            return if ("ss" in best) best - "fanart" else best
+        }
+        fun chooseVideo(videos: List<ArtworkCandidate>, market: Market): ArtworkCandidate? =
+            videos.minWithOrNull(compareBy<ArtworkCandidate>({ VIDEO_TYPES.indexOf(it.type) }, { regionRank(it, market) }))
         fun cleanTitle(title: String) = title.replace(Regex("\\([^)]*\\)|\\[[^]]*]"), "").trim().ifEmpty { title }
     }
 }

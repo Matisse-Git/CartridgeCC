@@ -249,6 +249,19 @@ class RoomCollectionRepository(context: Context, private val database: LibraryDa
             fields.size + if (replace) 1 else 0
         }
     }
+    override suspend fun applyScrapedMedia(gameId: String, media: Map<String, MediaSelection>, policy: FillPolicy): Int {
+        require(gameId.matches(Regex("[a-f0-9]{64}")))
+        require(media.keys.all { it.length in 1..64 })
+        return database.withTransaction {
+            val game = checkNotNull(dao.game(gameId)) { "This game is no longer in the library" }
+            val before = LibraryJson.media(game.mediaJson)
+            val changed = media.filter { (type, value) -> before[type]?.image?.assetId != value.image.assetId &&
+                policy.replaces(before[type]?.image?.provenance?.automatic ?: if (type in before) false else null) }
+            if (changed.isEmpty() || (before + changed).size > 32) return@withTransaction 0
+            dao.media(gameId, LibraryJson.media(before + changed))
+            changed.size
+        }
+    }
     private suspend fun rememberEnrichment(game: GameRecord) {
         dao.rememberEnrichment(EnrichmentUndo(game.id, game.labelAssetId, game.labelFit, game.labelQuarterTurns,
             game.labelSourceUri, game.labelProvenance, game.metadataJson, game.mediaJson))

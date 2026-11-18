@@ -92,6 +92,18 @@ interface CollectionRepository {
         if (replace) setLabel(gameId, label)
         return fields.size + if (replace) 1 else 0
     }
+    /**
+     * Screenshots and other extra images an automatic scrape chose, by type ("ss", "sstitle", "fanart"). Each fills
+     * only where [policy] allows: an empty type, or an automatic choice under Fill all. No Undo of its own: it joins
+     * the Undo [applyScraped] recorded for the same game. Returns how many types changed.
+     */
+    suspend fun applyScrapedMedia(gameId: String, media: Map<String, MediaSelection>, policy: FillPolicy): Int {
+        val game = initialize().slots.filterNotNull().firstOrNull { it.id == gameId } ?: error("This game is no longer in the library")
+        val changed = media.filter { (type, value) -> game.media[type]?.image?.assetId != value.image.assetId &&
+            policy.replaces(game.media[type]?.image?.provenance?.automatic ?: if (type in game.media) false else null) }
+        changed.values.forEach { setMedia(gameId, it) }
+        return changed.size
+    }
     suspend fun setFavorite(gameId: String, favorite: Boolean)
     suspend fun setQuery(query: LibraryQuery)
     suspend fun recordPlay(gameId: String, elapsedMs: Long, startedAt: Long? = null)

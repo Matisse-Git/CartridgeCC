@@ -16,6 +16,11 @@ import kotlin.math.min
 
 data class LabelPixels(val key: String, val width: Int, val height: Int, val rgba: ByteBuffer)
 
+/** A box's printed faces: [spine] only where the art really has one. [edge] is the art's border colour, opaque. */
+class CoverFaces(val front: Bitmap, val spine: Bitmap?, val edge: Int) {
+    val bytes get() = front.byteCount + (spine?.byteCount ?: 0)
+}
+
 /** IO-thread image import/decoding. Originals are retained; recipes derive bounded template textures. */
 class LabelStore(private val directory: File) {
     fun exportOriginal(id: String): File = original(id).also { check(it.isFile) { "An accepted image is missing. Import it again before backup." } }
@@ -68,6 +73,41 @@ class LabelStore(private val directory: File) {
         } finally { temporary.delete() }
     }
     fun decode(label: LabelRef, media: Media): LabelPixels = cover(label, media, media.cover)
+
+    /** The stored original of an accepted image, or null when it is not on this device. */
+    fun file(id: String): File? = runCatching { original(id) }.getOrNull()?.takeIf(File::isFile)
+
+    /**
+     * The faces of a box for the 2D-drawn shelf: its front and, for a whole unfolded cover (`box-texture`), its real
+     * spine. A front alone has no spine; the box draws one from [CoverFaces.edge]. Decoded no taller than [height].
+     */
+    fun faces(label: LabelRef, media: Media, height: Int): CoverFaces {
+        val file = original(label.assetId)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.path, bounds)
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "The cached artwork is missing or invalid. Scrape it again." }
+        var sample = 1
+        while (bounds.outHeight / (sample * 2) >= height) sample *= 2
+        val source = checkNotNull(BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply {
+            inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888
+        })) { "Cannot decode the artwork" }
+        val whole = label.provenance?.type == "box-texture"
+        fun scaled(bitmap: Bitmap): Bitmap = if (bitmap.height <= height) bitmap else
+            Bitmap.createScaledBitmap(bitmap, max(1, bitmap.width * height / bitmap.height), height, true).also { if (it !== bitmap) bitmap.recycle() }
+        return if (whole) {
+            val cover = media.cover
+            val frontStart = (cover.frontStart * source.width).toInt().coerceIn(0, source.width - 1)
+            val backEnd = (cover.backEnd * source.width).toInt().coerceIn(0, frontStart)
+            val front = scaled(Bitmap.createBitmap(source, frontStart, 0, source.width - frontStart, source.height))
+            val spine = if (frontStart - backEnd >= 2) scaled(Bitmap.createBitmap(source, backEnd, 0, frontStart - backEnd, source.height)) else null
+            val edge = edgeColour(front)
+            source.recycle()
+            CoverFaces(front, spine, edge)
+        } else {
+            val edge = edgeColour(source)
+            CoverFaces(scaled(source), null, edge)
+        }
+    }
 
     /**
      * A case's whole unfolded cover (ADR 0029). `box-texture` is the cover already unfolded, back, spine, front, and

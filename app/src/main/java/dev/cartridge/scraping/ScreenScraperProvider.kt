@@ -59,6 +59,43 @@ class ScreenScraperProvider(private val login: () -> ScreenScraperLogin) : Artwo
         bytes
     }
 
+    /** A video is streamed to [target]: no width is asked for, and it may be up to [VideoStore.MAX_BYTES]. */
+    override suspend fun download(candidate: ArtworkCandidate, target: File) {
+        if (!candidate.isVideo) return target.writeBytes(image(candidate))
+        require(offered(candidate.url)) { "Unsupported provider media host" }
+        val account = account()
+        requests.withLock {
+            pace()
+            stream(withLogin(candidate.url, account, linkedMapOf()), target, dev.cartridge.storage.VideoStore.MAX_BYTES)
+        }
+        require(target.length() > 1024) { "This video is unavailable" }
+    }
+
+    private suspend fun stream(url: String, target: File, limit: Long) {
+        coroutineContext.ensureActive()
+        val connection = URI(url).toURL().openConnection() as HttpURLConnection
+        connection.connectTimeout = 10_000; connection.readTimeout = 60_000
+        connection.instanceFollowRedirects = false
+        connection.setRequestProperty("User-Agent", "ProjectCartridge/0.8 (Android; personal collection)")
+        try {
+            val status = try { connection.responseCode } catch (failure: IOException) { throw ProviderUnavailable("No connection to ScreenScraper. Check Wi-Fi and try again.") }
+            if (status == 430 || status == 431) throw ProviderUnavailable("Today's ScreenScraper quota is used up. Try again tomorrow.")
+            require(status in 200..299) { "ScreenScraper does not have this video (HTTP $status)" }
+            require(connection.contentLengthLong <= limit) { "The video is too large" }
+            try {
+                connection.inputStream.use { input -> target.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024); var total = 0L
+                    while (true) {
+                        coroutineContext.ensureActive()
+                        val count = input.read(buffer); if (count < 0) break
+                        total += count; require(total <= limit) { "The video is too large" }
+                        output.write(buffer, 0, count)
+                    }
+                } }
+            } catch (failure: IOException) { throw ProviderUnavailable("The connection to ScreenScraper dropped. Try again.") }
+        } finally { connection.disconnect() }
+    }
+
     private fun account() = login().also { if (!it.complete) throw ProviderUnavailable("Add ${it.missing.joinToString(" and ")} under Settings › Library › Artwork") }
 
     internal fun parseGame(game: JSONObject, sums: Checksums? = null): GameCandidate? {
@@ -88,18 +125,21 @@ class ScreenScraperProvider(private val login: () -> ScreenScraperLogin) : Artwo
         val synopses = game.optJSONArray("synopsis")?.objects().orEmpty()
             .mapNotNull { synopsis -> synopsis.text("text")?.let { it to synopsis.optString("langue") } }.distinctBy { it.first }
         if (synopses.isNotEmpty()) { metadata["description"] = synopses.map { it.first }; tags["description"] = synopses.map { MetadataTags(language = it.second) } }
-        val artwork = game.optJSONArray("medias")?.objects().orEmpty().mapNotNull { media ->
+        val medias = game.optJSONArray("medias")?.objects().orEmpty().mapNotNull { media ->
             val type = media.optString("type")
             val url = media.text("url")?.let(::withoutLogin)
-            if (type !in dev.cartridge.library.CASE_ART || url == null || !offered(url)) null
+            if (type !in dev.cartridge.library.CASE_ART && type !in SHOT_TYPES && type !in VIDEO_TYPES || url == null || !offered(url)) null
             else ArtworkCandidate(type, media.optString("region"), url, media.text("md5"))
         }.distinctBy { it.url }
+        // Case art first, as the review lists it; screenshots after; videos on their own.
+        val artwork = medias.filter { !it.isVideo }.sortedBy { if (it.isCaseArt) 0 else 1 }
+        val videos = medias.filter { it.isVideo }
         val rom = game.optJSONObject("rom")
         val exact = sums != null && rom != null && (rom.optString("romsha1").equals(sums.sha1, true) ||
             rom.optString("rommd5").equals(sums.md5, true) || rom.optString("romcrc").equals(sums.crc, true))
         return GameCandidate(id, regional.first().first, game.optJSONObject("systeme")?.text("text") ?: "", regional.map { it.first },
             metadata, artwork, "https://www.screenscraper.fr/gameinfos.php?gameid=$id",
-            "ScreenScraper community data; artwork rights remain with their owners", exact, tags, name)
+            "ScreenScraper community data; artwork rights remain with their owners", exact, tags, name, videos)
     }
 
     private suspend fun call(endpoint: String, account: ScreenScraperLogin, parameters: Map<String, String>, allowMissing: Boolean = false): JSONObject? =

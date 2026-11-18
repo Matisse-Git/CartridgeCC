@@ -31,7 +31,7 @@ class AutoScraperTest {
         override suspend fun setMetadata(gameId: String, values: Map<String, MetadataValue>) = change(gameId) { it.copy(metadata = it.metadata + values) }
         override suspend fun fillMissingMetadata(gameId: String, values: Map<String, MetadataValue>) = 0
         override suspend fun undoEnrichment(gameId: String) = false
-        override suspend fun setMedia(gameId: String, media: MediaSelection) = Unit
+        override suspend fun setMedia(gameId: String, media: MediaSelection) = change(gameId) { it.copy(media = it.media + (media.type to media)) }
         override suspend fun setFavorite(gameId: String, favorite: Boolean) = Unit
         override suspend fun setQuery(query: LibraryQuery) = Unit
         override suspend fun recordPlay(gameId: String, elapsedMs: Long, startedAt: Long?) = Unit
@@ -43,6 +43,7 @@ class AutoScraperTest {
         val searches = mutableListOf<String>()
         val images = mutableListOf<String>()
         var offline = false
+        val videos = mutableListOf<String>()
         override suspend fun search(query: String, rom: File?, system: GameSystem): List<GameCandidate> {
             if (offline) throw ProviderUnavailable("No connection")
             searches += query
@@ -51,15 +52,19 @@ class AutoScraperTest {
                 linkedMapOf("title" to listOf("$query proper"), "year" to listOf("1994")),
                 listOf(ArtworkCandidate("box-2D", "us", "https://art.invalid/$query-us-front"), ArtworkCandidate("box-texture", "eu", "https://art.invalid/$query-eu-wrap"),
                     ArtworkCandidate("box-texture", "us", "https://art.invalid/$query-us-wrap"), ArtworkCandidate("ss", "us", "https://art.invalid/$query-shot")),
-                "https://record.invalid/$query", "Fixture data"))
+                "https://record.invalid/$query", "Fixture data",
+                videos = listOf(ArtworkCandidate("video-normalized", "wor", "https://art.invalid/$query-video"))))
         }
+        override suspend fun download(candidate: ArtworkCandidate, target: File) { videos += candidate.url; target.writeBytes(byteArrayOf(0, 0, 0, 24)) }
         override suspend fun image(candidate: ArtworkCandidate): ByteArray { images += candidate.url; return candidate.url.toByteArray() }
     }
     private fun id(c: Char) = c.toString().repeat(64)
-    private fun scraper(library: Library, provider: Provider, pending: PendingScrapes, scope: kotlinx.coroutines.CoroutineScope, dispatcher: kotlinx.coroutines.CoroutineDispatcher) =
+    /** Case art and details only, unless a test asks for the screenshots and the video as well. */
+    private fun scraper(library: Library, provider: Provider, pending: PendingScrapes, scope: kotlinx.coroutines.CoroutineScope, dispatcher: kotlinx.coroutines.CoroutineDispatcher,
+        extras: ExtraMedia = ExtraMedia(screenshots = false, videos = false), videos: dev.cartridge.storage.VideoStore? = null) =
         AutoScraper(provider, library, File("unused"), scope, pending, MemoryScrapePreferences(),
             importImage = { source, _ -> LabelRef(java.security.MessageDigest.getInstance("SHA-256").digest(source.toByteArray()).joinToString("") { "%02x".format(it) }, sourceUri = source) },
-            ioDispatcher = dispatcher)
+            ioDispatcher = dispatcher, videos = videos, extras = { extras })
 
     @Test fun marketComesFromTheFileNameWithUsFirst() {
         assertEquals(Market.US, Market.of("Orbit Field (USA, Europe)"))
@@ -130,6 +135,33 @@ class AutoScraperTest {
         game = library.game(id('a'))
         assertEquals("Orbit Field proper", game.metadata["title"]?.value)
         assertEquals("https://art.invalid/Orbit Field-us-wrap", game.label?.sourceUri)
+    }
+
+    @Test fun screenshotsAndOneVideoAreStoredBesideTheCaseArtAndKeptWhenPresent() = runTest {
+        val library = Library(LibraryGame(id('a'), "Orbit Field (USA)", "content://a"))
+        val provider = Provider()
+        val folder = kotlin.io.path.createTempDirectory("videos").toFile()
+        try {
+            val store = dev.cartridge.storage.VideoStore(folder)
+            val scraper = scraper(library, provider, MemoryPendingScrapes(), backgroundScope, StandardTestDispatcher(testScheduler), ExtraMedia(), store)
+            scraper.added(listOf(id('a'))); runCurrent()
+            val game = library.game(id('a'))
+            assertEquals("https://art.invalid/Orbit Field-shot", game.media["ss"]?.image?.sourceUri)
+            assertTrue(game.media["ss"]!!.image.provenance!!.automatic)
+            assertEquals(listOf("https://art.invalid/Orbit Field-video"), provider.videos)
+            assertTrue(store.has(id('a')))
+            // A second run keeps the stored video and the screenshot: nothing is downloaded again.
+            provider.images.clear()
+            scraper.scrape(listOf(id('a')), FillPolicy()); runCurrent()
+            assertEquals(listOf("https://art.invalid/Orbit Field-video"), provider.videos)
+            assertFalse(provider.images.contains("https://art.invalid/Orbit Field-shot"))
+        } finally { folder.deleteRecursively() }
+    }
+
+    @Test fun shotsPreferTheGamesRegionAndDropFanArtBesideAScreenshot() {
+        val art = listOf(ArtworkCandidate("ss", "jp", "a"), ArtworkCandidate("ss", "us", "b"), ArtworkCandidate("fanart", "wor", "c"), ArtworkCandidate("sstitle", "eu", "d"))
+        assertEquals(mapOf("ss" to "b", "sstitle" to "d"), AutoScraper.chooseShots(art, Market.US).mapValues { it.value.url })
+        assertEquals(mapOf("fanart" to "c"), AutoScraper.chooseShots(listOf(ArtworkCandidate("fanart", "wor", "c")), Market.EU).mapValues { it.value.url })
     }
 
     @Test fun anUnreachableProviderKeepsEveryGamePendingForTheNextAdd() = runTest {

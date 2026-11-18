@@ -89,6 +89,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         private set
     private lateinit var input: ControllerRouter
     private lateinit var labelStore: LabelStore
+    private lateinit var gameMedia: dev.cartridge.ui.design.GameMedia
     private lateinit var mediaSound: MediaSound
     private var cartridgeSurface: CartridgeSurface? = null
     /** Labels decode a few at a time: enough to fill a grid row promptly, bounded so large images cannot pile up in memory. */
@@ -160,6 +161,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         engine = LibretroEngine(this, lifecycleScope, sessionOptions = { game -> shell.sessionOptions(game.system, game.id) }, sessionStore = sessionStore,
             systemDirectory = systemDirectory(), sessionShader = ::sessionShader, shaderLibrary = File(shaderBase(), "library"))
         labelStore = createLabelStore()
+        val videoStore = VideoStore(File(filesDir, "videos"))
+        gameMedia = dev.cartridge.ui.design.GameMedia(labelStore, videoStore)
         mediaSound = MediaSound(this)
         val repository = createRepository()
         val packStore = createPackStore()
@@ -183,7 +186,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         val provider = PackAwareProvider(createArtworkProvider(), packStore)
         val scrapePreferences = createScrapePreferences()
         autoScraper = dev.cartridge.scraping.AutoScraper(provider, repository, File(filesDir, "roms"), lifecycleScope, createPendingScrapes(), scrapePreferences,
-            importImage = { source, bytes -> labelStore.importStream(source) { bytes.inputStream() } })
+            importImage = { source, bytes -> labelStore.importStream(source) { bytes.inputStream() } }, videos = videoStore,
+            extras = { if (::shell.isInitialized) ExtraMedia(shell.scrapeScreenshots, shell.scrapeVideos) else ExtraMedia() })
         val automatic = automaticScraping()
         if (automatic) coordinator.onAdded = autoScraper::added
         scraper = ScrapeCoordinator(provider, repository, labelStore, File(filesDir, "roms"), lifecycleScope, createScrapeJournal(), scrapePreferences, choosePack = ::pickPack,
@@ -201,7 +205,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         input = ControllerRouter(navigate = shell::navigate, select = shell::select, back = shell::back, pause = coordinator::pause,
             gameKey = engine::key, gameMotion = engine::motion, adjust = shell::adjust, alternate = shell::alternate, secondary = shell::secondary,
             shoulder = shell::shoulder, menu = shell::menu, cancelOperation = coordinator::cancelScan, navigateLibrary = coordinator::navigateSpatial,
-            inspect = ::inspect, systemBack = shell::systemBack, gameAnalog = engine::analog,
+            inspect = ::inspect, systemBack = shell::systemBack, gameAnalog = engine::analog, trigger = shell::trigger, thumb = shell::stick,
             quick = { action ->
                 when (action) {
                     QuickCombo.Save -> coordinator.quickSave()
@@ -297,7 +301,6 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         val scrape by scraper.state.collectAsStateWithLifecycle()
         val emulator by engine.surface.collectAsStateWithLifecycle()
         val frozenFrame by engine.frozenFrame.collectAsStateWithLifecycle()
-        var glb by remember { mutableStateOf<CollectionAssets?>(null) }
         val device = rememberDeviceStatus(shell.clock)
         val confirm = if (shell.controls.swapMenuButtons) "B" else "A"
         val back = if (shell.controls.swapMenuButtons) "A" else "B"
@@ -313,19 +316,21 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                 else -> Unit
             }
         }
-        LaunchedEffect(Unit) { glb = withContext(Dispatchers.IO) { CollectionAssets.read(assets) } }
+        // The shelf is drawn by Compose: a rebuilt library is ready once it has drawn a frame.
+        LaunchedEffect(state.viewportGeneration, state.rendererReady, state.screen) {
+            if (!state.rendererReady && state.screen in listOf(CollectionScreen.Library, CollectionScreen.Ejecting, CollectionScreen.LabelPreview)) {
+                withFrameNanos { }
+                coordinator.rendererReady(state.viewportGeneration)
+            }
+        }
         CartridgeTheme(shell.accent, state.reducedMotion) {
             Box(Modifier.fillMaxSize().background(Ink.Stage)) {
                 if (state.screen in listOf(CollectionScreen.Library, CollectionScreen.Inserting, CollectionScreen.Ejecting, CollectionScreen.LabelPreview)) {
-                    val empty = state.loaded && state.allGames.isEmpty()
-                    // The focused object steps aside for anything said about it: its details, its sheets, its label preview.
-                    val presented = state.screen == CollectionScreen.LabelPreview ||
-                        state.screen == CollectionScreen.Library && (empty || shell.top in setOf(Destination.Details, Destination.Manage, Destination.Options))
-                    glb?.let { bytes -> key(state.viewportGeneration) { LibraryViewport(bytes, state, shell.base != null || scrape.visible, presented) } }
-                    StageShade()
                     val browsing = state.screen == CollectionScreen.Library && shell.top == null && !scrape.visible && status.state == SessionState.Idle
-                    AnimatedVisibility(browsing, enter = fadeIn(LocalMotion.current.fade()), exit = fadeOut(LocalMotion.current.exit())) {
-                        Box(Modifier.fillMaxSize()) { LibraryChrome(state, shell, device, confirm, back) }
+                    CompositionLocalProvider(dev.cartridge.ui.design.LocalGameMedia provides gameMedia) {
+                        dev.cartridge.ui.design.DesignCanvas(state.reducedMotion) {
+                            dev.cartridge.ui.screens.LibraryScreen(state, shell, device, shell.controls.swapMenuButtons, browsing)
+                        }
                     }
                 } else {
                     if (state.screen == CollectionScreen.Emulator) emulator?.let { surface ->

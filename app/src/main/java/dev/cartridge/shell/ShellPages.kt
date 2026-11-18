@@ -434,6 +434,11 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
                 note = if (state.reducedMotion) "With reduced motion the screen closes and opens without animation."
                     else "How the screen closes when a game starts, and opens once the game has a picture.",
                 adjust = { delta -> changeTransition(LaunchTransition.entries.step(transition, delta)) }),
+            header("Gameplay preview"),
+            toggle("preview", "Preview behind the shelf", previewEnabled, note = "The focused game's screenshot, then its muted gameplay video. R3 turns its sound on.") { changePreviewEnabled(it) },
+            MenuRow("preview-strength", "Preview strength", RowKind.Choice, value = "$previewStrength%", enabled = previewEnabled, tag = "settings-preview-strength",
+                adjust = { delta -> changePreviewStrength(previewStrength + delta * 10) }),
+            header("Interface"),
             MenuRow("accent", "Accent colour", RowKind.Choice, value = accent.title, tag = "settings-accent", adjust = { delta -> changeAccent(Accent.entries.step(accent, delta)) }),
             MenuRow("hints", "Button hints", RowKind.Choice, value = hints.title, tag = "settings-hints", adjust = { delta -> changeHints(HintMode.entries.step(hints, delta)) }),
             header("Status"),
@@ -507,6 +512,10 @@ private fun ConsoleShell.artworkRows(): List<MenuRow>? {
                 note = "ScreenScraper asks every program for one. Request yours on the screenscraper.fr forum.") { editLogin("devId") })
             add(MenuRow("login-dev-password", "Developer password", value = if (login.devPassword.isBlank()) "Not set" else "Set", warn = login.devPassword.isBlank(), tag = "settings-login-dev-password", note = kept) { editLogin("devPassword") })
         }
+        add(MenuRow("scrape-shots", "Download screenshots", RowKind.Toggle, checked = scrapeScreenshots, tag = "settings-scrape-shots",
+            note = "In-game and title screens, shown behind the shelf and in a game's details.", adjust = { changeScrapeScreenshots(!scrapeScreenshots) }))
+        add(MenuRow("scrape-videos", "Download gameplay videos", RowKind.Toggle, checked = scrapeVideos, tag = "settings-scrape-videos",
+            note = "Usually 5 to 15 MB a game. Played muted behind the shelf. Never included in a backup.", adjust = { changeScrapeVideos(!scrapeVideos) }))
         add(MenuRow("artwork-status", "Automatic artwork", RowKind.Info, tag = "settings-artwork-status", warn = run?.problem != null,
             value = when {
                 run == null -> null

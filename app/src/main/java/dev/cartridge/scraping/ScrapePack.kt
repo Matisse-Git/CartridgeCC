@@ -108,4 +108,6 @@ class PackAwareProvider(private val online: ArtworkProvider, private val packs: 
     override val name get() = online.name
     override suspend fun search(query: String, rom: File?, system: dev.cartridge.domain.GameSystem) = online.search(query, rom, system)
     override suspend fun image(candidate: ArtworkCandidate) = if (candidate.url.startsWith("cartridge-pack://")) packs.image(candidate.url) else online.image(candidate)
+    override suspend fun download(candidate: ArtworkCandidate, target: File) =
+        if (candidate.url.startsWith("cartridge-pack://")) target.writeBytes(packs.image(candidate.url)) else online.download(candidate, target)
 }

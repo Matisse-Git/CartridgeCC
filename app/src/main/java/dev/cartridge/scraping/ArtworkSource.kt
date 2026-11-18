@@ -45,4 +45,6 @@ class ChosenProvider(private val settings: ArtworkSettings, cache: File) : Artwo
     // An accepted image is fetched from whoever offered it, whatever is chosen now.
     override suspend fun image(candidate: ArtworkCandidate) =
         if (ScreenScraperProvider.offered(candidate.url)) screenScraper.image(candidate) else retroBase.image(candidate)
+    override suspend fun download(candidate: ArtworkCandidate, target: File) =
+        if (ScreenScraperProvider.offered(candidate.url)) screenScraper.download(candidate, target) else retroBase.download(candidate, target)
 }

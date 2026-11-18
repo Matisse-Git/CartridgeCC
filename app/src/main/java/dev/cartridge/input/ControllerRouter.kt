@@ -43,6 +43,10 @@ class ControllerRouter(
     private val quick: (QuickCombo) -> Unit = {},
     /** A button going down (true) or up while a combo is being recorded. */
     private val record: (Int, Boolean) -> Unit = { _, _ -> },
+    /** L2 is -1, R2 is +1, outside a game: as buttons or as analog triggers, whichever the pad sends. */
+    private val trigger: (Int) -> Unit = {},
+    /** L3 is 0, R3 is 1, outside a game. */
+    private val thumb: (Int) -> Unit = {},
 ) {
     var mode = InputMode.Library
         // A shortcut's buttons are still down while its operation locks input; they stay its own until let go.
@@ -139,6 +143,10 @@ class ControllerRouter(
             KeyEvent.KEYCODE_BUTTON_START -> menu()
             KeyEvent.KEYCODE_BUTTON_L1 -> shoulder(-1)
             KeyEvent.KEYCODE_BUTTON_R1 -> shoulder(1)
+            KeyEvent.KEYCODE_BUTTON_L2 -> pull(0, android.os.SystemClock.uptimeMillis())
+            KeyEvent.KEYCODE_BUTTON_R2 -> pull(1, android.os.SystemClock.uptimeMillis())
+            KeyEvent.KEYCODE_BUTTON_THUMBL -> thumb(0)
+            KeyEvent.KEYCODE_BUTTON_THUMBR -> thumb(1)
         }
         return true
     }
@@ -169,6 +177,13 @@ class ControllerRouter(
                 if (reach < deadZone) inspect(0f, 0f)
                 else ((reach - deadZone) / (1f - deadZone)).coerceAtMost(1f).let { travel -> inspect(rightX / reach * travel, rightY / reach * travel) }
             }
+            // Analog triggers: a pull past most of the travel is one press; it must ease back before the next.
+            fun analogTrigger(side: Int, value: Float) {
+                if (!triggerHeld[side] && value > TRIGGER_PRESS) { triggerHeld[side] = true; pull(side, event.eventTime) }
+                else if (triggerHeld[side] && value < TRIGGER_RELEASE) triggerHeld[side] = false
+            }
+            analogTrigger(0, maxOf(event.getAxisValue(MotionEvent.AXIS_LTRIGGER), event.getAxisValue(MotionEvent.AXIS_BRAKE)))
+            analogTrigger(1, maxOf(event.getAxisValue(MotionEvent.AXIS_RTRIGGER), event.getAxisValue(MotionEvent.AXIS_GAS)))
             axisX = if (hatX != 0f) hatX else x; axisY = if (hatY != 0f) hatY else y
             // A neutral event can arrive between frame polls. Release immediately so the next
             // stick/key press starts a fresh repeat, even when it follows in the same frame.
@@ -194,11 +209,24 @@ class ControllerRouter(
             if (navigateLibrary != null) navigateLibrary.invoke(dx, dy) else if (dx != 0) navigate(dx)
         }
     }
+    private val triggerHeld = booleanArrayOf(false, false)
+    private val lastPull = longArrayOf(Long.MIN_VALUE / 2, Long.MIN_VALUE / 2)
+    /** Many pads send a trigger both as a key and as an axis; the second within [TRIGGER_DEBOUNCE_MS] is the same pull. */
+    private fun pull(side: Int, at: Long) {
+        if (at - lastPull[side] < TRIGGER_DEBOUNCE_MS) return
+        lastPull[side] = at
+        trigger(if (side == 0) -1 else 1)
+    }
     /** Pause, focus loss and a disconnected pad forget everything; a change of mode keeps a shortcut held down. */
     fun reset(keepShortcut: Boolean = false) {
         held.clear(); axisX = 0f; axisY = 0f; horizontalRepeat.reset(); verticalRepeat.reset(); forwarded.clear(); inspect(0f, 0f)
         if (!keepShortcut) latched.clear()
         gameAnalog(0, 0f, 0f); gameAnalog(1, 0f, 0f)
     }
-    private companion object { const val GAME_STICK_REST = .12f }
+    private companion object {
+        const val GAME_STICK_REST = .12f
+        const val TRIGGER_PRESS = .6f
+        const val TRIGGER_RELEASE = .3f
+        const val TRIGGER_DEBOUNCE_MS = 180L
+    }
 }

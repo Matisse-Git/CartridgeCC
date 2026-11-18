@@ -74,6 +74,9 @@ interface ShellHost {
     fun inputChanged()
 }
 
+/** The top-level tabs (spec 3). [ready] is false for a tab whose screen is not built yet; L2 / R2 skip it. */
+enum class Tab(val title: String, val ready: Boolean = true) { Library("Library"), Systems("Systems", ready = false), Apps("Apps"), Settings("Settings") }
+
 enum class HintMode(val title: String) {
     Auto("Until I know them"), Always("Always"), Hidden("Never");
     companion object { fun of(name: String?) = entries.firstOrNull { it.name == name } ?: Auto }
@@ -123,6 +126,13 @@ class ConsoleShell(
     var accent by mutableStateOf(Accent.of(preferences.getString("accent", null))); private set
     var transition by mutableStateOf(LaunchTransition.of(preferences.getString("launchTransition", null))); private set
     var showFrameRate by mutableStateOf(preferences.getBoolean("showFrameRate", false)); private set
+    /** The focused game's media behind the shelf (spec 4.1), how strongly it shows, and whether its video is heard (R3). */
+    var previewEnabled by mutableStateOf(preferences.getBoolean("previewEnabled", true)); private set
+    var previewStrength by mutableIntStateOf(preferences.getInt("previewStrength", 70).coerceIn(10, 100)); private set
+    var previewSound by mutableStateOf(false); private set
+    /** What an automatic scrape fetches beside case art. */
+    var scrapeScreenshots by mutableStateOf(preferences.getBoolean("scrapeScreenshots", true)); private set
+    var scrapeVideos by mutableStateOf(preferences.getBoolean("scrapeVideos", true)); private set
     /** Installed Android apps: the library's sibling, reached with Back from its root. Never mixed with games. */
     val apps = AppLibrary(appSource, scope, preferences.getString("appsFocus", null), appDispatcher)
     /** Times Apps has been opened, counted only until its hint has been learned. */
@@ -379,7 +389,7 @@ class ConsoleShell(
             state.screen == CollectionScreen.LabelPreview -> coordinator.cancelLabel()
             status.state == SessionState.Paused -> coordinator.menuAction(0)
             state.screen == CollectionScreen.Library && state.searching -> coordinator.query(state.query.copy(search = ""))
-            controller -> openApps()
+            // Apps is a tab now, on L2 / R2; B at the library's root stays where it is.
         }
     }
     /** X. */
@@ -411,7 +421,7 @@ class ConsoleShell(
         when {
             scraper.state.value.visible -> Unit
             top == Destination.Settings -> category = SettingsCategory.entries[Math.floorMod(category.ordinal + delta, SettingsCategory.entries.size)]
-            top == null && inputMode() == InputMode.Library -> switchShelf(delta)
+            top == null && inputMode() == InputMode.Library -> stepChip(delta)
         }
     }
     /** Start. */
@@ -423,11 +433,61 @@ class ConsoleShell(
             top == null && inputMode() == InputMode.Library -> push(Destination.SystemMenu)
         }
     }
+    /** L2 / R2: the top-level tabs (spec 3), wherever a tab is showing and nothing is stacked over it. */
+    fun trigger(delta: Int) {
+        if (scraper.state.value.visible) return
+        val current = tab ?: return
+        val tabs = Tab.entries.filter { it.ready }
+        openTab(tabs[Math.floorMod(tabs.indexOf(current) + delta, tabs.size)])
+    }
+    /** The tab on screen: the library with nothing over it, or Apps or Settings as the only thing open. */
+    val tab: Tab? get() = when {
+        status.state != SessionState.Idle || state.screen != CollectionScreen.Library || !state.loaded -> null
+        stack.isEmpty() -> Tab.Library
+        stack.size == 1 && top == Destination.Apps -> Tab.Apps
+        stack.size == 1 && top == Destination.Settings -> Tab.Settings
+        else -> null
+    }
+    fun openTab(next: Tab) {
+        if (tab == null || tab == next || !next.ready) return
+        home()
+        when (next) {
+            Tab.Library, Tab.Systems -> Unit
+            Tab.Apps -> push(Destination.Apps)
+            Tab.Settings -> push(Destination.Settings)
+        }
+    }
+    /** The Library's filter chips in the spec's order: Recently Played, Favorites, All Games, then each console. */
+    val chips: List<Shelf> get() = state.shelves.sortedBy { when (it) { Shelf.Recent -> 0; Shelf.Favorites -> 1; Shelf.All -> 2; is Shelf.Console -> 3 } }
+    /** L1 / R1 on the Library: the previous or next chip. A search is cleared onto the chip it was over. */
+    fun stepChip(delta: Int) {
+        val chips = chips
+        if (chips.isEmpty()) return
+        val index = chips.indexOf(state.shelf).coerceAtLeast(0)
+        val next = if (state.searching) chips[index] else chips[Math.floorMod(index + delta, chips.size)]
+        if (next != state.shelf || state.searching) { coordinator.chooseShelf(next); host.stageArrive(delta) }
+    }
+    fun chooseChip(shelf: Shelf) {
+        if (top != null || inputMode() != InputMode.Library) return
+        val before = chips.indexOf(state.shelf)
+        if (shelf != state.shelf || state.searching) { coordinator.chooseShelf(shelf); host.stageArrive(if (chips.indexOf(shelf) >= before) 1 else -1) }
+    }
+    /** The sort control beside the chips. */
+    fun stepSort() {
+        if (top != null || inputMode() != InputMode.Library) return
+        coordinator.query(state.query.copy(sort = LibrarySort.entries[(state.query.sort.ordinal + 1) % LibrarySort.entries.size]))
+    }
+    /** L3 is 0 and R3 is 1, outside a game. R3 turns the preview's sound on or off. */
+    fun stick(which: Int) {
+        if (which == 1 && tab == Tab.Library && previewEnabled) previewSound = !previewSound
+    }
     fun switchShelf(delta: Int) {
         val before = state.shelf
         coordinator.switchShelf(delta)
         if (state.shelf != before) host.stageArrive(delta)
     }
+    /** How many save states a game has, for the library's line about it. Read on the IO threads. */
+    suspend fun saveCount(game: LibraryGame): Int = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { slots.list(game.id, game.system).size } }.getOrDefault(0)
     fun openDetails() { if (state.selectedGame != null && state.screen == CollectionScreen.Library && !state.busy) push(Destination.Details) }
     fun openMenu() { if (top == null && inputMode() == InputMode.Library) push(Destination.SystemMenu) }
 
@@ -522,6 +582,10 @@ class ConsoleShell(
     fun changeClock(value: ClockStyle) { clock = value; preferences.edit { putString("clock", value.name) } }
     fun changeAccent(value: Accent) { accent = value; preferences.edit { putString("accent", value.name) } }
     fun changeTransition(value: LaunchTransition) { transition = value; preferences.edit { putString("launchTransition", value.name) } }
+    fun changePreviewEnabled(value: Boolean) { previewEnabled = value; if (!value) previewSound = false; preferences.edit { putBoolean("previewEnabled", value) } }
+    fun changePreviewStrength(value: Int) { previewStrength = value.coerceIn(10, 100); preferences.edit { putInt("previewStrength", previewStrength) } }
+    fun changeScrapeScreenshots(value: Boolean) { scrapeScreenshots = value; preferences.edit { putBoolean("scrapeScreenshots", value) } }
+    fun changeScrapeVideos(value: Boolean) { scrapeVideos = value; preferences.edit { putBoolean("scrapeVideos", value) } }
     fun changeShowFrameRate(value: Boolean) { showFrameRate = value; preferences.edit { putBoolean("showFrameRate", value) } }
     fun changeControls(next: ConsoleSettings) { controls = next; ConsolePreferences(preferences).write(next); host.inputChanged() }
     fun changeStartLatest(value: Boolean) { startLatest = value; preferences.edit { putBoolean("startFromLatest", value) } }
