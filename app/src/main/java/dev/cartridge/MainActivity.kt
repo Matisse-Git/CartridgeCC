@@ -376,7 +376,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                     dev.cartridge.ui.screens.QuickMenuScreen(shell, device, shell.controls.swapMenuButtons)
                 }
                 ShellOverlays(shell, state, status, device, confirm, back)
-                if (scrape.visible) ScrapePanel(scrape, scraper, confirm, back)
+                if (scrape.visible) ScrapePanel(scrape, scraper, shell.controls.swapMenuButtons, state.reducedMotion)
                 // Over everything the stage and its menus draw; only notices sit above it.
                 // A game on its way in has its own screen (spec 4.4) in place of the curtain; the curtain still covers the way out.
                 Curtain(state.curtain && state.launch == null, shell.transition)

@@ -273,13 +273,6 @@ private fun hints(page: Page, focused: MenuRow?, swapped: Boolean, shell: Consol
 }
 
 /** A thin bar that fills as work is done; with no fraction it is an empty track, the work's size not yet known. */
-@Composable private fun Progress(fraction: Float?, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Palette.Surface3)) {
-        val shown by animateFloatAsState(fraction ?: 0f, LocalDesignMotion.current.fade(), label = "progress")
-        if (fraction != null) Box(Modifier.fillMaxHeight().fillMaxWidth(shown.coerceIn(0f, 1f)).clip(CircleShape).background(Palette.Label))
-    }
-}
-
 /** Confirmations pass; warnings stay. Both are glass pills under the top bar, clear of a sheet at the right. */
 @Composable fun BoxScope.Notices(message: String?, warning: String?, beside: Dp = 0.dp, lingerMs: Long = 4200) {
     var shown by remember { mutableStateOf<String?>(null) }
