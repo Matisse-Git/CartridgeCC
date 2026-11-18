@@ -290,8 +290,10 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
     }
 
     @SuppressLint("RestrictedApi") // Public Activity hook avoids Compose/emulator duplicate input delivery.
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean =
-        if (::input.isInitialized && input.key(event)) true else super.dispatchKeyEvent(event)
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val pad = if (::input.isInitialized && input.mode != dev.cartridge.input.InputMode.Text) DebugKeyboard.asPad(this, event) else event
+        return if (::input.isInitialized && input.key(pad)) true else super.dispatchKeyEvent(event)
+    }
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean =
         if (::input.isInitialized && input.motion(event)) true else super.dispatchGenericMotionEvent(event)
 
@@ -507,4 +509,24 @@ private class EmulatorHost(view: GLRetroView) : FrameLayout(view.context) {
         removeAllViews() // GLSurfaceView waits for its renderer thread before the next Filament owner.
     }
     override fun onDetachedFromWindow() { super.onDetachedFromWindow(); release() }
+}
+
+/**
+ * Debug builds only: a PC keyboard (as in the Android emulator) stands in for the controller buttons it lacks.
+ * Arrows are the D-pad and Enter is A already; Backspace B, X and Y themselves, Q/E L1/R1, Z/C L2/R2, F/R L3/R3,
+ * M Start, N Select. A release build, and every real gamepad, is untouched.
+ */
+private object DebugKeyboard {
+    private val keys = mapOf(
+        KeyEvent.KEYCODE_DEL to KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_X to KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_Y to KeyEvent.KEYCODE_BUTTON_Y,
+        KeyEvent.KEYCODE_Q to KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_E to KeyEvent.KEYCODE_BUTTON_R1,
+        KeyEvent.KEYCODE_Z to KeyEvent.KEYCODE_BUTTON_L2, KeyEvent.KEYCODE_C to KeyEvent.KEYCODE_BUTTON_R2,
+        KeyEvent.KEYCODE_F to KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_R to KeyEvent.KEYCODE_BUTTON_THUMBR,
+        KeyEvent.KEYCODE_M to KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_N to KeyEvent.KEYCODE_BUTTON_SELECT)
+    fun asPad(context: android.content.Context, event: KeyEvent): KeyEvent {
+        if (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) return event
+        if (event.isFromSource(android.view.InputDevice.SOURCE_GAMEPAD) || event.isFromSource(android.view.InputDevice.SOURCE_JOYSTICK)) return event
+        val mapped = keys[event.keyCode] ?: return event
+        return KeyEvent(event.downTime, event.eventTime, event.action, mapped, event.repeatCount, 0, event.deviceId, event.scanCode, event.flags, android.view.InputDevice.SOURCE_GAMEPAD)
+    }
 }
