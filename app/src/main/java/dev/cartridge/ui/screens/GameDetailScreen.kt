@@ -74,7 +74,11 @@ private sealed class StripItem {
     SideEffect { shell.detailMediaCount = strip.size }
     val selected = strip.getOrNull(shell.detailShot)
     val backdrop = remember { BackdropState() }
-    val page = shell.page()?.takeIf { it.key == "details" }
+    // While a sheet covers the page, its actions stay drawn as they were, so nothing shifts underneath.
+    val current = shell.page()?.takeIf { it.key == "details" }
+    var kept by remember(game.id) { mutableStateOf<Page?>(null) }
+    if (current != null) SideEffect { kept = current }
+    val page = current ?: kept
 
     Box(modifier.fillMaxSize().background(Palette.Canvas).testTag("game-detail")) {
         // The hero: the selected strip item, the trailer by default, at 80 %.
@@ -100,7 +104,7 @@ private sealed class StripItem {
         if (strip.isNotEmpty()) Strip(strip, game, faces, shell, Modifier.absoluteOffset(96.dp, 506.dp))
 
         val primary = page?.rows?.firstOrNull()
-        HintBar(buildList {
+        if (active) HintBar(buildList {
             if (primary != null) add(Hint(Pad.confirm(swapped), primary.title, primary = true, tag = "detail-primary") { shell.activate(page, primary) })
             if (strip.any { it is StripItem.Video }) add(Hint(Pad.R3, if (shell.trailerSound) "Mute trailer" else "Trailer sound", tag = "trailer-sound") { shell.stick(1) })
             add(Hint(Pad.Y, if (game.favorite) "Unfavorite" else "Favorite", tag = "detail-favorite") { shell.secondary() })
@@ -244,10 +248,10 @@ private sealed class StripItem {
 @Composable private fun Stats(game: LibraryGame, shell: ConsoleShell, modifier: Modifier) {
     val states = shell.stateList?.takeIf { it.first == game.id }?.second?.count { it.kind != SlotKind.Previous }
     val cells = listOf(
-        "Played" to if (game.playMs >= 60_000) hoursMinutes(game.playMs) else "Not yet",
+        "Played" to when { game.playMs >= 60_000 -> hoursMinutes(game.playMs); game.lastPlayed > 0 -> "Under 1m"; else -> "Not yet" },
         "Last played" to day(game.lastPlayed),
         "Save states" to (states?.toString() ?: "…"),
-        "Core" to game.system.core.title)
+        "Core" to game.system.core.engine.substringBeforeLast(" "))
     Row(modifier.widthIn(max = 600.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         cells.forEach { (label, value) ->
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {

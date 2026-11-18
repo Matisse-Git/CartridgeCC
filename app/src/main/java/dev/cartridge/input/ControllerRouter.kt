@@ -104,6 +104,7 @@ class ControllerRouter(
         if (event.action != KeyEvent.ACTION_DOWN && event.action != KeyEvent.ACTION_UP) return true
         val down = event.action == KeyEvent.ACTION_DOWN
         if (down) held.add(code) else { held.remove(code); latched.remove(code) }
+        if (down && event.repeatCount == 0 && code in directions && mode != InputMode.Gameplay) tapped.add(code)
         if (!down) {
             if (code in setOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT) &&
                 held.none { it == KeyEvent.KEYCODE_DPAD_LEFT || it == KeyEvent.KEYCODE_DPAD_RIGHT } && abs(axisX) < deadZone) horizontalRepeat.reset()
@@ -200,8 +201,13 @@ class ControllerRouter(
             else -> analog
         }
         fun threshold(value: Float) = if (abs(value) < deadZone) 0f else if (value > 0) 1f else -1f
+        // A direction pressed and let go between two frames is still one step.
+        val quick = tapped.filter { it !in held }; tapped.clear()
+        fun tap(negative: Int, positive: Int) = when { positive in quick -> 1; negative in quick -> -1; else -> 0 }
         val dy = verticalRepeat.poll(threshold(axis(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, axisY)), nowMillis)
+            .let { if (it == 0) tap(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN) else it }
         val dx = horizontalRepeat.poll(threshold(axis(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, axisX)), nowMillis)
+            .let { if (it == 0) tap(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT) else it }
         if (mode == InputMode.Menu) {
             if (dy != 0) navigate(dy)
             if (dx != 0) adjust(dx)
@@ -210,6 +216,8 @@ class ControllerRouter(
         }
     }
     private val triggerHeld = booleanArrayOf(false, false)
+    /** Directions pressed since the last frame, for a press that ends before the frame reads it. */
+    private val tapped = mutableSetOf<Int>()
     private val lastPull = longArrayOf(Long.MIN_VALUE / 2, Long.MIN_VALUE / 2)
     /** Many pads send a trigger both as a key and as an axis; the second within [TRIGGER_DEBOUNCE_MS] is the same pull. */
     private fun pull(side: Int, at: Long) {
@@ -219,7 +227,7 @@ class ControllerRouter(
     }
     /** Pause, focus loss and a disconnected pad forget everything; a change of mode keeps a shortcut held down. */
     fun reset(keepShortcut: Boolean = false) {
-        held.clear(); axisX = 0f; axisY = 0f; horizontalRepeat.reset(); verticalRepeat.reset(); forwarded.clear(); inspect(0f, 0f)
+        held.clear(); tapped.clear(); axisX = 0f; axisY = 0f; horizontalRepeat.reset(); verticalRepeat.reset(); forwarded.clear(); inspect(0f, 0f)
         if (!keepShortcut) latched.clear()
         gameAnalog(0, 0f, 0f); gameAnalog(1, 0f, 0f)
     }
