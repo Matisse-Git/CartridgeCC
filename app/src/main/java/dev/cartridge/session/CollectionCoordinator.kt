@@ -418,8 +418,11 @@ class CollectionCoordinator(
     fun dismissMessage() { if (!destroyed && state.value.message != null) mutableState.value = state.value.copy(message = null) }
     fun dismissLaunchFailure() { if (!destroyed && state.value.launchFailure != null) mutableState.value = state.value.copy(launchFailure = null) }
 
-    /** Starts the focused game, on its disc [disc] by its place in the game's discs, or on the disc last in the drive. */
-    fun insert(disc: Int? = null) {
+    /**
+     * Starts the focused game, on its disc [disc] by its place in the game's discs, or on the disc last in the drive.
+     * [fromState] overrides the game's "Start from save state" for this start only (see [GameRequest.startFromState]).
+     */
+    fun insert(disc: Int? = null, fromState: Boolean? = null) {
         val selected = state.value
         if (!foreground || !selected.loaded || selected.screen != CollectionScreen.Library || !selected.rendererReady) return
         val game = selected.selectedGame ?: return
@@ -427,7 +430,7 @@ class CollectionCoordinator(
         runAction(isLaunch = true) {
             mutableState.value = state.value.copy(screen = CollectionScreen.Inserting, message = null, launchFailure = null)
             coroutineScope {
-                val request = async { repository.gameRequest(game, disc) }
+                val request = async { repository.gameRequest(game, disc).let { if (fromState == null) it else it.copy(startFromState = fromState) } }
                 if (!selected.reducedMotion) delay(dev.cartridge.domain.MediaMotion.INSERT_MS.toLong())
                 closeCurtain()
                 val readyRequest = request.await()

@@ -245,6 +245,34 @@ class ShellNavigationTest {
         console.coordinator.destroy()
     }
 
+    @Test fun gameDetailMovesBetweenItsActionsAndItsMediaWithTheDpad() = runTest {
+        val console = Console(this); val shell = console.shell
+        shell.alternate(); assertEquals(Destination.Details, shell.top)
+        // A game never started and without save states offers Play, the star and More; nothing to resume or start over.
+        val page = shell.page()!!
+        assertEquals(listOf("primary", "favorite", "more"), page.rows.map { it.id }); assertEquals("Play", page.rows.first().title)
+        assertEquals("primary", shell.focused(page)?.id)
+        // Without media there is no strip to move down to.
+        shell.navigate(1); assertEquals(0, shell.detailRow)
+        // With two items: down to the strip, along it and no further, back up to the actions where focus was.
+        shell.detailMediaCount = 2
+        shell.navigate(1); assertEquals(1, shell.detailRow)
+        shell.adjust(1); shell.adjust(1); assertEquals(1, shell.detailShot)
+        shell.navigate(-1); assertEquals(0, shell.detailRow); assertEquals("primary", shell.focused(shell.page()!!)?.id)
+        shell.adjust(1); assertEquals("favorite", shell.focused(shell.page()!!)?.id)
+        // R3 is the trailer's sound here, X the game's settings, B back to the shelf.
+        assertFalse(shell.trailerSound); shell.stick(1); assertTrue(shell.trailerSound)
+        shell.alternate(); assertEquals(Destination.Options, shell.top)
+        shell.back(); assertEquals(Destination.Details, shell.top)
+        // More holds Game settings and Manage game.
+        shell.adjust(1); shell.select(); assertEquals(Destination.GameMore, shell.top)
+        assertTrue(shell.page()!!.rows.map { it.id }.containsAll(listOf("options", "manage")))
+        shell.back(); shell.back(); assertNull(shell.top)
+        // Opening it again starts at its first action, with the trailer muted.
+        shell.alternate(); assertEquals(0, shell.detailRow); assertFalse(shell.trailerSound)
+        console.coordinator.destroy()
+    }
+
     @Test fun androidBackKeepsItsMeaningAndNeverOpensApps() = runTest {
         val console = Console(this); val shell = console.shell
         // At the library's root it has nowhere to go, exactly as before this feature.

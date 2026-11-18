@@ -18,7 +18,12 @@ data class EngineStatus(val state: SessionState = SessionState.Idle, val error: 
  * [rom] is that disc's file. A core that can change discs is started from a playlist of all of them.
  */
 data class GameRequest(val rom: File, val id: String, val system: GameSystem = GameSystem.GBA, val resumeState: ByteArray? = null,
-    val discs: List<File> = emptyList(), val disc: Int = 0)
+    val discs: List<File> = emptyList(), val disc: Int = 0,
+    /**
+     * This one start's answer to "Start from save state", over the game's setting: true continues from its newest
+     * state (Resume), false starts from the beginning (Start over), null follows the setting.
+     */
+    val startFromState: Boolean? = null)
 
 interface EmulationEngine {
     val status: StateFlow<EngineStatus>

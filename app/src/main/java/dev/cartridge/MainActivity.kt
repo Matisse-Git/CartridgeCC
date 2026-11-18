@@ -332,6 +332,11 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                     CompositionLocalProvider(dev.cartridge.ui.design.LocalGameMedia provides gameMedia) {
                         dev.cartridge.ui.design.DesignCanvas(state.reducedMotion) {
                             dev.cartridge.ui.screens.LibraryScreen(state, shell, device, shell.controls.swapMenuButtons, browsing)
+                            // Game detail rests on the shelf, and the sheets opened from it rest on Game detail.
+                            val detail = state.screen == CollectionScreen.Library && Destination.Details in shell.stack && !scrape.visible
+                            AnimatedVisibility(detail, enter = fadeIn(tween(if (state.reducedMotion) 0 else 220)), exit = fadeOut(tween(if (state.reducedMotion) 0 else 180))) {
+                                dev.cartridge.ui.screens.GameDetailScreen(state, shell, device, shell.controls.swapMenuButtons, active = shell.top == Destination.Details)
+                            }
                         }
                     }
                 } else {
@@ -353,7 +358,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                     listOfNotNull(status.saveWarning, state.historyWarning).joinToString("\n").ifEmpty { null },
                     beside = when (shell.top) {
                         Destination.SystemMenu -> 300.dp
-                        Destination.Details, Destination.Manage -> 400.dp
+                        Destination.Manage, Destination.GameMore -> 400.dp
                         Destination.Options -> if (status.state == SessionState.Paused) 340.dp else 400.dp
                         else -> 0.dp
                     },

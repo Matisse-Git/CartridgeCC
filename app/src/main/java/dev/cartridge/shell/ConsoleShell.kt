@@ -133,6 +133,22 @@ class ConsoleShell(
     /** What an automatic scrape fetches beside case art. */
     var scrapeScreenshots by mutableStateOf(preferences.getBoolean("scrapeScreenshots", true)); private set
     var scrapeVideos by mutableStateOf(preferences.getBoolean("scrapeVideos", true)); private set
+    /** Game detail (spec 4.3): the actions row (0) or the media strip (1), the strip's focused item, and whether the trailer is heard. */
+    var detailRow by mutableIntStateOf(0); private set
+    var detailShot by mutableIntStateOf(0); private set
+    var trailerSound by mutableStateOf(false); private set
+    /** How many items the media strip shows: the screen knows which media are on this device, the shell does not. */
+    var detailMediaCount = 0
+        set(value) { field = value; if (value == 0) detailRow = 0; detailShot = detailShot.coerceIn(0, (value - 1).coerceAtLeast(0)) }
+    fun focusShot(index: Int) { if (index in 0 until detailMediaCount) { detailRow = 1; detailShot = index } }
+    fun focusDetailAction(page: Page, row: MenuRow) { detailRow = 0; focus(page, row) }
+    private fun detailMove(dx: Int, dy: Int) {
+        if (dy != 0) detailRow = (detailRow + dy).coerceIn(0, if (detailMediaCount > 0) 1 else 0)
+        if (dx != 0) {
+            if (detailRow == 0) page()?.let { move(it, dx) }
+            else detailShot = (detailShot + dx).coerceIn(0, (detailMediaCount - 1).coerceAtLeast(0))
+        }
+    }
     /** Installed Android apps: the library's sibling, reached with Back from its root. Never mixed with games. */
     val apps = AppLibrary(appSource, scope, preferences.getString("appsFocus", null), appDispatcher)
     /** Times Apps has been opened, counted only until its hint has been learned. */
@@ -231,7 +247,8 @@ class ConsoleShell(
         when (destination) {
             Destination.Settings -> { pane = 0; category = SettingsCategory.Library; refreshRoots(); refreshStorage(); homeEnabled = host.homeEnabled; refreshShaderVersion() }
             is Destination.ShaderPicker -> { refreshShaderVersion(); listShaders(destination.folder) }
-            Destination.Details, Destination.Manage -> state.selectedGame?.let { loadFacts(it.id) }
+            Destination.Details -> state.selectedGame?.let { detailRow = 0; detailShot = 0; trailerSound = false; loadFacts(it.id); loadSlots(it.id) }
+            Destination.Manage, Destination.GameMore -> state.selectedGame?.let { loadFacts(it.id) }
             Destination.Hidden -> scope.launch { hidden = repository.hiddenGames() }
             Destination.About -> scope.launch { notices = withContext(Dispatchers.IO) { context.assets.list("licenses").orEmpty().sorted() } }
             is Destination.Notice -> { readerLine = 0; noticeText = ""; scope.launch {
@@ -331,6 +348,7 @@ class ConsoleShell(
             is Destination.TextEntry -> moveKey(0, delta)
             is Destination.Notice -> readerLine = (readerLine + delta).coerceAtLeast(0)
             Destination.Apps -> apps.move(0, delta)
+            Destination.Details -> detailMove(0, delta)
             Destination.Settings -> if (pane == 0) category = SettingsCategory.entries[(category.ordinal + delta).coerceIn(0, SettingsCategory.entries.lastIndex)]
                 else page()?.let { move(it, delta) }
             else -> page()?.let { move(it, delta) }
@@ -341,6 +359,7 @@ class ConsoleShell(
         when (top) {
             is Destination.TextEntry -> moveKey(delta, 0)
             Destination.Apps -> apps.move(delta, 0)
+            Destination.Details -> detailMove(delta, 0)
             Destination.Settings -> if (pane == 0) { if (delta > 0) pane = 1 } else {
                 val row = page()?.let(::focused)
                 if (row?.adjust != null && row.enabled) row.adjust.invoke(delta) else if (delta < 0) pane = 0
@@ -354,6 +373,8 @@ class ConsoleShell(
             is Destination.TextEntry -> pressKey()
             Destination.Apps -> if (apps.focused == null && !apps.searching) apps.refresh() else launchApp()
             Destination.Settings -> if (pane == 0) pane = 1 else page()?.let(::activate)
+            // In the media strip, A is still the game's own first action: Resume or Play.
+            Destination.Details -> page()?.let { if (detailRow == 1) activate(it, it.rows.firstOrNull { row -> row.focusable }) else activate(it) }
             else -> page()?.let(::activate) ?: confirmLibrary()
         }
     }
@@ -370,9 +391,9 @@ class ConsoleShell(
      * A console that needs the user's file explains that here, instead of failing once the game has left the shelf.
      * [disc] starts a game of several discs on that one (ADR 0032); otherwise on the disc last in the drive.
      */
-    private fun start(disc: Int? = null) {
+    private fun start(disc: Int? = null, fromState: Boolean? = null) {
         val core = state.selectedGame?.system?.core
-        if (core != null && !firmwareReady(core)) { home(); push(Destination.Setup(core)) } else coordinator.insert(disc)
+        if (core != null && !firmwareReady(core)) { home(); push(Destination.Setup(core)) } else coordinator.insert(disc, fromState)
     }
     /** B. Whatever is open closes first; only the library's own root, with nothing to close, leads to Apps. */
     fun back() = dismiss(controller = true)
@@ -403,6 +424,7 @@ class ConsoleShell(
                 else -> Unit
             }
             top is Destination.TextEntry -> backspace()
+            top == Destination.Details -> push(Destination.Options)
             top == null && inputMode() == InputMode.Library -> openDetails()
         }
     }
@@ -479,7 +501,9 @@ class ConsoleShell(
     }
     /** L3 is 0 and R3 is 1, outside a game. R3 turns the preview's sound on or off. */
     fun stick(which: Int) {
-        if (which == 1 && tab == Tab.Library && previewEnabled) previewSound = !previewSound
+        if (which != 1) return
+        if (top == Destination.Details) trailerSound = !trailerSound
+        else if (tab == Tab.Library && previewEnabled) previewSound = !previewSound
     }
     fun switchShelf(delta: Int) {
         val before = state.shelf
@@ -899,7 +923,8 @@ class ConsoleShell(
     fun search() = push(Destination.TextEntry(TextSpec("Search", "Title, developer or genre", state.query.search, 60, "library-search-text") { value ->
         home(); coordinator.query(state.query.copy(search = value))
     }))
-    fun play(disc: Int? = null) { home(); start(disc) }
+    /** [fromState]: true continues from the newest save state (Resume), false starts from the beginning (Start over). */
+    fun play(disc: Int? = null, fromState: Boolean? = null) { home(); start(disc, fromState) }
     fun hide() { home(); coordinator.hideSelected() }
 
     // ---- Backup -----------------------------------------------------------------------------------------

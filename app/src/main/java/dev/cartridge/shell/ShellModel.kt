@@ -73,6 +73,8 @@ sealed class Destination(val key: String, val opaque: Boolean = false) {
     data class Notice(val name: String) : Destination("notice", true)
     data object BackupReview : Destination("backup", true)
     data object Details : Destination("details")
+    /** The rest of what Details offers: the discs to start from, the file, game settings and managing the game. */
+    data object GameMore : Destination("more")
     data object Manage : Destination("manage")
     data object Options : Destination("options")
     data object Controls : Destination("controls", true)

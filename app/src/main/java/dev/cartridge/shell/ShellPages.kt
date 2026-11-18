@@ -69,6 +69,7 @@ internal fun ConsoleShell.buildPage(state: CollectionState, status: EngineStatus
             "Your current artwork, details, library and saves are kept. Anything missing is filled in from the backup, and play history keeps the larger value.\n\n" +
                 "Game files and folder permissions are not part of a backup. Add your game folders again on a new device.")
         Destination.Details -> game?.let { detailsPage(it, state) }
+        Destination.GameMore -> game?.let { morePage(it, state) }
         Destination.Manage -> game?.let { managePage(it, state) }
         Destination.Options -> game?.let { optionsPage(it, paused) }
         Destination.EditDetails -> Page("edit", "Edit details", listOf("title", "year", "developer", "publisher", "genre", "description").map { field ->
@@ -161,15 +162,52 @@ private fun fileNote(file: DiscFacts, game: LibraryGame) = listOfNotNull(file.fi
     file.tracks.takeIf { it > 0 }?.let { plural(it, "track") }, game.discCount.takeIf { game.discs.isEmpty() && it > 1 }?.let { "$it discs" },
     "original missing".takeIf { file.sourceMissing }).joinToString(" · ")
 
+/** What Resume continues from on Game detail: the suspended session, or the newest save state. Null when there is neither. */
+internal class ResumePoint(val note: String, val fromSession: Boolean)
+
+internal fun ConsoleShell.resumePoint(game: LibraryGame, state: CollectionState): ResumePoint? {
+    state.resumeSession?.takeIf { it.id == game.id && it.system == game.system }?.let { return ResumePoint("Where you left it · ${whenLabel(it.savedAt)}", true) }
+    if (game.system.core.snapshots == dev.cartridge.domain.Snapshots.Never) return null
+    val slots = stateList?.takeIf { it.first == game.id }?.second ?: return null
+    val newest = slots.filter { it.kind != SlotKind.Previous }.maxByOrNull { it.savedAt } ?: return null
+    val saved = slots.filter { it.kind == SlotKind.Saved }.sortedBy { it.savedAt }
+    val name = if (newest.kind == SlotKind.Quick) "Quick save" else "Save ${saved.indexOf(newest) + 1}"
+    return ResumePoint("$name · ${whenLabel(newest.savedAt)}", false)
+}
+
+/**
+ * Game detail's actions (spec 4.3), in the order the screen shows them: Resume (or Play), Start over, the favourite star
+ * and More. The screen draws them; the shell moves the focus and runs them like any other rows.
+ */
 private fun ConsoleShell.detailsPage(game: LibraryGame, state: CollectionState): Page {
     val known = facts?.takeIf { it.first == game.id }?.second
     val ready = !state.busy
+    val launchable = ready && state.rendererReady
     return Page("details", game.title, buildList {
-        if (known?.cachedRom == false && game.discs.isEmpty()) add(MenuRow("locate", "Reconnect game file", note = "Cartridge can't find this game's file. Choose the same file again.",
-            warn = true, enabled = ready, tag = "details-locate") { locateGame() })
+        val missing = known?.cachedRom == false && game.discs.isEmpty()
+        val resume = if (missing) null else resumePoint(game, state)
+        val firmware = firmwareReady(game.system.core)
+        val disc = if (game.discTotal > 1) "Disc ${discNumber(game, game.disc)}" else null
+        when {
+            missing -> add(MenuRow("primary", "Reconnect", note = "Cartridge can't find this game's file", warn = true, enabled = ready, tag = "details-locate") { locateGame() })
+            resume != null -> add(MenuRow("primary", "Resume", note = if (!firmware) "Needs the ${game.system.core.title} BIOS" else listOfNotNull(resume.note, disc).joinToString(" · "),
+                enabled = launchable, tag = "details-play") { if (resume.fromSession) { home(); coordinator.resumeSavedSession() } else play(fromState = true) })
+            else -> add(MenuRow("primary", "Play", note = if (!firmware) "Needs the ${game.system.core.title} BIOS" else disc ?: if (game.lastPlayed > 0) null else "First time",
+                enabled = launchable, tag = "details-play") { play() })
+        }
+        if (resume != null) add(MenuRow("start-over", "Start over", note = "From the beginning. In-game saves are kept.", enabled = launchable, tag = "details-start-over") { play(fromState = false) })
+        add(MenuRow("favorite", if (game.favorite) "Remove from Favorites" else "Add to Favorites", enabled = ready, tag = "details-favorite") { coordinator.favorite() })
+        add(MenuRow("more", "More", RowKind.Link, tag = "details-more") { push(Destination.GameMore) })
+    }, PageStyle.Details, game.system.title, game.metadata["description"]?.value?.takeIf(String::isNotBlank))
+}
+
+/** Details' second level: each disc to start from, the file, game settings and managing the game. */
+private fun ConsoleShell.morePage(game: LibraryGame, state: CollectionState): Page {
+    val known = facts?.takeIf { it.first == game.id }?.second
+    val ready = !state.busy
+    return Page("more", displayName(game), buildList {
         if (!firmwareReady(game.system.core)) add(MenuRow("setup", "Add ${game.system.core.title} BIOS", note = "Needed before this game can start",
             warn = true, enabled = ready, tag = "details-setup") { chooseFirmware(game.system.core) })
-        add(MenuRow("play", "Play", value = if (game.discTotal > 1) "Disc ${discNumber(game, game.disc)}" else null, enabled = ready && state.rendererReady, tag = "details-play") { play() })
         if (game.discs.size > 1) {
             // Each disc, in order, with the numbers a set skips as discs that were not found (ADR 0032). A disc starts the game on it.
             add(MenuRow("header:discs", "Discs · ${game.discs.size}", RowKind.Header))
@@ -185,13 +223,14 @@ private fun ConsoleShell.detailsPage(game: LibraryGame, state: CollectionState):
                     warn = true, enabled = ready, tag = "details-locate-$index") { locateGame(disc.id) })
             }
             game.discs.firstNotNullOfOrNull { it.playlist }?.let { add(MenuRow("playlist", "From $it", RowKind.Info, note = "The playlist that named these discs")) }
+            add(MenuRow("header:game", "Game", RowKind.Header))
         } else known?.files?.singleOrNull()?.let { file -> add(MenuRow("file", "File", RowKind.Info, note = fileNote(file, game), tag = "details-file")) }
-        add(MenuRow("favorite", if (game.favorite) "Remove from Favorites" else "Add to Favorites", enabled = ready, tag = "details-favorite") { coordinator.favorite() })
-        add(MenuRow("options", "Game options", RowKind.Link, tag = "details-options") { push(Destination.Options) })
-        add(MenuRow("manage", "Manage game", RowKind.Link, tag = "details-manage") { push(Destination.Manage) })
-    }, PageStyle.Details, listOfNotNull(game.system.title, game.metadata["year"]?.value?.takeIf(String::isNotBlank),
-        game.metadata["developer"]?.value?.takeIf(String::isNotBlank)).joinToString(" · "), game.metadata["description"]?.value?.takeIf(String::isNotBlank))
+        add(MenuRow("options", "Game settings", RowKind.Link, tag = "details-options") { push(Destination.Options) })
+        add(MenuRow("manage", "Manage game", RowKind.Link, note = "Artwork, details, the game file", tag = "details-manage") { push(Destination.Manage) })
+    }, PageStyle.Sheet, game.system.title)
 }
+
+private fun displayName(game: LibraryGame) = dev.cartridge.ui.design.displayTitle(game.title)
 
 private fun ConsoleShell.managePage(game: LibraryGame, state: CollectionState): Page {
     val ready = !state.busy

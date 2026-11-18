@@ -106,9 +106,11 @@ class LibretroEngine(private val context: Context, private val scope: CoroutineS
                 // for the game not to start; a resumed session already has its state.
                 var startNotice: String? = null
                 // Which state is the user's choice: the quick save, or the newest of all. Never an older one in its place.
-                val startState = if (game.resumeState != null || options[GameOptions.START_FROM_STATE] != "enabled") null else try {
+                val fromState = game.startFromState ?: (options[GameOptions.START_FROM_STATE] == "enabled")
+                val newest = game.startFromState == true || options[GameOptions.START_SLOT] == GameOptions.LATEST
+                val startState = if (game.resumeState != null || !fromState) null else try {
                     withContext(Dispatchers.IO) {
-                        if (options[GameOptions.START_SLOT] == GameOptions.LATEST) slots.latest(game.id, game.system)?.let { slots.read(game.id, game.system, it.name) }
+                        if (newest) slots.latest(game.id, game.system)?.let { slots.read(game.id, game.system, it.name) }
                         else saves.read(game.id, "state")
                     }?.let { dev.cartridge.storage.ManualState.decode(game.system, it) }
                 } catch (failure: Exception) {

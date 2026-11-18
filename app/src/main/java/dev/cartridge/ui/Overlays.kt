@@ -45,15 +45,16 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
         val focused = shell.focused(floating)
         when (floating.style) {
             PageStyle.Pause -> Entering("pause") { PauseMenu(floating, focused, shell, device, confirm, back) }
-            PageStyle.Details -> Entering("details", 28.dp) { DetailsSheet(floating, focused, shell, state, confirm, back) }
+            // Game detail is a screen of its own (ui/screens/GameDetailScreen), drawn beneath these overlays.
+            PageStyle.Details -> Unit
             PageStyle.Dialog -> { Scrim(dismiss = shell::back); Entering(floating.key) { Dialog(floating, focused, shell) } }
             else -> {
                 // Sheets about the focused game sit beside its object, like its details. Nothing dims the object:
                 // not there, and not in the label preview, whose whole subject is the object.
-                val beside = status.state == dev.cartridge.domain.SessionState.Idle && floating.key in setOf("manage", "options", "label")
+                val beside = status.state == dev.cartridge.domain.SessionState.Idle && floating.key == "label"
                 if (!beside) Scrim(dismiss = shell::back)
                 Entering(floating.key, if (beside) 0.dp else 28.dp) {
-                    SidePanel(when { beside -> 400.dp; floating.key == "menu" -> 300.dp; else -> 340.dp }, if (floating.key == "menu") "system-menu-panel" else "sheet-${floating.key}") {
+                    SidePanel(when { beside || floating.key in setOf("manage", "options", "more") -> 400.dp; floating.key == "menu" -> 300.dp; else -> 340.dp }, if (floating.key == "menu") "system-menu-panel" else "sheet-${floating.key}") {
                         Txt(floating.title, Type.Heading, modifier = Modifier.padding(start = 14.dp, top = Space.XS))
                         floating.subtitle?.let { Txt(it, Type.Label, Ink.Faint, Modifier.padding(start = 14.dp, top = 2.dp), lines = 1) }
                         RowList(floating.rows, focused, Modifier.weight(1f).padding(top = Space.M)) { shell.activate(floating, it) }
