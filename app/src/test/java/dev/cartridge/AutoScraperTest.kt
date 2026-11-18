@@ -180,4 +180,21 @@ class AutoScraperTest {
         assertEquals(emptySet<String>(), pending.ids)
         assertEquals(2, scraper.status.value.applied); assertEquals(1, scraper.status.value.notFound); assertNull(scraper.status.value.problem)
     }
+
+    @Test fun withDownloadMissingArtOffAddedGamesWaitUntilItIsOnAgain() = runTest {
+        val library = Library(LibraryGame(id('a'), "One", "content://a"))
+        val provider = Provider(); val pending = MemoryPendingScrapes()
+        val scraper = scraper(library, provider, pending, backgroundScope, StandardTestDispatcher(testScheduler))
+        scraper.paused = true
+        scraper.added(listOf(id('a'))); runCurrent()
+        assertTrue(provider.searches.isEmpty()); assertEquals(setOf(id('a')), pending.ids); assertFalse(scraper.status.value.running)
+        assertNull(library.game(id('a')).label)
+        scraper.resume(); runCurrent()
+        assertEquals(listOf("One"), provider.searches)
+        assertEquals(emptySet<String>(), pending.ids); assertEquals(1, scraper.status.value.applied)
+        // On with nothing waiting starts nothing, so no "up to date" line is shown for it.
+        val before = scraper.status.value
+        scraper.resume(); runCurrent()
+        assertEquals(before, scraper.status.value)
+    }
 }

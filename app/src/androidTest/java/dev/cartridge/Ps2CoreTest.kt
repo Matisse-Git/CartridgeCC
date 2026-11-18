@@ -157,7 +157,7 @@ class Ps2CoreTest {
                 scenario.onActivity { assertEquals(SessionState.Idle, it.engine.status.value.state); assertEquals(CollectionScreen.Library, it.coordinator.state.value.screen)
                     assertNull(it.coordinator.state.value.launchFailure) }
                 ui.onNodeWithTag("setup-close").performClick(); ui.waitUntil(5_000) { !ui.shown("dialog-setup") }
-                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-gameplay").performClick()
+                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-systems").performClick()
                 ui.onNodeWithTag("settings-bios-ps2-bios").performScrollTo().assertIsDisplayed()
                 // A file of the right size that is not one is refused in words, and nothing is written.
                 val fixtures = File(context.filesDir, "m1-fixtures").apply { mkdirs() }

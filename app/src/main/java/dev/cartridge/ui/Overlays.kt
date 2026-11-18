@@ -45,7 +45,7 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
     // The Quick menu is its own screen (ui/screens/QuickMenuScreen).
     if (top == Destination.SystemMenu) return
     // Systems is its own screen (ui/screens/SystemsScreen); sheets opened over it are still drawn here.
-    if (!pause && shell.base != Destination.Systems && shell.base != Destination.Apps) shell.base?.let { destination -> shell.page(state, status, destination)?.let { page -> Entering(destination.key) { OpaquePage(page, shell, state, device, top == destination, confirm, back) } } }
+    if (!pause && shell.base != Destination.Systems && shell.base != Destination.Apps && shell.base != Destination.Settings) shell.base?.let { destination -> shell.page(state, status, destination)?.let { page -> Entering(destination.key) { OpaquePage(page, shell, state, device, top == destination, confirm, back) } } }
     val floating = if (top == null || !top.opaque) shell.page(state, status, top) else null
     if (floating != null) {
         val focused = shell.focused(floating)
@@ -76,7 +76,7 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
     Box(Modifier.fillMaxSize().background(Ink.Stage).testTag(when (page.style) { PageStyle.Settings -> "settings"; else -> "page-${page.key}" })
         .windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Space.Edge, vertical = Space.L)) {
         when (page.style) {
-            PageStyle.Settings -> SettingsPage(page, shell, state, confirm, back)
+            PageStyle.Settings -> Unit
             PageStyle.Keyboard -> Keyboard(page, shell, confirm, back)
             PageStyle.Reader -> Reader(page, shell, back)
             PageStyle.Apps -> Unit
@@ -93,35 +93,6 @@ private fun pageHints(page: Page, focused: MenuRow?, confirm: String, back: Stri
                     }
                     RowList(page.rows, focused.takeIf { active }, Modifier.weight(.6f).fillMaxHeight()) { shell.activate(page, it) }
                 }
-            }
-        }
-    }
-}
-
-@Composable private fun SettingsPage(page: Page, shell: ConsoleShell, state: CollectionState, confirm: String, back: String) {
-    val focused = shell.focused(page)
-    val inRows = shell.pane == 1
-    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Space.XL)) {
-        Column(Modifier.width(210.dp).fillMaxHeight()) {
-            Txt(page.title, Type.Title, modifier = Modifier.padding(start = 14.dp, bottom = Space.M))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                SettingsCategory.entries.forEach { category ->
-                    val current = category == shell.category
-                    // The current section stays marked while focus is among its rows.
-                    RowItem(MenuRow(category.name, category.title, tag = "category-${category.name.lowercase()}", action = {}), focused = current && !inRows, current = current) {
-                        shell.chooseCategory(category); shell.enterRows()
-                    }
-                }
-            }
-            HintBar(listOf(Hint("L1 R1", "Section"), Hint(back, "Back", "back", shell::back)), Modifier.padding(start = 14.dp))
-        }
-        Column(Modifier.weight(1f).fillMaxHeight()) {
-            RowList(page.rows, focused.takeIf { inRows }, Modifier.weight(1f).padding(top = 40.dp), showNotes = false) { row -> shell.enterRows(); shell.activate(page, row) }
-            // One help line for the focused row keeps every row a single line tall.
-            Box(Modifier.fillMaxWidth().heightIn(min = 40.dp).padding(start = 14.dp, top = Space.S), contentAlignment = Alignment.CenterStart) {
-                val row = focused.takeIf { inRows }
-                if (row?.note != null) Txt(row.note, Type.Label, if (row.warn) Ink.Warning else Ink.Soft, Modifier.testTag("settings-help"), lines = 2)
-                else if (inRows && row?.adjust != null) HintBar(listOf(Hint("◀ ▶", "Change")))
             }
         }
     }

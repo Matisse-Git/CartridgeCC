@@ -66,7 +66,7 @@ class GameOptionsDeviceTest {
             ActivityScenario.launch<DebugCollectionActivity>(Intent(context, DebugCollectionActivity::class.java).putExtra("testDatabase", name).putExtra("stayInMenu", true)).use { scenario ->
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 // Journey H: Settings › Gameplay names each console, and the PlayStation rows sit under PlayStation.
-                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-gameplay").performClick()
+                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-systems").performClick()
                 row("option-playstation.sharp3d"); row("option-playstation.dither")
                 repeat(3) { row("option-playstation.effect") } // Standard → Sharp pixels → Handheld LCD → Television
                 ui.onNodeWithTag("settings-help").assertIsDisplayed()
@@ -177,7 +177,7 @@ class GameOptionsDeviceTest {
                 start(); assertEquals(before, shown()); pause(); leave()
 
                 // On, once, for every console.
-                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-gameplay").performClick(); row("option-startFromState")
+                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-systems").performClick(); row("option-startFromState")
                 ui.onNodeWithTag("settings-help").assertIsDisplayed()
                 assertEquals("enabled", OptionStore(preferences).console(Core.Mgba)["startFromState"])
                 assertEquals("enabled", OptionStore(preferences).console(Core.Pcsx)["startFromState"])

@@ -31,6 +31,9 @@ import dev.cartridge.shell.HintMode
 import dev.cartridge.shell.Page
 import dev.cartridge.shell.PageStyle
 import dev.cartridge.shell.controlRows
+import dev.cartridge.shell.folderPath
+import dev.cartridge.shell.RowKind
+import dev.cartridge.shell.SettingsCategory
 import dev.cartridge.shell.ShellHost
 import dev.cartridge.storage.LabelStore
 import dev.cartridge.storage.SessionStore
@@ -532,5 +535,57 @@ class ShellNavigationTest {
         shell.home(); shell.activate(Page("controls", "Controls", shell.controlRows(console.state), PageStyle.Page), shell.controlRows(console.state).first { it.id == "reset" })
         assertTrue(stored().buttons.isEmpty())
         console.coordinator.destroy()
+    }
+
+    @Test fun settingsHasTheSpecsTenSectionsAndTheLibrarysBoxArtSwitchesAreKept() = runTest {
+        val console = Console(this); val shell = console.shell
+        assertEquals(listOf("Library", "Systems & Cores", "Controllers", "Display", "Appearance", "Sound", "Storage", "Network", "Android", "About"),
+            SettingsCategory.entries.map { it.title })
+        shell.openTab(Tab.Settings); assertEquals(SettingsCategory.Library, shell.category); assertEquals(0, shell.pane)
+        shell.shoulder(1); assertEquals(SettingsCategory.Systems, shell.category)
+        shell.shoulder(-1); shell.shoulder(-1); assertEquals("L1 wraps to the last section", SettingsCategory.About, shell.category)
+        shell.navigate(1); assertEquals("Down at the last section stays there", SettingsCategory.About, shell.category)
+        shell.shoulder(1); assertEquals(SettingsCategory.Library, shell.category)
+        val library = shell.page()!!
+        val headers = library.rows.filter { it.kind == RowKind.Header }.map { it.title }
+        assertEquals(listOf("Game folders", "Scanning", "Browsing", "Box art"), headers)
+        assertEquals(RowKind.Add, library.rows.first { it.id == "add" }.kind)
+        assertNull("The Layout row is gone: the shelf is always 3D", library.rows.firstOrNull { it.tag == "layout-setting" })
+        // Into the rows, then Show boxes in 3D off and on: kept across launches.
+        shell.select(); assertEquals(1, shell.pane)
+        val boxes = library.rows.first { it.id == "boxes3d" }
+        assertTrue(shell.boxes3d)
+        shell.activate(library, boxes); assertFalse(shell.boxes3d); assertFalse(console.preferences.getBoolean("boxes3d", true))
+        shell.activate(shell.page()!!, shell.page()!!.rows.first { it.id == "boxes3d" }); assertTrue(shell.boxes3d)
+        shell.activate(shell.page()!!, shell.page()!!.rows.first { it.id == "download-art" })
+        assertFalse(shell.downloadArt); assertFalse(console.preferences.getBoolean("downloadArt", true))
+        // Reset settings brings 3D back; it never touches what is downloaded.
+        shell.changeBoxes3d(false); shell.resetSettings(); assertTrue(shell.boxes3d); assertFalse(shell.downloadArt)
+        // Each section has rows of its own, and every old setting still has a place.
+        val tags = SettingsCategory.entries.flatMap { category -> shell.chooseCategory(category); shell.page()!!.rows.map { it.tag } }
+        listOf("settings-add-file", "settings-refresh", "settings-autoscan", "settings-verify", "settings-sort", "settings-hidden", "settings-start-slot",
+            "shortcut-setting", "motion-setting", "settings-transition", "settings-framerate", "shaders-update", "settings-preview", "settings-accent",
+            "settings-hints", "settings-status", "settings-percent", "settings-clock", "settings-sound", "settings-volume", "settings-export",
+            "settings-restore", "settings-backup-states", "settings-wifi", "settings-home", "settings-default-home", "settings-android", "settings-about",
+            "settings-reset", "settings-pair").forEach { assertTrue("$it has a section", it in tags) }
+        console.coordinator.destroy()
+    }
+
+    @Test fun xOnAFolderAsksOnItsOwnSheetBeforeCartridgeStopsUsingIt() = runTest {
+        val console = Console(this); val shell = console.shell
+        shell.openTab(Tab.Settings); shell.select()
+        shell.removeFolder("content://tree")
+        assertEquals(Destination.Folder("content://tree"), shell.top)
+        assertEquals("forget", shell.focused(shell.page()!!)!!.id)
+        shell.back(); assertEquals(Destination.Settings, shell.top)
+        console.coordinator.destroy()
+    }
+
+    @Test fun aFoldersPathIsReadFromItsTreeUri() {
+        assertEquals("SD card › Games › SNES", folderPath("content://com.android.externalstorage.documents/tree/1A2B-3C4D%3AGames%2FSNES", "SNES"))
+        assertEquals("Internal › ROMs", folderPath("content://com.android.externalstorage.documents/tree/primary%3AROMs", "ROMs"))
+        assertEquals("Internal › My Games", folderPath("content://com.android.externalstorage.documents/tree/primary%3AMy%20Games/document/primary%3AMy%20Games", ""))
+        assertEquals("Retro", folderPath("content://tree", "Retro"))
+        assertEquals("Game folder", folderPath("content://tree", ""))
     }
 }

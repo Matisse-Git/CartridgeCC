@@ -4,7 +4,9 @@ import dev.cartridge.domain.GameSystem
 import dev.cartridge.storage.Discovery
 import dev.cartridge.storage.ScanResult
 
-enum class RowKind { Action, Link, Toggle, Choice, Info, Danger, Header }
+enum class RowKind { Action, Link, Toggle, Choice, Info, Danger, Header,
+    /** Adds to the group above it, as Settings' Add folder… is drawn: a plus in the accent colour. */
+    Add }
 
 /**
  * One line of any menu, sheet or settings page. Rows are addressed by [id], never by position, so adding a
@@ -23,6 +25,8 @@ class MenuRow(
     val adjust: ((Int) -> Unit)? = null,
     /** A row about a saved state shows its thumbnail; a picture without a file is drawn as an empty frame. */
     val picture: RowPicture? = null,
+    /** A short second line always shown under the title, as a folder's consoles or the last scan; [note] stays help for the focused row. */
+    val detail: String? = null,
     val action: (() -> Unit)? = null,
 ) {
     val focusable get() = kind != RowKind.Header && (kind != RowKind.Info || action != null)
@@ -53,8 +57,10 @@ enum class PageStyle {
 class Page(val key: String, val title: String, val rows: List<MenuRow>, val style: PageStyle,
     val subtitle: String? = null, val body: String? = null)
 
+/** Settings' sections (spec 4.8), in the spec's order. */
 enum class SettingsCategory(val title: String) {
-    Library("Library"), Appearance("Appearance"), Gameplay("Gameplay"), Shaders("Shaders"), Controls("Controls"), System("System"), Advanced("Advanced")
+    Library("Library"), Systems("Systems & Cores"), Controllers("Controllers"), Display("Display"), Appearance("Appearance"),
+    Sound("Sound"), Storage("Storage"), Network("Network"), Android("Android"), About("About")
 }
 
 class TextSpec(val title: String, val hint: String, val initial: String, val limit: Int, val tag: String,

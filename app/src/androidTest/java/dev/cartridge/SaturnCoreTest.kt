@@ -112,7 +112,7 @@ class SaturnCoreTest {
                     assertNull(it.coordinator.state.value.launchFailure) }
                 ui.onNodeWithTag("setup-close").performClick(); ui.waitUntil(5_000) { !ui.shown("dialog-setup") }
                 // Settings names both regional files as missing, under Saturn.
-                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-gameplay").performClick()
+                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-systems").performClick()
                 ui.onNodeWithTag("settings-bios-mpr-17933").performScrollTo().assertIsDisplayed(); ui.onNodeWithTag("settings-bios-sega_101").performScrollTo().assertIsDisplayed()
                 // A file that is not a known Saturn BIOS is refused in words, and nothing is written.
                 File(context.filesDir, "m1-fixtures/invalid.png").apply { parentFile!!.mkdirs(); writeBytes(ByteArray(512 * 1024)) }

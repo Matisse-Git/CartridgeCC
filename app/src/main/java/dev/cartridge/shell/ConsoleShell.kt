@@ -133,6 +133,10 @@ class ConsoleShell(
     /** What an automatic scrape fetches beside case art. */
     var scrapeScreenshots by mutableStateOf(preferences.getBoolean("scrapeScreenshots", true)); private set
     var scrapeVideos by mutableStateOf(preferences.getBoolean("scrapeVideos", true)); private set
+    /** Boxes on the shelf and elsewhere turn in 3D, or face front as flat covers (Settings › Library › Box art). */
+    var boxes3d by mutableStateOf(preferences.getBoolean("boxes3d", true)); private set
+    /** Games added get their case art fetched; off, they wait as pending until it is on again. */
+    var downloadArt by mutableStateOf(preferences.getBoolean("downloadArt", true)); private set
     /** Game detail (spec 4.3): the actions row (0) or the media strip (1), the strip's focused item, and whether the trailer is heard. */
     var detailRow by mutableIntStateOf(0); private set
     var detailShot by mutableIntStateOf(0); private set
@@ -255,6 +259,8 @@ class ConsoleShell(
     /** The console whose file the user is choosing. Lost with the Activity; the file then identifies itself. */
     private var firmwareFor: Core? = null
     var roots by mutableStateOf<List<DirectoryRecord>>(emptyList()); private set
+    /** The games each folder gave the library, by its uri: what Settings' folder rows count and name. */
+    var rootGames by mutableStateOf<Map<String, Set<String>>>(emptyMap()); private set
     var hidden by mutableStateOf<List<LibraryGame>>(emptyList()); private set
     var storage by mutableStateOf<String?>(null); private set
     /** Save and source facts for one game, keyed by its id so a stale answer is never shown for another. */
@@ -308,7 +314,7 @@ class ConsoleShell(
         focus.keys.filter { it == destination.key || it.startsWith("${destination.key}:") }.forEach(focus::remove)
         stack.add(destination)
         when (destination) {
-            Destination.Settings -> { pane = 0; category = SettingsCategory.Library; refreshRoots(); refreshStorage(); homeEnabled = host.homeEnabled; refreshShaderVersion() }
+            Destination.Settings -> { pane = 0; category = SettingsCategory.Library; refreshRoots(); refreshStorage(); homeEnabled = host.homeEnabled; refreshShaderVersion(); device.refresh() }
             is Destination.ShaderPicker -> { refreshShaderVersion(); listShaders(destination.folder) }
             Destination.Details -> state.selectedGame?.let { detailRow = 0; detailShot = 0; trailerSound = false; loadFacts(it.id); loadSlots(it.id) }
             Destination.Manage, Destination.GameMore -> state.selectedGame?.let { loadFacts(it.id) }
@@ -517,6 +523,7 @@ class ConsoleShell(
             top is Destination.TextEntry -> backspace()
             top == Destination.Details -> push(Destination.Options)
             top == Destination.Apps -> togglePin()
+            top == Destination.Settings && pane == 1 -> page()?.let(::focused)?.id?.takeIf { it.startsWith("folder:") }?.let { removeFolder(it.removePrefix("folder:")) }
             pauseOpen && top == Destination.SaveStates -> focusedSave()?.let { push(Destination.ConfirmSlot(SlotAction.Overwrite, it)) }
             pauseOpen && top == Destination.CoreSettings -> resetCoreOption()
             pauseOpen && top is Destination.ConsoleButtons -> (top as Destination.ConsoleButtons).let { if (it.system in controls.buttons) resetButtons(it.system) }
@@ -784,6 +791,11 @@ class ConsoleShell(
     fun changePreviewStrength(value: Int) { previewStrength = value.coerceIn(10, 100); preferences.edit { putInt("previewStrength", previewStrength) } }
     fun changeScrapeScreenshots(value: Boolean) { scrapeScreenshots = value; preferences.edit { putBoolean("scrapeScreenshots", value) } }
     fun changeScrapeVideos(value: Boolean) { scrapeVideos = value; preferences.edit { putBoolean("scrapeVideos", value) } }
+    fun changeBoxes3d(value: Boolean) { boxes3d = value; preferences.edit { putBoolean("boxes3d", value) } }
+    fun changeDownloadArt(value: Boolean) {
+        downloadArt = value; preferences.edit { putBoolean("downloadArt", value) }
+        autoScraper?.let { if (value) it.resume() else { it.paused = true; it.cancel() } }
+    }
     fun changeShowFrameRate(value: Boolean) { showFrameRate = value; preferences.edit { putBoolean("showFrameRate", value) } }
     fun changeControls(next: ConsoleSettings) { controls = next; ConsolePreferences(preferences).write(next); host.inputChanged() }
     fun changeStartLatest(value: Boolean) { startLatest = value; preferences.edit { putBoolean("startFromLatest", value) } }
@@ -900,13 +912,14 @@ class ConsoleShell(
         changeStartLatest(false)
         setReducedMotion(false); setPauseShortcut(false); changeSound(false); changeAutoScan(true); changeHints(HintMode.Auto)
         changeShowStatus(true); changeShowPercent(true); changeClock(ClockStyle.System); changeAccent(Accent.Sand)
-        changeTransition(LaunchTransition.Fade); changeShowFrameRate(false)
+        changeTransition(LaunchTransition.Fade); changeShowFrameRate(false); changeBoxes3d(true)
         coordinator.settings(layout = CollectionLayout.Horizontal)
         coordinator.notify("Settings are back to their defaults")
     }
     /** After a backup restored stored settings, read them back into the running console. */
     private fun reloadPreferences() {
         controls = ConsolePreferences(preferences).read(); sound = preferences.getBoolean("mediaSound", false); autoScan = preferences.getBoolean("autoScan", true)
+        boxes3d = preferences.getBoolean("boxes3d", true)
         startLatest = preferences.getBoolean("startFromLatest", false); backupAllStates = preferences.getBoolean("backupAllStates", false)
         optionsRevision++; host.inputChanged()
         scope.launch {
@@ -918,7 +931,13 @@ class ConsoleShell(
 
     // ---- Library operations -----------------------------------------------------------------------------
 
-    private fun refreshRoots() { scope.launch { roots = (repository as? DirectoryRepository)?.directoryRecords().orEmpty() } }
+    private fun refreshRoots() {
+        scope.launch {
+            val directories = repository as? DirectoryRepository
+            roots = directories?.directoryRecords().orEmpty()
+            rootGames = roots.associate { root -> root.uri to directories?.indexed(root.uri).orEmpty().filter { !it.missing }.map { it.gameId }.toSet() }
+        }
+    }
     private fun refreshStorage() {
         scope.launch {
             storage = withContext(Dispatchers.IO) {
@@ -1006,6 +1025,8 @@ class ConsoleShell(
         (import as? ImportFlow.Done)?.let { revealAfterScan(it.result) }
         import = null
     }
+    /** X on a folder in Settings: asks once, on the folder's own sheet, before Cartridge stops using it. */
+    fun removeFolder(uri: String) { push(Destination.Folder(uri)); focus["folder"] = "forget" }
     fun forgetFolder(uri: String) {
         scope.launch {
             try {

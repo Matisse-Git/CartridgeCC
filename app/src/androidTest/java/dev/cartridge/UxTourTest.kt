@@ -234,7 +234,7 @@ class UxTourTest {
                     it.shell.shaderChoices.set(dev.cartridge.shaders.ShaderTarget.Console(GameSystem.PS2), dev.cartridge.shaders.ShaderChoice.Off)
                 }
                 key(scenario, KeyEvent.KEYCODE_BUTTON_R1); key(scenario, KeyEvent.KEYCODE_DPAD_UP, 8)
-                scenario.onActivity { assertEquals(dev.cartridge.shell.SettingsCategory.Shaders, it.shell.category) }
+                scenario.onActivity { assertEquals(dev.cartridge.shell.SettingsCategory.Display, it.shell.category) }
                 shot("12b-settings-shaders")
                 key(scenario, KeyEvent.KEYCODE_DPAD_DOWN); key(scenario, KeyEvent.KEYCODE_BUTTON_A)
                 await(scenario) { (it.shell.top as? Destination.ShaderPicker)?.folder == "" && it.shell.shaderListings[""] != null }

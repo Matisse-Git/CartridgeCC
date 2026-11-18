@@ -107,11 +107,10 @@ internal fun ComposeTestRule.tool(tag: String): SemanticsNodeInteraction {
         "undo-hide" -> through("system-menu", "system-undo-hide")
         "choose-label" -> through("details", "details-manage", "manage-image")
         "hide" -> through("details", "details-manage", "manage-hide")
-        "motion-setting" -> through("system-menu", "system-settings", "category-appearance", "motion-setting")
-        "layout-setting" -> through("system-menu", "system-settings", "category-appearance", "layout-setting")
-        "shortcut-setting" -> through("system-menu", "system-settings", "category-controls", "shortcut-setting")
-        "transition-setting" -> through("system-menu", "system-settings", "category-appearance", "settings-transition")
-        "framerate-setting" -> through("system-menu", "system-settings", "category-advanced", "settings-framerate")
+        "motion-setting" -> through("system-menu", "system-settings", "category-display", "motion-setting")
+        "shortcut-setting" -> through("system-menu", "system-settings", "category-controllers", "shortcut-setting")
+        "transition-setting" -> through("system-menu", "system-settings", "category-display", "settings-transition")
+        "framerate-setting" -> through("system-menu", "system-settings", "category-display", "settings-framerate")
         else -> through(tag)
     }
 }

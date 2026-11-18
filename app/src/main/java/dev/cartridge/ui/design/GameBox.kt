@@ -106,13 +106,18 @@ fun boxSize(media: Media): Pair<Float, Float> = when (media) {
     translateZ: Dp = 0.dp, dim: Float = 0f, focused: Boolean = false, reflection: Boolean = true, perspective: Dp = 1100.dp, alpha: Float = 1f) {
     val context = LocalContext.current
     val painter = remember { BoxPainter(context) }
+    // Show boxes in 3D off: every box faces front as its cover alone, still sized and lifted where it stands.
+    val flat = LocalFlatBoxes.current
     Canvas(modifier.size(width, height)) {
         drawIntoCanvas { canvas ->
-            painter.draw(canvas.nativeCanvas, look, width.toPx(), height.toPx(), depth.toPx(), rotationY, translateZ.toPx(), perspective.toPx(),
+            painter.draw(canvas.nativeCanvas, look, width.toPx(), height.toPx(), if (flat) 0f else depth.toPx(), if (flat) 0f else rotationY, translateZ.toPx(), perspective.toPx(),
                 dim, focused, reflection, 1.dp.toPx(), alpha)
         }
     }
 }
+
+/** False when Settings › Library › Show boxes in 3D is off. */
+val LocalFlatBoxes = androidx.compose.runtime.compositionLocalOf { false }
 
 private enum class Face { Front, Spine, Edge, Top }
 

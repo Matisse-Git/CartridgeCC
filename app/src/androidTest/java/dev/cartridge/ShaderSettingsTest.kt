@@ -36,7 +36,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
 /**
- * ADR 0027, step 4: shaders chosen through Settings › Shaders and Game options reach the picture. The Super
+ * ADR 0027, step 4: shaders chosen through Settings › Display and Game options reach the picture. The Super
  * Nintendo probe draws red and white; two fixture presets paint the picture blue or yellow, so the screen
  * itself says which level won. The fixture library is the test's own; the installed one is not touched.
  */
@@ -153,8 +153,8 @@ class ShaderSettingsTest {
                 // No shader anywhere: the program's own colours.
                 start(scenario); shows(scenario, "red"); pause(scenario); eject(scenario)
 
-                // Every console: blue, chosen through Settings › Shaders.
-                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-shaders").performClick()
+                // Every console: blue, chosen through Settings › Display.
+                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-display").performClick()
                 scenario.onActivity { assertEquals("Installed", it.shell.page()!!.rows.first { row -> row.id == "update" }.value) }
                 row("shaders-global"); pick(scenario, "blue")
                 scenario.onActivity {
@@ -165,7 +165,7 @@ class ShaderSettingsTest {
                 ui.home(); start(scenario); shows(scenario, "blue"); pause(scenario); eject(scenario)
 
                 // Super Nintendo's own: yellow, over every console's blue.
-                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-shaders").performClick()
+                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-display").performClick()
                 row("shaders-console-snes"); pick(scenario, "yellow")
                 ui.home(); start(scenario); shows(scenario, "yellow")
 
@@ -191,7 +191,7 @@ class ShaderSettingsTest {
 
                 // The one Update button, from the library: GitHub's newest library replaces the fixture one in the
                 // test's own folder, and the page says what is installed.
-                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-shaders").performClick()
+                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-display").performClick()
                 row("shaders-update")
                 await(scenario, 120_000) { it.shell.shaderUpdate == null && it.shell.shaderVersion?.commit.let { commit -> commit != null && commit != "c".repeat(40) } }
                 scenario.onActivity {

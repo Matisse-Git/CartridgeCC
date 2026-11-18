@@ -65,13 +65,17 @@ class AutoScraper(
     private val queue = LinkedHashMap<String, FillPolicy>()
     private var job: Job? = null
 
+    /** Off under Settings › Library › Download missing art: added games wait as pending until [resume]. */
+    @Volatile var paused = false
     /** Newly added games: fill what they are missing, along with any game an earlier run could not reach. */
-    fun added(ids: Collection<String>) { if (ids.isNotEmpty()) enqueue(ids, FillPolicy()) }
+    fun added(ids: Collection<String>) { if (ids.isNotEmpty()) enqueue(ids, FillPolicy(), start = !paused) }
+    /** Download missing art is on again: the games that waited are fetched. */
+    fun resume() { paused = false; enqueue(emptyList(), FillPolicy()) }
     /** A bulk scope chosen in Artwork & Info. */
     fun scrape(ids: Collection<String>, policy: FillPolicy) = enqueue(ids, policy)
     fun cancel() { job?.cancel() }
 
-    private fun enqueue(ids: Collection<String>, policy: FillPolicy) {
+    private fun enqueue(ids: Collection<String>, policy: FillPolicy, start: Boolean = true) {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             val waiting = try { pending.load() } catch (failure: Exception) { if (failure is CancellationException) throw failure; emptySet() }
             try { pending.save(waiting + ids) }
@@ -79,8 +83,10 @@ class AutoScraper(
                 if (failure is CancellationException) throw failure
                 mutableStatus.value = status.value.copy(problem = failure.message); return@launch
             }
+            if (!start) return@launch
             for (id in waiting) queue.putIfAbsent(id, FillPolicy())
             for (id in ids) queue[id] = policy
+            if (queue.isEmpty()) return@launch
             if (job?.isActive != true) {
                 mutableStatus.value = AutoScrapeStatus(running = true, total = queue.size)
                 job = scope.launch { run() }

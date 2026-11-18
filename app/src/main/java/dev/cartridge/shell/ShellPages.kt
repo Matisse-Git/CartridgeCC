@@ -3,7 +3,6 @@ package dev.cartridge.shell
 import kotlin.math.roundToInt
 import android.text.format.DateUtils
 import dev.cartridge.domain.ButtonMap
-import dev.cartridge.domain.CollectionLayout
 import dev.cartridge.domain.Core
 import dev.cartridge.domain.DiscSets
 import dev.cartridge.domain.GameSystem
@@ -416,7 +415,7 @@ private fun ConsoleShell.folderPage(uri: String): Page {
 }
 
 private fun ConsoleShell.aboutPage(): Page {
-    val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty()
+    val version = appVersion()
     return Page("about", "About Cartridge", notices.mapIndexed { index, name ->
         MenuRow("notice:$name", name.removeSuffix(".txt").replace('-', ' ').replace('_', ' '), RowKind.Link, tag = "notice-$index") { push(Destination.Notice(name)) }
     }.ifEmpty { listOf(MenuRow("none", "Licence notices are unavailable in this build", RowKind.Info)) }, PageStyle.Page, "Version $version",
@@ -555,55 +554,39 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
             tag = "option-${option.id}", adjust = { delta -> setConsoleOption(option, option.next(value, delta)) })
     }
     return when (category) {
+        // Spec 4.8: game folders, scanning and browsing, then box art (drawn beside them).
         SettingsCategory.Library -> buildList {
-            add(MenuRow("add", "Add games", note = "Choose a folder on this device or an SD card", enabled = ready, tag = "settings-add") { addGames() })
-            add(MenuRow("add-file", "Add a single game file", enabled = ready, tag = "settings-add-file") { addSingleGame() })
-            if (roots.isNotEmpty()) {
-                add(MenuRow("refresh", "Refresh library", note = "Looks for new games in your folders", enabled = ready, tag = "settings-refresh") { refreshLibrary() })
-                add(toggle("autoscan", "Refresh when Cartridge opens", autoScan) { changeAutoScan(it) })
-                add(header("Game folders"))
-                roots.forEach { root ->
-                    val unreachable = ConsoleShell.unreachable(root.error)
-                    add(MenuRow("folder:${root.uri}", root.name.ifBlank { "Game folder" }, RowKind.Link, warn = unreachable != null,
-                        note = unreachable ?: "Checked ${whenLabel(root.lastScan)}" + if (root.error != null) " · some files were skipped" else "") { push(Destination.Folder(root.uri)) })
-                }
+            add(header("Game folders"))
+            roots.forEachIndexed { index, root ->
+                val unreachable = ConsoleShell.unreachable(root.error)
+                val ids = rootGames[root.uri].orEmpty()
+                val games = state.allGames.filter { it.id in ids }
+                val systems = games.map { it.system }.distinct()
+                add(MenuRow("folder:${root.uri}", folderPath(root.uri, root.name), RowKind.Link, value = "%,d".format(games.size), warn = unreachable != null,
+                    detail = unreachable ?: when (systems.size) { 0 -> "No games yet"; 1 -> systems.single().title; else -> "${systems.size} systems" },
+                    note = "Checked ${whenLabel(root.lastScan)}" + (if (root.error != null) " · some files were skipped" else "") + ". X stops using this folder; its games stay.",
+                    tag = "settings-folder-$index") { push(Destination.Folder(root.uri)) })
             }
-            artworkRows()?.let(::addAll)
+            add(MenuRow("add", "Add folder…", RowKind.Add, note = "Choose a folder on this device or an SD card", enabled = ready, tag = "settings-add") { addGames() })
+            add(MenuRow("add-file", "Add a single game file…", RowKind.Add, enabled = ready, tag = "settings-add-file") { addSingleGame() })
+            add(header("Scanning"))
+            val last = roots.maxOfOrNull { it.lastScan } ?: 0L
+            val count = state.allGames.size
+            add(MenuRow("refresh", "Scan for new games", value = "Scan now", enabled = ready && roots.isNotEmpty(), tag = "settings-refresh",
+                detail = if (roots.isEmpty()) "Add a folder first" else "Last scan ${whenLabel(last)} · ${"%,d".format(count)} ${if (count == 1) "game" else "games"} found",
+                note = "Looks for new games in your folders") { refreshLibrary() })
+            add(toggle("autoscan", "Scan when Cartridge starts", autoScan) { changeAutoScan(it) })
+            add(MenuRow("verify", "Check every game file", value = "Check", note = "Re-reads each game to confirm nothing changed. Slow for large libraries.",
+                enabled = ready && roots.isNotEmpty(), tag = "settings-verify") { refreshLibrary(verify = true) })
             add(header("Browsing"))
             add(MenuRow("sort", "Sort games by", RowKind.Choice, value = state.query.sort.title, enabled = ready, tag = "settings-sort",
                 adjust = { delta -> coordinator.query(state.query.copy(sort = LibrarySort.entries.step(state.query.sort, delta))) }))
             add(MenuRow("hidden", "Hidden games", RowKind.Link, tag = "settings-hidden") { push(Destination.Hidden) })
-            add(header("Backup"))
-            add(MenuRow("export", "Back up collection", note = "Saves, artwork and details. Game files are not included.", enabled = ready, tag = "settings-export") { exportBackup() })
-            add(MenuRow("restore", "Restore from backup", enabled = ready, tag = "settings-restore") { restoreBackup() })
-            add(toggle("backup-states", "Include every save state", backupAllStates,
-                note = "Adds each game's list of saves and their pictures. The quick save is always included. A backup holds at most 1 GB.") { changeBackupAllStates(it) })
+            add(header(BOX_ART))
+            add(toggle("boxes3d", "Show boxes in 3D", boxes3d, note = "Off, each game faces front as a flat cover, without its spine.") { changeBoxes3d(it) })
+            addAll(artworkRows())
         }
-        SettingsCategory.Appearance -> listOf(
-            MenuRow("layout", "Layout", RowKind.Choice, value = state.layout.title, enabled = !state.busy, tag = "layout-setting",
-                adjust = { delta -> setLayout(CollectionLayout.entries.step(state.layout, delta)) }),
-            MenuRow("motion", "Motion", RowKind.Choice, value = if (state.reducedMotion) "Reduced" else "Full", enabled = !state.busy, tag = "motion-setting",
-                note = "Reduced removes movement between games and during insertion.", adjust = { setReducedMotion(!state.reducedMotion) }),
-            MenuRow("transition", "Game start", RowKind.Choice, value = if (state.reducedMotion) "Cut" else transition.title, enabled = !state.reducedMotion, tag = "settings-transition",
-                note = if (state.reducedMotion) "With reduced motion the screen closes and opens without animation."
-                    else "How the screen closes when a game starts, and opens once the game has a picture.",
-                adjust = { delta -> changeTransition(LaunchTransition.entries.step(transition, delta)) }),
-            header("Gameplay preview"),
-            toggle("preview", "Preview behind the shelf", previewEnabled, note = "The focused game's screenshot, then its muted gameplay video. R3 turns its sound on.") { changePreviewEnabled(it) },
-            MenuRow("preview-strength", "Preview strength", RowKind.Choice, value = "$previewStrength%", enabled = previewEnabled, tag = "settings-preview-strength",
-                adjust = { delta -> changePreviewStrength(previewStrength + delta * 10) }),
-            header("Interface"),
-            MenuRow("accent", "Accent colour", RowKind.Choice, value = accent.title, tag = "settings-accent", adjust = { delta -> changeAccent(Accent.entries.step(accent, delta)) }),
-            MenuRow("hints", "Button hints", RowKind.Choice, value = hints.title, tag = "settings-hints", adjust = { delta -> changeHints(HintMode.entries.step(hints, delta)) }),
-            header("Status"),
-            toggle("status", "Clock and battery", showStatus) { changeShowStatus(it) },
-            toggle("percent", "Battery percentage", showPercent, enabled = showStatus) { changeShowPercent(it) },
-            MenuRow("clock", "Time format", RowKind.Choice, value = clock.title, enabled = showStatus, tag = "settings-clock",
-                adjust = { delta -> changeClock(ClockStyle.entries.step(clock, delta)) }),
-            header("Sound"),
-            toggle("sound", "Insert and eject sound", sound, enabled = !state.reducedMotion,
-                note = if (state.reducedMotion) "Plays with full motion only" else null) { changeSound(it) })
-        SettingsCategory.Gameplay -> buildList {
+        SettingsCategory.Systems -> buildList {
             add(header("Every console"))
             addAll(optionRows(null))
             add(MenuRow("start-slot", "Save to start from", RowKind.Choice, value = if (startLatest) "Newest save" else "Quick save", tag = "settings-start-slot",
@@ -620,72 +603,142 @@ internal fun ConsoleShell.settingsRows(state: CollectionState, category: Setting
                 }
                 addAll(optionRows(core))
             }
+            add(header("Your games"))
             add(MenuRow("scope", "A game can use its own choices", RowKind.Info, note = "Open a game's details or pause menu, then Game options."))
-            if (state.resumeSession != null) {
-                add(header("Saved session"))
+            if (state.resumeSession != null)
                 add(MenuRow("discard", "Discard saved session", RowKind.Danger, note = "Battery and manual saves are kept", enabled = ready, tag = "settings-discard") { coordinator.discardResume() })
-            }
         }
-        SettingsCategory.Shaders -> shaderRows(status)
-        SettingsCategory.Controls -> controlRows(state)
-        SettingsCategory.System -> listOf(
+        SettingsCategory.Controllers -> buildList {
+            add(MenuRow("pair", "Bluetooth controllers", RowKind.Link, value = if (device.controllers == 0) "None connected" else "${device.controllers} connected",
+                note = "Opens Android's Bluetooth settings to pair one", tag = "settings-pair") {
+                if (!device.openBluetooth()) coordinator.notify("Bluetooth settings could not be opened on this device") })
+            add(header("Menus and shortcuts"))
+            addAll(controlRows(state))
+        }
+        SettingsCategory.Display -> buildList {
+            add(header("Motion"))
+            add(MenuRow("motion", "Motion", RowKind.Choice, value = if (state.reducedMotion) "Reduced" else "Full", enabled = !state.busy, tag = "motion-setting",
+                note = "Reduced removes movement between games and during insertion.", adjust = { setReducedMotion(!state.reducedMotion) }))
+            add(MenuRow("transition", "Game start", RowKind.Choice, value = if (state.reducedMotion) "Cut" else transition.title, enabled = !state.reducedMotion, tag = "settings-transition",
+                note = if (state.reducedMotion) "With reduced motion the screen closes and opens without animation."
+                    else "How the screen closes when a game starts, and opens once the game has a picture.",
+                adjust = { delta -> changeTransition(LaunchTransition.entries.step(transition, delta)) }))
+            add(toggle("framerate", "Show frame rate", showFrameRate, note = "Frames the library drew in the last second, beside the clock.") { changeShowFrameRate(it) })
+            add(header("Shaders"))
+            addAll(shaderRows(status))
+        }
+        SettingsCategory.Appearance -> listOf(
+            header("Behind the shelf"),
+            toggle("preview", "Gameplay preview", previewEnabled, note = "The focused game's screenshot, then its muted gameplay video. R3 turns its sound on.") { changePreviewEnabled(it) },
+            MenuRow("preview-strength", "Preview strength", RowKind.Choice, value = "$previewStrength%", enabled = previewEnabled, tag = "settings-preview-strength",
+                adjust = { delta -> changePreviewStrength(previewStrength + delta * 10) }),
+            header("Interface"),
+            MenuRow("accent", "Accent colour", RowKind.Choice, value = accent.title, tag = "settings-accent", adjust = { delta -> changeAccent(Accent.entries.step(accent, delta)) }),
+            MenuRow("hints", "Button hints", RowKind.Choice, value = hints.title, tag = "settings-hints", adjust = { delta -> changeHints(HintMode.entries.step(hints, delta)) }),
+            header("Status"),
+            toggle("status", "Clock and battery", showStatus) { changeShowStatus(it) },
+            toggle("percent", "Battery percentage", showPercent, enabled = showStatus) { changeShowPercent(it) },
+            MenuRow("clock", "Time format", RowKind.Choice, value = clock.title, enabled = showStatus, tag = "settings-clock",
+                adjust = { delta -> changeClock(ClockStyle.entries.step(clock, delta)) }))
+        SettingsCategory.Sound -> listOf(
+            MenuRow("volume", "Media volume", RowKind.Choice, value = "${(device.volume * 100).roundToInt()}%", tag = "settings-volume",
+                note = "Android's media volume: what games, videos and apps play at.", adjust = { delta -> device.changeVolume(delta) }),
+            toggle("sound", "Insert and eject sound", sound, enabled = !state.reducedMotion,
+                note = if (state.reducedMotion) "Plays with full motion only" else null) { changeSound(it) })
+        SettingsCategory.Storage -> listOf(
+            MenuRow("storage", "Space used", RowKind.Info, detail = storage ?: "Measuring…", note = "Games copied into Cartridge, their artwork and their saves."),
+            header("Backup"),
+            MenuRow("export", "Back up collection", note = "Saves, artwork and details. Game files are not included.", enabled = ready, tag = "settings-export") { exportBackup() },
+            MenuRow("restore", "Restore from backup", enabled = ready, tag = "settings-restore") { restoreBackup() },
+            toggle("backup-states", "Include every save state", backupAllStates,
+                note = "Adds each game's list of saves and their pictures. The quick save is always included. A backup holds at most 1 GB.") { changeBackupAllStates(it) })
+        SettingsCategory.Network -> buildList {
+            add(MenuRow("wifi", "Wi-Fi", RowKind.Link, value = if (device.wifi) "Connected" else "Not connected", tag = "settings-wifi",
+                note = "Opens Android's Wi-Fi settings") { if (!device.openWifi()) coordinator.notify("Wi-Fi settings could not be opened on this device") })
+            addAll(accountRows())
+        }
+        SettingsCategory.Android -> listOf(
             toggle("home", "Offer Cartridge as home screen", homeEnabled, note = "Android asks before it changes your home app.") { setHome(it) },
-            MenuRow("default", "Choose home app", enabled = homeEnabled, tag = "settings-default-home") { host.chooseDefaultHome() },
-            MenuRow("android", "Android settings", note = "Wi-Fi, Bluetooth, display and storage", tag = "settings-android") { host.openAndroidSettings() },
-            header("This device"),
-            MenuRow("storage", "Storage used", RowKind.Info, value = storage ?: "Measuring…"),
-            MenuRow("about", "About & licences", RowKind.Link, tag = "settings-about") { push(Destination.About) })
-        SettingsCategory.Advanced -> listOf(
-            MenuRow("verify", "Check every game file", note = "Re-reads each game to confirm nothing changed. Slow for large libraries.",
-                enabled = ready && roots.isNotEmpty(), tag = "settings-verify") { refreshLibrary(verify = true) },
-            toggle("framerate", "Show frame rate", showFrameRate, note = "Frames the library drew in the last second, beside the clock.") { changeShowFrameRate(it) },
+            MenuRow("default", "Choose home app", RowKind.Link, enabled = homeEnabled, tag = "settings-default-home") { host.chooseDefaultHome() },
+            MenuRow("android", "Android settings", RowKind.Link, note = "Wi-Fi, Bluetooth, display and storage", tag = "settings-android") { host.openAndroidSettings() })
+        SettingsCategory.About -> listOf(
+            MenuRow("version", "Version", RowKind.Info, value = appVersion()),
+            MenuRow("about", "About & licences", RowKind.Link, tag = "settings-about") { push(Destination.About) },
+            header("Reset"),
             MenuRow("reset", "Reset settings", RowKind.Danger, note = "Appearance, controls and gameplay return to defaults. Games, saves and folders are not affected.",
                 enabled = !state.busy, tag = "settings-reset") { resetSettings() })
     }
 }
 
+/** The heading Settings draws beside the Library's other groups, with a live preview of two boxes above its rows. */
+internal const val BOX_ART = "Box art"
+
+internal fun ConsoleShell.appVersion(): String = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty()
+
+/** "SD card › Games › SNES" from a folder's tree uri; its own name where the uri says no more. */
+internal fun folderPath(uri: String, name: String): String {
+    val raw = uri.substringAfter("/tree/", "").substringBefore("/document/")
+    val id = runCatching { java.net.URLDecoder.decode(raw.replace("+", "%2B"), "UTF-8") }.getOrDefault(raw)
+    if (':' !in id) return name.ifBlank { "Game folder" }
+    val volume = when (val v = id.substringBefore(':')) {
+        "primary" -> "Internal"; "home" -> "Documents"; "downloads" -> "Downloads"
+        else -> if (v.matches(Regex("[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}"))) "SD card" else v
+    }
+    return (listOf(volume) + id.substringAfter(':').split('/').filter(String::isNotBlank)).joinToString(" › ")
+}
+
 // ---- Artwork (ADR 0029) ---------------------------------------------------------------------------------
 
-/** Where case art and details come from, the user's login, and what the last automatic scrape did. */
-private fun ConsoleShell.artworkRows(): List<MenuRow>? {
-    val settings = artwork ?: return null
+/** Whether added games get their art, where it comes from, what beside it, and what the last automatic run did. */
+private fun ConsoleShell.artworkRows(): List<MenuRow> = buildList {
+    add(MenuRow("download-art", "Download missing art", RowKind.Toggle, checked = downloadArt, tag = "settings-download-art",
+        note = "Fetches case art and details for games you add. Off, they wait until it is on again.", adjust = { changeDownloadArt(!downloadArt) }))
+    val settings = artwork ?: return@buildList
     artworkRevision
     val source = settings.source
-    val login = settings.login
     val run = autoScraper?.status?.value
-    return buildList {
-        add(MenuRow("header:Artwork", "Artwork", RowKind.Header))
-        add(MenuRow("artwork-source", "Artwork source", RowKind.Choice, value = source.title, tag = "settings-artwork-source",
-            note = "Case art and details for games you add, and for Artwork & Info.",
-            adjust = { delta -> changeArtworkSource(dev.cartridge.scraping.ArtworkSource.entries.step(source, delta)) }))
-        if (source == dev.cartridge.scraping.ArtworkSource.ScreenScraper) {
-            val kept = "Kept on this device only. Never in a backup."
-            add(MenuRow("login-user", "ScreenScraper user", value = login.user.ifBlank { "Not set" }, warn = login.user.isBlank(), tag = "settings-login-user", note = kept) { editLogin("user") })
-            add(MenuRow("login-password", "ScreenScraper password", value = if (login.password.isBlank()) "Not set" else "Set", warn = login.password.isBlank(), tag = "settings-login-password", note = kept) { editLogin("password") })
-            add(MenuRow("login-dev", "Developer ID", value = login.devId.ifBlank { "Not set" }, warn = login.devId.isBlank(), tag = "settings-login-dev",
-                note = "ScreenScraper asks every program for one. Request yours on the screenscraper.fr forum.") { editLogin("devId") })
-            add(MenuRow("login-dev-password", "Developer password", value = if (login.devPassword.isBlank()) "Not set" else "Set", warn = login.devPassword.isBlank(), tag = "settings-login-dev-password", note = kept) { editLogin("devPassword") })
-        }
-        add(MenuRow("scrape-shots", "Download screenshots", RowKind.Toggle, checked = scrapeScreenshots, tag = "settings-scrape-shots",
-            note = "In-game and title screens, shown behind the shelf and in a game's details.", adjust = { changeScrapeScreenshots(!scrapeScreenshots) }))
-        add(MenuRow("scrape-videos", "Download gameplay videos", RowKind.Toggle, checked = scrapeVideos, tag = "settings-scrape-videos",
-            note = "Usually 5 to 15 MB a game. Played muted behind the shelf. Never included in a backup.", adjust = { changeScrapeVideos(!scrapeVideos) }))
-        add(MenuRow("artwork-status", "Automatic artwork", RowKind.Info, tag = "settings-artwork-status", warn = run?.problem != null,
-            value = when {
-                run == null -> null
-                run.running -> "${run.done} of ${run.total}"
-                run.problem != null -> "Waiting"
-                run.done > 0 -> "Done"
-                else -> "Idle"
-            },
-            note = when {
-                run?.running == true -> "Fetching ${run.current ?: "artwork"}…"
-                run?.problem != null -> "${run.problem} Games that were not reached are tried again the next time you add a game or scrape."
-                run != null && run.done > 0 -> "Last run: ${run.summary}."
-                else -> "Games you add get case art and details. Artwork & Info can fill or replace them for many games at once."
-            // Focusable so its note, the run's progress or the reason it stopped, is shown.
-            }) {})
+    add(MenuRow("artwork-source", "Art source", RowKind.Choice, value = source.title, tag = "settings-artwork-source",
+        note = "Case art and details for games you add, and for Artwork & Info." +
+            if (source == dev.cartridge.scraping.ArtworkSource.ScreenScraper) " Its account is under Network." else "",
+        adjust = { delta -> changeArtworkSource(dev.cartridge.scraping.ArtworkSource.entries.step(source, delta)) }))
+    add(MenuRow("scrape-shots", "Download screenshots", RowKind.Toggle, checked = scrapeScreenshots, tag = "settings-scrape-shots",
+        note = "In-game and title screens, shown behind the shelf and in a game's details.", adjust = { changeScrapeScreenshots(!scrapeScreenshots) }))
+    add(MenuRow("scrape-videos", "Download gameplay videos", RowKind.Toggle, checked = scrapeVideos, tag = "settings-scrape-videos",
+        note = "Usually 5 to 15 MB a game. Played muted behind the shelf. Never included in a backup.", adjust = { changeScrapeVideos(!scrapeVideos) }))
+    add(MenuRow("artwork-status", "Automatic artwork", RowKind.Info, tag = "settings-artwork-status", warn = run?.problem != null,
+        value = when {
+            !downloadArt -> "Off"
+            run == null -> null
+            run.running -> "${run.done} of ${run.total}"
+            run.problem != null -> "Waiting"
+            run.done > 0 -> "Done"
+            else -> "Idle"
+        },
+        note = when {
+            run?.running == true -> "Fetching ${run.current ?: "artwork"}…"
+            run?.problem != null -> "${run.problem} Games that were not reached are tried again the next time you add a game or scrape."
+            run != null && run.done > 0 -> "Last run: ${run.summary}."
+            else -> "Games you add get case art and details. Artwork & Info can fill or replace them for many games at once."
+        // Focusable so its note, the run's progress or the reason it stopped, is shown.
+        }) {})
+}
+
+/** The ScreenScraper login, kept on this device only (ADR 0029). RetroBase needs none. */
+private fun ConsoleShell.accountRows(): List<MenuRow> = buildList {
+    val settings = artwork ?: return@buildList
+    artworkRevision
+    val login = settings.login
+    add(MenuRow("header:Artwork account", "Artwork account", RowKind.Header))
+    if (settings.source != dev.cartridge.scraping.ArtworkSource.ScreenScraper) {
+        add(MenuRow("account-none", "${settings.source.title} needs no account", RowKind.Info, note = "Choose ScreenScraper under Library › Box art to sign in to it."))
+        return@buildList
     }
+    val kept = "Kept on this device only. Never in a backup."
+    add(MenuRow("login-user", "ScreenScraper user", value = login.user.ifBlank { "Not set" }, warn = login.user.isBlank(), tag = "settings-login-user", note = kept) { editLogin("user") })
+    add(MenuRow("login-password", "ScreenScraper password", value = if (login.password.isBlank()) "Not set" else "Set", warn = login.password.isBlank(), tag = "settings-login-password", note = kept) { editLogin("password") })
+    add(MenuRow("login-dev", "Developer ID", value = login.devId.ifBlank { "Not set" }, warn = login.devId.isBlank(), tag = "settings-login-dev",
+        note = "ScreenScraper asks every program for one. Request yours on the screenscraper.fr forum.") { editLogin("devId") })
+    add(MenuRow("login-dev-password", "Developer password", value = if (login.devPassword.isBlank()) "Not set" else "Set", warn = login.devPassword.isBlank(), tag = "settings-login-dev-password", note = kept) { editLogin("devPassword") })
 }
 
 // ---- Shaders (ADR 0027) ---------------------------------------------------------------------------------
@@ -766,7 +819,7 @@ private fun ConsoleShell.shaderPickerPage(destination: Destination.ShaderPicker)
         when {
             listing == null -> add(MenuRow("reading", "Reading the shader library…", RowKind.Info))
             listing.folders.isEmpty() && listing.presets.isEmpty() -> add(MenuRow("empty", "No shaders yet", RowKind.Info,
-                note = "Download them under Settings › Shaders, then Update shaders."))
+                note = "Download them under Settings › Display, then Update shaders."))
         }
         listing?.folders?.forEach { folder ->
             val name = folder.substringAfterLast('/')

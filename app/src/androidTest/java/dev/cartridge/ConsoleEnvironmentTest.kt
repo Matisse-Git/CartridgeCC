@@ -72,7 +72,7 @@ class ConsoleEnvironmentTest {
                 await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 // An empty library is the welcome: one sentence and one action, with the menu still reachable.
                 ui.onNodeWithTag("welcome").assertIsDisplayed(); ui.onNodeWithTag("welcome-add").assertIsDisplayed()
-                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-controls").performClick()
+                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-controllers").performClick()
                 row("controls-confirm"); row("controls-stick"); row("controls-stick"); row("shortcut-setting")
                 // Game Boy's own A is pressed with the B button from now on; its B trades places. No other console changes.
                 row("controls-console-gb"); row("buttons-a"); scenario.onActivity { assertTrue(it.shell.top is Destination.RecordButton) }
@@ -90,7 +90,7 @@ class ConsoleEnvironmentTest {
                 assertTrue(preferences.getBoolean("alternateShortcut", false))
                 scenario.recreate(); await(scenario) { it.coordinator.state.value.loaded && it.coordinator.state.value.rendererReady }
                 assertEquals(selected, ConsolePreferences(preferences).read())
-                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-gameplay").performClick()
+                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-systems").performClick()
                 row("option-audioFilter"); row("option-frameSkip"); ui.home()
                 Intents.init()
                 try {
@@ -123,7 +123,7 @@ class ConsoleEnvironmentTest {
                 assertEquals("disabled", OptionStore(preferences).game(id)["audioFilter"]); assertTrue(ConsolePreferences(preferences).read().audioFilter)
                 assertEquals("disabled", variables()["mgba_audio_low_pass_filter"])
                 ui.onNodeWithTag("back").performClick(); ui.onNodeWithTag("menu-3").performClick(); await(scenario) { !it.coordinator.state.value.busy && it.coordinator.state.value.rendererReady }
-                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-system").performClick(); row("settings-about")
+                ui.tool("console-settings").performClick(); ui.onNodeWithTag("category-about").performClick(); row("settings-about")
                 ui.waitUntil(3000) { ui.shown("notice-0") }; row("notice-0")
                 ui.waitUntil(3000) { ui.onAllNodesWithText("GNU GENERAL PUBLIC LICENSE", substring = true).fetchSemanticsNodes().isNotEmpty() || ui.onAllNodesWithText("Apache", substring = true).fetchSemanticsNodes().isNotEmpty() }
             }

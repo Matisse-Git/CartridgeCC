@@ -201,6 +201,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
         }
         shell = ConsoleShell(this, lifecycleScope, this, coordinator, engine, repository, scraper, labelStore, sessionStore, packStore, preferences, systemDirectory(),
             createAppSource(), shaderBase = shaderBase(), artwork = artworkSettings, autoScraper = autoScraper)
+        autoScraper.paused = !shell.downloadArt
         shell.pendingLocate = savedInstanceState?.getString("recoveryId")
         shell.reopenApps = savedInstanceState?.getBoolean("appsOpen") == true
         input = ControllerRouter(navigate = shell::navigate, select = shell::select, back = shell::back, pause = coordinator::pause,
@@ -326,7 +327,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                 coordinator.rendererReady(state.viewportGeneration)
             }
         }
-        CartridgeTheme(shell.accent, state.reducedMotion) {
+        CartridgeTheme(shell.accent, state.reducedMotion) { CompositionLocalProvider(dev.cartridge.ui.design.LocalFlatBoxes provides !shell.boxes3d) {
             Box(Modifier.fillMaxSize().background(Ink.Stage)) {
                 if (state.screen in listOf(CollectionScreen.Library, CollectionScreen.Inserting, CollectionScreen.Ejecting, CollectionScreen.LabelPreview)) {
                     val browsing = state.screen == CollectionScreen.Library && shell.top == null && !scrape.visible && status.state == SessionState.Idle
@@ -343,6 +344,9 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                             // Apps (spec 4.7) likewise; its search keyboard rests on it.
                             if (state.screen == CollectionScreen.Library && Destination.Apps in shell.stack && !scrape.visible)
                                 dev.cartridge.ui.screens.AppsScreen(shell, device, shell.controls.swapMenuButtons, active = shell.top == Destination.Apps)
+                            // Settings (spec 4.8) likewise; the folder sheet, keyboard and pages opened from it are drawn over it.
+                            if (state.screen == CollectionScreen.Library && Destination.Settings in shell.stack && !scrape.visible)
+                                dev.cartridge.ui.screens.SettingsScreen(state, shell, device, shell.controls.swapMenuButtons, active = shell.top == Destination.Settings)
                             // Game detail rests on the shelf, and the sheets opened from it rest on Game detail.
                             val detail = state.screen == CollectionScreen.Library && Destination.Details in shell.stack && !scrape.visible
                             AnimatedVisibility(detail, enter = fadeIn(tween(if (state.reducedMotion) 0 else 220)), exit = fadeOut(tween(if (state.reducedMotion) 0 else 180))) {
@@ -391,7 +395,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                     // Over a running game a quick save or load is confirmed in a glance.
                     lingerMs = if (status.state == SessionState.Running) 1500 else 4200)
             }
-        }
+        } }
     }
 
     /** One decoded or typeset label per object of the bounded window; never more. */
