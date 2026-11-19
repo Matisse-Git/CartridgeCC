@@ -388,6 +388,13 @@ enum class GameSystem(
      * The case one game is shown in, from the [Market] its file is named for. Presentation only.
      */
     fun media(title: String): Media = when (Market.of(title)) { Market.EU -> europe; Market.JP -> japan; Market.US -> null } ?: media
+    /** The case a cover scanned in [region] (an artwork provider's region code) belongs on; null for a worldwide scan. */
+    fun mediaForArt(region: String): Media? = when (region.lowercase()) {
+        "us", "ca" -> media
+        "jp" -> japan ?: media
+        "eu", "uk", "fr", "de", "es", "it", "nl", "se", "dk", "fi", "no", "pt", "au", "nz" -> europe ?: media
+        else -> null
+    }
     val coreFile get() = core.file
     val coreRevision get() = core.revision
     fun format(extension: String) = formats.firstOrNull { it.extension == extension }

@@ -27,8 +27,12 @@ data class LibraryGame(val id: String, val title: String, val sourceUri: String,
     /** How many discs the engine found in this game's one file the last time it ran; 0 until then. */
     val discCount: Int = 0) {
     init { require(id.matches(Regex("[a-f0-9]{64}"))) }
-    /** The object this game is shown as. Presentation only: it follows the console and how the file is named. */
-    val shownAs: Media get() = system.media(fileName)
+    /**
+     * The object this game is shown as. Presentation only. Case art scanned in one region is shown on that region's
+     * case, so a US cover on a Japanese file gets the US box and fits it; without such art the case follows the
+     * console and how the file is named (ADR 0029, as amended).
+     */
+    val shownAs: Media get() = label?.takeIf { it.isCaseArt }?.provenance?.region?.let { system.mediaForArt(it) } ?: system.media(fileName)
     /** How many discs the player can change between: the game's own discs, or what its one file was found to hold. */
     val discTotal: Int get() = if (discs.size > 1) discs.size else discCount
 }

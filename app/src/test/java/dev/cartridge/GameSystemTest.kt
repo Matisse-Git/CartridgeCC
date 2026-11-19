@@ -20,4 +20,13 @@ class GameSystemTest {
             try { GameSystem.detect(name, bytes); fail("Accepted unsupported/incomplete ROM") } catch (_: IllegalArgumentException) { }
         }
     }
+    @Test fun aCoverIsShownOnTheCaseOfTheRegionItWasScannedIn() {
+        // A Japanese Final Fantasy VI wearing the only cover there is, the US one, gets the US box so the art fits.
+        assertEquals(dev.cartridge.domain.Media.SuperFamicomBox, GameSystem.SNES.media("Final Fantasy VI (Japan).sfc"))
+        assertEquals(dev.cartridge.domain.Media.SnesBox, GameSystem.SNES.mediaForArt("us"))
+        assertEquals(dev.cartridge.domain.Media.SuperFamicomBox, GameSystem.SNES.mediaForArt("JP"))
+        assertEquals(dev.cartridge.domain.Media.GbaBoxJapan, GameSystem.GBA.mediaForArt("jp"))
+        // A worldwide scan says nothing about the case, so the file's own region decides.
+        assertNull(GameSystem.SNES.mediaForArt("wor"))
+    }
 }
