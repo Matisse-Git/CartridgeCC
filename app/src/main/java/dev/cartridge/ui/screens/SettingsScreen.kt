@@ -147,7 +147,7 @@ import dev.cartridge.ui.design.Typo.tabular
     val faces = rememberFaces(media, game.label, game.shownAs)
     val look = remember(game.title, game.system, game.metadata["year"], faces) { BoxLook.of(game, faces) }
     val (w, h) = boxSize(game.shownAs)
-    GameBox(look, (w * .5f).dp, (h * .5f).dp, 12.dp, angle, Modifier.semantics { contentDescription = look.title }, focused = true, reflection = false)
+    GameBox(look, (w * .5f).dp, (h * .5f).dp, angle, Modifier.semantics { contentDescription = look.title }, focused = true, reflection = false)
 }
 
 /** Each section's tile colour and icon, as Settings.dc.html draws them. */

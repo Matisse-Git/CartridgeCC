@@ -104,7 +104,7 @@ import dev.cartridge.ui.design.*
         // It settles in from slightly nearer as the screen rises, and flies on toward the camera as it fades.
         val arrive = 1f - appear.value
         val near = arrive * .12f + gone * gone * .9f
-        GameBox(look, w.dp, h.dp, 28.dp, -8f * (1f - gone), Modifier.absoluteOffset((cx - w / 2f).dp, (140f + BOX_HEIGHT - h).dp)
+        GameBox(look, w.dp, h.dp, -8f * (1f - gone), Modifier.absoluteOffset((cx - w / 2f).dp, (140f + BOX_HEIGHT - h).dp)
             .graphicsLayer { scaleX = 1f + near; scaleY = 1f + near; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(.5f, .55f) },
             translateZ = 60.dp, focused = true)
 

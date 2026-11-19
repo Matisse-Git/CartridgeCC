@@ -16,8 +16,11 @@ import kotlin.math.min
 
 data class LabelPixels(val key: String, val width: Int, val height: Int, val rgba: ByteBuffer)
 
-/** A box's printed faces: [spine] only where the art really has one. [edge] is the art's border colour, opaque. */
-class CoverFaces(val front: Bitmap, val spine: Bitmap?, val edge: Int) {
+/**
+ * A box's printed faces: [spine] only where the art really has one. [edge] is the art's border colour, opaque;
+ * [side] the colour down the front's right edge, which a printed box carries round onto its far side.
+ */
+class CoverFaces(val front: Bitmap, val spine: Bitmap?, val edge: Int, val side: Int = edge) {
     val bytes get() = front.byteCount + (spine?.byteCount ?: 0)
 }
 
@@ -95,18 +98,32 @@ class LabelStore(private val directory: File) {
         fun scaled(bitmap: Bitmap): Bitmap = if (bitmap.height <= height) bitmap else
             Bitmap.createScaledBitmap(bitmap, max(1, bitmap.width * height / bitmap.height), height, true).also { if (it !== bitmap) bitmap.recycle() }
         return if (whole) {
-            val cover = media.cover
-            val frontStart = (cover.frontStart * source.width).toInt().coerceIn(0, source.width - 1)
-            val backEnd = (cover.backEnd * source.width).toInt().coerceIn(0, frontStart)
+            // Cut where the scan's panels really fold, found once per image and case and kept beside it.
+            val (backShare, frontShare) = seams(label, media, source)
+            val frontStart = (frontShare * source.width).toInt().coerceIn(1, source.width - 1)
+            val backEnd = (backShare * source.width).toInt().coerceIn(0, frontStart)
             val front = scaled(Bitmap.createBitmap(source, frontStart, 0, source.width - frontStart, source.height))
             val spine = if (frontStart - backEnd >= 2) scaled(Bitmap.createBitmap(source, backEnd, 0, frontStart - backEnd, source.height)) else null
             val edge = edgeColour(front)
             source.recycle()
-            CoverFaces(front, spine, edge)
+            CoverFaces(front, spine, edge, sideColour(front))
         } else {
             val edge = edgeColour(source)
-            CoverFaces(scaled(source), null, edge)
+            val front = scaled(source)
+            CoverFaces(front, null, edge, sideColour(front))
         }
+    }
+
+    /** The back's end and the front's start in a whole cover, as shares of its width (see [CoverSeams]). */
+    private fun seams(label: LabelRef, media: Media, source: Bitmap): Pair<Float, Float> {
+        val file = File(directory, "${label.assetId}.${media.name}.seams")
+        runCatching { file.readText().trim().split(' ').map(String::toFloat) }.getOrNull()
+            ?.takeIf { it.size == 2 && it[0] in 0f..1f && it[1] in it[0]..1f }?.let { return it[0] to it[1] }
+        val pixels = IntArray(source.width * source.height)
+        source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+        val found = CoverSeams.find(pixels, source.width, source.height, media.cover)
+        runCatching { file.writeText("${found.first} ${found.second}") }
+        return found
     }
 
     /**
@@ -159,6 +176,16 @@ class LabelStore(private val directory: File) {
             bytes.flip()
             return LabelPixels(label.textureKey(media), width, height, bytes)
         } finally { source.recycle(); target.recycle() }
+    }
+
+    /** The average colour of a picture's right-hand edge, opaque. */
+    private fun sideColour(bitmap: Bitmap): Int {
+        var r = 0L; var g = 0L; var b = 0L; var n = 0
+        val step = max(1, bitmap.height / 120)
+        for (x in max(0, bitmap.width - 3) until bitmap.width) for (y in 0 until bitmap.height step step) {
+            val c = bitmap.getPixel(x, y); r += Color.red(c); g += Color.green(c); b += Color.blue(c); n++
+        }
+        return if (n == 0) Color.BLACK else Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
     }
 
     /** The average colour around a picture's border, opaque: what a printed box shows where the picture ends. */

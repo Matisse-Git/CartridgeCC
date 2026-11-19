@@ -92,7 +92,7 @@ private sealed class StripItem {
         // The box, turned toward the words beside it.
         val (baseW, baseH) = boxSize(game.shownAs)
         val look = remember(game.title, game.system, game.metadata["year"], faces) { BoxLook.of(game, faces) }
-        GameBox(look, (baseW * 1.24f).dp, (baseH * 1.24f).dp, 28.dp, 24f, Modifier.absoluteOffset(96.dp, 124.dp)
+        GameBox(look, (baseW * 1.24f).dp, (baseH * 1.24f).dp, 24f, Modifier.absoluteOffset(96.dp, 124.dp)
             .semantics { contentDescription = "${look.title}, ${game.system.title}" }, focused = true)
 
         Column(Modifier.absoluteOffset(400.dp, 112.dp).width(640.dp)) {

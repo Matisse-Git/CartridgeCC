@@ -216,7 +216,7 @@ private fun sortName(sort: LibrarySort) = when (sort) {
 }
 
 /** One box's place on the shelf at a fractional distance from the focus: the mockup's steps, eased between. */
-private class Pose(val scale: Float, val centerX: Float, val angle: Float, val lift: Float, val depth: Float, val dim: Float, val alpha: Float)
+private class Pose(val scale: Float, val centerX: Float, val angle: Float, val lift: Float, val dim: Float, val alpha: Float)
 
 private fun pose(offset: Float): Pose {
     val a = abs(offset); val s = sign(offset)
@@ -226,7 +226,7 @@ private fun pose(offset: Float): Pose {
     val step = if (a < 1f) ShelfGeometry.FIRST_STEP * a else ShelfGeometry.FIRST_STEP + (a - 1f) * ShelfGeometry.NEXT_STEP
     val dim = when { a <= 1f -> lerp(0f, .3f, a); a <= 2f -> lerp(.3f, .5f, a - 1f); else -> .5f }
     val alpha = when { a <= 2f -> 1f; a <= 3f -> lerp(1f, .55f, a - 2f); a <= 4f -> lerp(.55f, 0f, a - 3f); else -> 0f }
-    return Pose(lerp(ShelfGeometry.FOCUS_SCALE, 1f, near), s * step, angle, lerp(ShelfGeometry.FOCUS_LIFT, 0f, near), lerp(26f, 20f, near), dim, alpha)
+    return Pose(lerp(ShelfGeometry.FOCUS_SCALE, 1f, near), s * step, angle, lerp(ShelfGeometry.FOCUS_LIFT, 0f, near), dim, alpha)
 }
 
 /**
@@ -267,7 +267,7 @@ private fun pose(offset: Float): Pose {
                 val toward = if (focusedHere) launch else 0f
                 val w = baseW * p.scale; val h = baseH * p.scale
                 val alpha = p.alpha * if (focusedHere) (1f - ((launch - .7f) / .3f).coerceIn(0f, 1f)) else (1f - launch)
-                if (alpha > .01f) GameBox(look, w.dp, h.dp, p.depth.dp, p.angle * (1f - toward),
+                if (alpha > .01f) GameBox(look, w.dp, h.dp, p.angle * (1f - toward),
                     Modifier.zIndex(20f - abs(offset)).absoluteOffset((center + p.centerX - w / 2).dp, (bottom - h - toward * 40f).dp)
                         .semantics { contentDescription = "${look.title}, ${game.system.title}" }
                         .tap("box-$i", enabled) { if (focusedHere) shell.select() else shell.coordinator.navigate(i - index) },

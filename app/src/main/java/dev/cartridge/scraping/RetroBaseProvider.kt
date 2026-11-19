@@ -79,7 +79,8 @@ class RetroBaseProvider(private val cache: File) : ArtworkProvider {
                 val url = item.optString("url")
                 if (allowedImage(url)) add(ArtworkCandidate(type, item.optString("region"), url, item.text("hash")))
             }
-        }.distinctBy { it.url }.sortedWith(compareByDescending<ArtworkCandidate> { it.isCaseArt }.thenBy { it.region })
+        // Case art first, and of it the whole unfolded cover before a front alone, so a box gets its real spine.
+        }.distinctBy { it.url }.sortedWith(compareByDescending<ArtworkCandidate> { it.isCaseArt }.thenBy { if (it.type == "box-texture") 0 else 1 }.thenBy { it.region })
         return GameCandidate(id, names.first(), platform, names, metadata, artwork,
             "$base/games/$id", meta?.text("license") ?: "Provider licence not supplied", exact, tags)
     }
