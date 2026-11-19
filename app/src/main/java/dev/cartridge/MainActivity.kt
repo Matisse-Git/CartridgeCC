@@ -30,6 +30,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import dev.cartridge.emulation.EngineStatus
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
@@ -338,20 +340,8 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                         val blur by androidx.compose.animation.core.animateDpAsState(if (quick && android.os.Build.VERSION.SDK_INT >= 31) 40.dp else 0.dp,
                             tween(if (state.reducedMotion) 0 else 220), label = "quick-blur")
                         dev.cartridge.ui.design.DesignCanvas(state.reducedMotion, if (blur > 0.dp) Modifier.blur(blur) else Modifier) {
-                            dev.cartridge.ui.screens.LibraryScreen(state, shell, device, shell.controls.swapMenuButtons, browsing)
-                            // Systems (spec 4.2) is its own tab over the shelf; sheets opened from it rest on it.
-                            if (state.screen == CollectionScreen.Library && Destination.Systems in shell.stack && !scrape.visible)
-                                dev.cartridge.ui.screens.SystemsScreen(state, shell, device, shell.controls.swapMenuButtons, active = shell.top == Destination.Systems)
-                            // Apps (spec 4.7) likewise; its search keyboard rests on it.
-                            if (state.screen == CollectionScreen.Library && Destination.Apps in shell.stack && !scrape.visible)
-                                dev.cartridge.ui.screens.AppsScreen(shell, device, shell.controls.swapMenuButtons, active = shell.top == Destination.Apps)
-                            // Settings (spec 4.8) likewise; the folder sheet, keyboard and pages opened from it are drawn over it.
-                            if (state.screen == CollectionScreen.Library && Destination.Settings in shell.stack && !scrape.visible)
-                                dev.cartridge.ui.screens.SettingsScreen(state, shell, device, shell.controls.swapMenuButtons, active = shell.top == Destination.Settings)
-                            // Game detail rests on the shelf, and the sheets opened from it rest on Game detail.
-                            val detail = state.screen == CollectionScreen.Library && Destination.Details in shell.stack && !scrape.visible
-                            AnimatedVisibility(detail, enter = fadeIn(tween(if (state.reducedMotion) 0 else 220)), exit = fadeOut(tween(if (state.reducedMotion) 0 else 180))) {
-                                dev.cartridge.ui.screens.GameDetailScreen(state, shell, device, shell.controls.swapMenuButtons, active = shell.top == Destination.Details)
+                            CompositionLocalProvider(dev.cartridge.ui.design.LocalHintHost provides hintHost, dev.cartridge.ui.design.LocalSharedTopBar provides true) {
+                                Stage(state, status, scrape.visible, device, browsing)
                             }
                         }
                     }
@@ -382,7 +372,12 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                 Curtain(state.curtain && state.launch == null, shell.transition)
                 CompositionLocalProvider(dev.cartridge.ui.design.LocalGameMedia provides gameMedia) {
                     dev.cartridge.ui.design.DesignCanvas(state.reducedMotion) {
-                        dev.cartridge.ui.screens.LaunchScreen(state, if (state.alternateShortcut) "Start + Select" else dev.cartridge.ui.screens.STICKS)
+                        // The box that starts the game is the one that was on the shelf or on Game detail; it flies on from there.
+                        val starting = state.launch?.let { launch -> state.allGames.firstOrNull { it.id == launch.gameId } }
+                        val origin = starting?.takeIf { state.screen == CollectionScreen.Inserting }?.let {
+                            if (shell.launchFromDetail) dev.cartridge.ui.screens.detailBoxPose(it.shownAs) else dev.cartridge.ui.screens.shelfFocusPose(it.shownAs)
+                        }
+                        dev.cartridge.ui.screens.LaunchScreen(state, if (state.alternateShortcut) "Start + Select" else dev.cartridge.ui.screens.STICKS, from = origin)
                     }
                 }
                 dev.cartridge.ui.design.DesignCanvas(state.reducedMotion) {
@@ -397,6 +392,108 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
                 }
             }
         } }
+    }
+
+    private val hintHost = dev.cartridge.ui.design.HintHost()
+
+    /**
+     * The launcher's stage: the shelf and the tabs beside it, Game detail over the shelf, and one top bar and one hint
+     * bar over all of them. Tabs slide toward their side as they change; the shelf's box flies to Game detail and back.
+     */
+    @Composable private fun Stage(state: CollectionState, status: EngineStatus, scraping: Boolean, device: dev.cartridge.ui.DeviceStatus, browsing: Boolean) {
+        val motion = dev.cartridge.ui.design.LocalDesignMotion.current
+        val swapped = shell.controls.swapMenuButtons
+        val onShelf = state.screen == CollectionScreen.Library && !scraping
+        val tabNow = when {
+            Destination.Systems in shell.stack -> dev.cartridge.shell.Tab.Systems
+            Destination.Apps in shell.stack -> dev.cartridge.shell.Tab.Apps
+            Destination.Settings in shell.stack -> dev.cartridge.shell.Tab.Settings
+            else -> dev.cartridge.shell.Tab.Library
+        }
+        val tabs = dev.cartridge.ui.design.rememberTabStage(tabNow)
+        val detailOpen = onShelf && Destination.Details in shell.stack
+        val detail = remember { androidx.compose.animation.core.Animatable(if (detailOpen) 1f else 0f) }
+        LaunchedEffect(detailOpen) { detail.animateTo(if (detailOpen) 1f else 0f, motion.progress(dev.cartridge.ui.design.DesignMotion.FLIGHT_MS)) }
+        val d = detail.value
+        // "Browse games" on a Systems card: that card's spines turn and fly to their places on the shelf.
+        val spineRects = remember { dev.cartridge.ui.design.SpineRects() }
+        var flight by remember { mutableStateOf<Map<String, dev.cartridge.ui.design.SpineRects.Spot>?>(null) }
+        val flown = remember { androidx.compose.animation.core.Animatable(1f) }
+        LaunchedEffect(shell.browsed) {
+            if (shell.browsed == 0 || motion.reduced) return@LaunchedEffect
+            val spots = spineRects.snapshot().takeIf { it.isNotEmpty() } ?: return@LaunchedEffect
+            flight = spots
+            flown.snapTo(0f)
+            flown.animateTo(1f, motion.progress(dev.cartridge.ui.design.DesignMotion.FLIGHT_MS + 160))
+            flight = null
+        }
+        Box(Modifier.fillMaxSize()) {
+            dev.cartridge.ui.design.TabLayer(tabs, dev.cartridge.shell.Tab.Library) {
+                dev.cartridge.ui.screens.LibraryScreen(state, shell, device, swapped, browsing, detail = d, flying = flight?.keys ?: emptySet())
+            }
+            // Systems (spec 4.2), Apps (4.7) and Settings (4.8) are tabs over the shelf; sheets opened from them rest on them.
+            if (onShelf && tabs.shown(dev.cartridge.shell.Tab.Systems)) dev.cartridge.ui.design.TabLayer(tabs, dev.cartridge.shell.Tab.Systems) {
+                CompositionLocalProvider(dev.cartridge.ui.design.LocalSpineRects provides spineRects) {
+                    dev.cartridge.ui.screens.SystemsScreen(state, shell, device, swapped, active = shell.top == Destination.Systems)
+                }
+            }
+            if (onShelf && tabs.shown(dev.cartridge.shell.Tab.Apps)) dev.cartridge.ui.design.TabLayer(tabs, dev.cartridge.shell.Tab.Apps) {
+                dev.cartridge.ui.screens.AppsScreen(shell, device, swapped, active = shell.top == Destination.Apps)
+            }
+            if (onShelf && tabs.shown(dev.cartridge.shell.Tab.Settings)) dev.cartridge.ui.design.TabLayer(tabs, dev.cartridge.shell.Tab.Settings) {
+                dev.cartridge.ui.screens.SettingsScreen(state, shell, device, swapped, active = shell.top == Destination.Settings)
+            }
+            flight?.let { spots ->
+                val index = state.selection.index
+                spots.entries.forEachIndexed { order, (id, spot) ->
+                    val game = state.allGames.firstOrNull { it.id == id } ?: return@forEachIndexed
+                    key("flight-$id") {
+                        val faces = dev.cartridge.ui.design.rememberFaces(gameMedia, game.label, game.shownAs)
+                        val look = remember(game.title, game.system, game.metadata["year"], faces) { dev.cartridge.ui.design.BoxLook.of(game, faces) }
+                        val slot = state.slots.indexOfFirst { it?.id == id }
+                        val offset = if (slot >= 0) (slot - index).toFloat() else null
+                        val t = dev.cartridge.ui.design.stagger(flown.value, order.coerceAtMost(6), .05f)
+                        val from = dev.cartridge.ui.design.spinePose(spot, game.shownAs)
+                        // A spine whose game lands on screen flies to its place; one that lands out of sight fades where it is.
+                        if (offset != null && kotlin.math.abs(offset) < 3.5f)
+                            dev.cartridge.ui.design.PosedBox(look, from.toward(dev.cartridge.ui.screens.shelfPose(game.shownAs, offset), t), focused = offset == 0f,
+                                dim = dev.cartridge.ui.screens.shelfDim(offset) * t, alpha = spot.opacity + (1f - spot.opacity) * t)
+                        else dev.cartridge.ui.design.PosedBox(look, from, alpha = spot.opacity * (1f - t))
+                    }
+                }
+            }
+            // Game detail rests on the shelf, and the sheets opened from it rest on Game detail. Its box is the shelf's,
+            // drawn here above both while it flies between them.
+            if (d > 0f && state.screen == CollectionScreen.Library) {
+                Box(Modifier.fillMaxSize().graphicsLayer { alpha = d }) {
+                    dev.cartridge.ui.screens.GameDetailScreen(state, shell, device, swapped, active = shell.top == Destination.Details, enter = d, drawBox = false)
+                }
+                val game = state.selectedGame
+                if (game != null && state.launch == null) {
+                    val faces = dev.cartridge.ui.design.rememberFaces(gameMedia, game.label, game.shownAs)
+                    val look = remember(game.title, game.system, game.metadata["year"], faces) { dev.cartridge.ui.design.BoxLook.of(game, faces) }
+                    // Under reduced motion the box does not travel: it is on the shelf, then on Game detail, as the screens crossfade.
+                    val t = if (motion.reduced) (if (d < .5f) 0f else 1f) else d
+                    dev.cartridge.ui.design.PosedBox(look, dev.cartridge.ui.screens.shelfFocusPose(game.shownAs).toward(dev.cartridge.ui.screens.detailBoxPose(game.shownAs), t))
+                }
+            }
+            val chrome = onShelf && status.state == SessionState.Idle && state.launch == null && Destination.Details !in shell.stack &&
+                (shell.tab != null || tabNow != dev.cartridge.shell.Tab.Library)
+            // The bar fades in as the console opens, and out whenever a screen of its own takes the stage.
+            val bar = remember { androidx.compose.animation.core.Animatable(0f) }
+            LaunchedEffect(chrome) {
+                val opening = bar.value == 0f && chrome
+                bar.animateTo(if (chrome) 1f else 0f, motion.fade(if (opening) dev.cartridge.ui.design.DesignMotion.START_MS else dev.cartridge.ui.design.DesignMotion.FADE_MS))
+            }
+            val barAlpha = bar.value
+            if (barAlpha > 0f) CompositionLocalProvider(dev.cartridge.ui.design.LocalSharedTopBar provides false) {
+                Box(Modifier.graphicsLayer { alpha = barAlpha }) {
+                    dev.cartridge.ui.design.TopBar(tabNow, shell::openTab, device, showStatus = shell.showStatus, showPercent = shell.showPercent,
+                        frameRate = if (shell.showFrameRate && tabNow == dev.cartridge.shell.Tab.Library) dev.cartridge.ui.screens.rememberFrameRate() else null)
+                }
+            }
+            dev.cartridge.ui.design.StageHints(hintHost, onShelf, Modifier.align(Alignment.BottomStart))
+        }
     }
 
     /** One decoded or typeset label per object of the bounded window; never more. */
@@ -414,7 +511,7 @@ open class MainActivity : ComponentActivity(), InputManager.InputDeviceListener,
             val label = labels[index]; val system = systems[index]
             // A game without artwork carries its own title in type. The empty library shows the product's name.
             val title = game?.title ?: "Cartridge"
-            // The object follows the console and the market its file is named for, never a scraped title (ADR 0029).
+            // The object follows its case art's region, else the console and the market its file is named for (ADR 0029, as amended).
             val media = game?.shownAs ?: system.media(title)
             // A case shows only case art; a label scraped for a cartridge stays stored and the case shows its title.
             val art = label?.takeIf { media.cover == null || it.isCaseArt }

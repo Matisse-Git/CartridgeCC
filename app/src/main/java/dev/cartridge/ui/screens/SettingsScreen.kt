@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -70,7 +71,21 @@ import dev.cartridge.ui.design.Typo.tabular
     Box(modifier.fillMaxSize().background(Palette.Canvas).testTag("settings")) {
         TopBar(Tab.Settings, shell::openTab, device, showStatus = shell.showStatus, showPercent = shell.showPercent)
         Sections(shell, active && !inRows, Modifier.padding(start = Layout.Margin, top = 100.dp).width(280.dp))
-        Column(Modifier.padding(start = 352.dp, top = 96.dp, end = Layout.Margin, bottom = Layout.HintBar).fillMaxSize()) {
+        // Another section's content slides in a little from the direction the focus moved, as it fades in.
+        val motion = LocalDesignMotion.current
+        val category = shell.category
+        var shownCategory by remember { mutableStateOf(category) }
+        var direction by remember { mutableStateOf(1f) }
+        val arrival = remember { androidx.compose.animation.core.Animatable(1f) }
+        LaunchedEffect(category) {
+            if (category == shownCategory) return@LaunchedEffect
+            direction = if (category.ordinal > shownCategory.ordinal) 1f else -1f
+            shownCategory = category
+            arrival.snapTo(0f); arrival.animateTo(1f, motion.progress(DesignMotion.FADE_MS + 40))
+        }
+        val sectionTravel = motion.travel(24f)
+        Column(Modifier.padding(start = 352.dp, top = 96.dp, end = Layout.Margin, bottom = Layout.HintBar).fillMaxSize()
+            .graphicsLayer { alpha = arrival.value; translationY = ((1f - arrival.value) * sectionTravel * direction).dp.toPx() }) {
             Text(shell.category.title, Typo.Title, Modifier.padding(bottom = 20.dp).testTag("settings-title"), lines = 1)
             val scroll = rememberScrollState()
             LaunchedEffect(shell.category) { scroll.scrollTo(0) }
@@ -101,7 +116,8 @@ import dev.cartridge.ui.design.Typo.tabular
         Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(Layout.HintBar).padding(horizontal = Layout.Margin), verticalAlignment = Alignment.CenterVertically) {
             Text(footer, Typo.Caption.tabular(), Modifier.weight(1f).padding(end = 24.dp).testTag("settings-help"),
                 if (help != null && focused.warn) Palette.DestructiveText else Palette.Tertiary, lines = 2)
-            HintRow(hints)
+            // The hints themselves are the stage's; the help beside them is this screen's own.
+            ScreenHints(hints, active)
         }
     }
 }

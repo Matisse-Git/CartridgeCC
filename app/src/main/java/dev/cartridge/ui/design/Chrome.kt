@@ -5,6 +5,11 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -35,6 +40,8 @@ import dev.cartridge.ui.design.Typo.tabular
  */
 @Composable fun TopBar(current: Tab, onTab: (Tab) -> Unit, device: DeviceStatus, modifier: Modifier = Modifier,
     showStatus: Boolean = true, showPercent: Boolean = true, frameRate: Int? = null) {
+    // On the stage the top bar is the stage's own, drawn once over every tab.
+    if (LocalSharedTopBar.current) return
     Box(modifier.fillMaxWidth().height(Layout.TopBar).padding(horizontal = Layout.Margin)) {
         Row(Modifier.align(Alignment.CenterStart).width(260.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             CartridgeMark()
@@ -42,15 +49,24 @@ import dev.cartridge.ui.design.Typo.tabular
         }
         Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Glyph(Pad.L2)
-            Row(Modifier.clip(RoundedCornerShape(Radii.Pill)).background(Color(0x9928282A)).border(1.dp, Color(0x0FFFFFFF), RoundedCornerShape(Radii.Pill)).padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Tab.entries.forEach { tab ->
-                    val selected = tab == current
-                    val fill by animateColorAsState(if (selected) Palette.Label else Color.Transparent, LocalDesignMotion.current.fade(200), label = "tab")
-                    Box(Modifier.clip(RoundedCornerShape(Radii.Pill)).background(fill).tap("tab-${tab.name.lowercase()}", tab.ready) { onTab(tab) }
-                        .padding(horizontal = 18.dp, vertical = 8.dp)) {
-                        Text(tab.title, Typo.Callout.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium), lines = 1,
-                            color = when { selected -> Palette.Canvas; tab.ready -> Palette.Label; else -> Palette.Tertiary })
+            // The selected tab's white pill glides from tab to tab; the words change colour under it.
+            val places = remember { mutableStateMapOf<Tab, Pair<Float, Float>>() }
+            val motion = LocalDesignMotion.current
+            val place = places[current]
+            val pillX by animateFloatAsState(place?.first ?: 0f, if (places.size < Tab.entries.size) snap() else motion.move(DesignMotion.TAB_MS), label = "tab-x")
+            val pillW by animateFloatAsState(place?.second ?: 0f, if (places.size < Tab.entries.size) snap() else motion.move(DesignMotion.TAB_MS), label = "tab-w")
+            Box(Modifier.clip(RoundedCornerShape(Radii.Pill)).background(Color(0x9928282A)).border(1.dp, Color(0x0FFFFFFF), RoundedCornerShape(Radii.Pill)).padding(4.dp)) {
+                if (place != null) Box(Modifier.matchParentSize()) { Box(Modifier.offset(x = pillX.dp).width(pillW.dp).fillMaxHeight().clip(RoundedCornerShape(Radii.Pill)).background(Palette.Label)) }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Tab.entries.forEach { tab ->
+                        val selected = tab == current
+                        val ink by animateColorAsState(when { selected -> Palette.Canvas; tab.ready -> Palette.Label; else -> Palette.Tertiary }, motion.fade(), label = "tab-ink")
+                        val density = LocalDensity.current
+                        Box(Modifier.onPlaced { with(density) { places[tab] = it.positionInParent().x.toDp().value to it.size.width.toDp().value } }
+                            .clip(RoundedCornerShape(Radii.Pill)).tap("tab-${tab.name.lowercase()}", tab.ready) { onTab(tab) }
+                            .padding(horizontal = 18.dp, vertical = 8.dp)) {
+                            Text(tab.title, Typo.Callout.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium), lines = 1, color = ink)
+                        }
                     }
                 }
             }

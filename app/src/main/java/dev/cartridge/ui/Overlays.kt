@@ -31,12 +31,22 @@ import dev.cartridge.ui.design.Hint
 import dev.cartridge.ui.design.HintBar
 import dev.cartridge.ui.design.Typo.tabular
 
-/** Arrives once per key with a short fade and slide; under reduced motion it is simply there. */
-@Composable private fun Entering(key: Any, slide: Dp = 0.dp, content: @Composable BoxScope.() -> Unit) {
+/**
+ * Arrives once per key: it fades in while sliding [slide] from the right and growing from [from], and leaves the same
+ * way back while [leaving]. Under reduced motion it only crossfades.
+ */
+@Composable private fun Entering(key: Any, slide: Dp = 0.dp, from: Float = 1f, ms: Int = DesignMotion.SHEET_MS, leaving: Boolean = false,
+    content: @Composable BoxScope.() -> Unit) {
     val motion = LocalDesignMotion.current
-    val progress = remember(key) { Animatable(if (motion.reduced) 1f else 0f) }
-    LaunchedEffect(key) { progress.animateTo(1f, motion.pause()) }
-    Box(Modifier.fillMaxSize().graphicsLayer { alpha = progress.value; translationX = (1f - progress.value) * slide.toPx() }, content = content)
+    val progress = remember(key) { Animatable(0f) }
+    LaunchedEffect(key, leaving) { progress.animateTo(if (leaving) 0f else 1f, motion.progress(ms)) }
+    val travel = motion.travel(slide.value)
+    val grow = if (motion.reduced) 1f else from
+    Box(Modifier.fillMaxSize().graphicsLayer {
+        val p = progress.value
+        alpha = p; translationX = ((1f - p) * travel).dp.toPx()
+        val k = grow + (1f - grow) * p; scaleX = k; scaleY = k
+    }, content = content)
 }
 
 private fun hints(page: Page, focused: MenuRow?, swapped: Boolean, shell: ConsoleShell) = buildList {
@@ -62,20 +72,34 @@ private fun hints(page: Page, focused: MenuRow?, swapped: Boolean, shell: Consol
         Box(Modifier.fillMaxSize()) {
             // Systems, Apps and Settings are screens of their own (ui/screens); what is opened over them is still drawn here.
             if (!pause && shell.base != Destination.Systems && shell.base != Destination.Apps && shell.base != Destination.Settings) shell.base?.let { destination ->
-                shell.page(state, status, destination)?.let { page -> Entering(destination.key) { FullPage(page, shell, top == destination, swapped) } }
+                // A page opened from another slides in from the right, as a step deeper.
+                shell.page(state, status, destination)?.let { page ->
+                    Entering(destination.key, DesignMotion.PAGE_TRAVEL.dp, ms = DesignMotion.TAB_MS) { FullPage(page, shell, top == destination, swapped) }
+                }
             }
-            val floating = if (top == null || !top.opaque) shell.page(state, status, top) else null
+            val open = if (top == null || !top.opaque) shell.page(state, status, top) else null
+            // A sheet or dialog that closes leaves the way it came, so it is kept drawn while it goes.
+            var kept by remember { mutableStateOf<Page?>(null) }
+            if (open != null && open !== kept) SideEffect { kept = open }
+            val leaving = open == null && kept != null
+            LaunchedEffect(leaving) { if (leaving) { kotlinx.coroutines.delay(DesignMotion.SHEET_MS.toLong()); kept = null } }
+            val floating = open ?: kept
+            val scrim by androidx.compose.animation.core.animateFloatAsState(if (open != null) 1f else 0f, LocalDesignMotion.current.fade(), label = "scrim")
             if (floating != null) {
                 val focused = shell.focused(floating)
                 when (floating.style) {
                     // The pause menu and Game detail are screens of their own, drawn beneath these overlays.
                     PageStyle.Pause, PageStyle.Details -> Unit
-                    PageStyle.Dialog -> { Scrim(shell::back); Entering(floating.key) { Dialog(floating, focused, shell, swapped) } }
+                    PageStyle.Dialog -> {
+                        Scrim(shell::back, scrim, open != null)
+                        Entering(floating.key, from = .96f, ms = DesignMotion.FADE_MS + 60, leaving = leaving) { Dialog(floating, focused, shell, swapped) }
+                    }
                     else -> {
                         // The label preview's whole subject is the box beside it, so nothing dims it.
                         val beside = status.state == SessionState.Idle && floating.key == "label"
-                        if (!beside) Scrim(shell::back)
-                        Entering(floating.key, 24.dp) { Sheet(floating, focused, shell, swapped) }
+                        if (!beside) Scrim(shell::back, scrim, open != null)
+                        // A sheet is a panel at the right edge: it slides in from that edge and back out to it.
+                        Entering(floating.key, 64.dp, leaving = leaving) { Sheet(floating, focused, shell, swapped) }
                     }
                 }
             }
@@ -84,8 +108,8 @@ private fun hints(page: Page, focused: MenuRow?, swapped: Boolean, shell: Consol
 }
 
 /** Dims what is beneath; a tap on it closes what is open, as B does. */
-@Composable private fun Scrim(dismiss: () -> Unit) {
-    Box(Modifier.fillMaxSize().background(Color(0x8C000000)).tap("scrim", action = dismiss))
+@Composable private fun Scrim(dismiss: () -> Unit, alpha: Float = 1f, enabled: Boolean = true) {
+    Box(Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha }.background(Color(0x8C000000)).tap("scrim", enabled, action = dismiss))
 }
 
 /** A glass panel at the right, as the Quick menu is drawn: a short list about one thing, each row with its help. */

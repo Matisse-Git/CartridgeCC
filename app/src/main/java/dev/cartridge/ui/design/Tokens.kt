@@ -2,6 +2,7 @@ package dev.cartridge.ui.design
 
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -103,16 +104,40 @@ object Layout {
     const val HEIGHT = 720f
 }
 
-/** Motion (§2). Reduced motion cuts every spec. */
+/**
+ * Motion (§2), one set of durations for the whole app, all on the spec's ease. Reduced motion moves nothing: whatever
+ * would travel arrives at once, and whatever would fade crossfades in [REDUCED_MS], so screens still connect.
+ */
 class DesignMotion(val reduced: Boolean) {
-    fun <T> shelf(): FiniteAnimationSpec<T> = if (reduced) snap() else tween(450, easing = Ease)
-    fun <T> lift(): FiniteAnimationSpec<T> = if (reduced) snap() else tween(250, easing = Ease)
-    fun <T> pause(): FiniteAnimationSpec<T> = if (reduced) snap() else tween(220, easing = Ease)
-    fun <T> fade(ms: Int = 300): FiniteAnimationSpec<T> = if (reduced) snap() else tween(ms, easing = Ease)
+    fun <T> shelf(): FiniteAnimationSpec<T> = move(SHELF_MS)
+    fun <T> lift(): FiniteAnimationSpec<T> = move(LIFT_MS)
+    fun <T> pause(): FiniteAnimationSpec<T> = fade(PAUSE_MS)
+    fun <T> fade(ms: Int = FADE_MS): FiniteAnimationSpec<T> = tween(if (reduced) REDUCED_MS else ms, easing = Ease)
+    /** Something that travels: a tab's slide, a row's swap, a box's flight. Under reduced motion it is already there. */
+    fun <T> move(ms: Int): FiniteAnimationSpec<T> = if (reduced) snap() else tween(ms, easing = Ease)
+    /** A progress from one screen to the next (0..1): under reduced motion a crossfade's length, so what fades still fades. */
+    fun <T> progress(ms: Int): FiniteAnimationSpec<T> = tween(if (reduced) REDUCED_MS else ms, easing = if (reduced) LinearEasing else Ease)
+    /** How far things travel; nothing travels under reduced motion. */
+    fun travel(distance: Float) = if (reduced) 0f else distance
     companion object {
         val Ease = CubicBezierEasing(.2f, .8f, .2f, 1f)
         const val PRESSED = .97f
         const val PREVIEW_DWELL_MS = 1500L
+        const val FADE_MS = 180
+        const val LIFT_MS = 250
+        const val PAUSE_MS = 220
+        const val SHEET_MS = 300
+        const val TAB_MS = 360
+        const val RISE_MS = 380
+        const val ROW_MS = 420
+        const val SHELF_MS = 450
+        const val FLIGHT_MS = 520
+        const val START_MS = 600
+        const val REDUCED_MS = 120
+        /** How far a tab's screen slides as it comes and goes. */
+        const val TAB_TRAVEL = 80f
+        /** How far an opened page slides in from the right. */
+        const val PAGE_TRAVEL = 40f
     }
 }
 

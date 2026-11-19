@@ -468,7 +468,7 @@ class ConsoleShell(
     }
     private fun confirmLibrary() {
         if (state.screen != CollectionScreen.Library || status.state != SessionState.Idle) return
-        if (state.allGames.isEmpty()) addGames() else start()
+        if (state.allGames.isEmpty()) addGames() else { launchFromDetail = false; start() }
     }
     /**
      * A console that needs the user's file explains that here, instead of failing once the game has left the shelf.
@@ -588,6 +588,16 @@ class ConsoleShell(
             Tab.Settings -> push(Destination.Settings)
         }
     }
+    /** Which way the shelf last moved to another chip: 1 toward the right (R1), -1 toward the left. A row arrives from that side. */
+    var shelfDirection by mutableIntStateOf(1)
+        private set
+    /** Whether the game now starting was started from Game detail, so its box sets off from there. */
+    var launchFromDetail by mutableStateOf(false)
+        private set
+    /** Counts each "Browse games" from Systems, so the stage can fly that console's spines into the shelf. */
+    var browsed by mutableIntStateOf(0)
+        private set
+    private fun arrive(delta: Int) { shelfDirection = if (delta >= 0) 1 else -1; host.stageArrive(delta) }
     /** The Library's filter chips in the spec's order: Recently Played, Favorites, All Games, then each console. */
     val chips: List<Shelf> get() = state.shelves.sortedBy { when (it) { Shelf.Recent -> 0; Shelf.Favorites -> 1; Shelf.All -> 2; is Shelf.Console -> 3 } }
     /** L1 / R1 on the Library: the previous or next chip. A search is cleared onto the chip it was over. */
@@ -596,12 +606,12 @@ class ConsoleShell(
         if (chips.isEmpty()) return
         val index = chips.indexOf(state.shelf).coerceAtLeast(0)
         val next = if (state.searching) chips[index] else chips[Math.floorMod(index + delta, chips.size)]
-        if (next != state.shelf || state.searching) { coordinator.chooseShelf(next); host.stageArrive(delta) }
+        if (next != state.shelf || state.searching) { coordinator.chooseShelf(next); arrive(delta) }
     }
     fun chooseChip(shelf: Shelf) {
         if (top != null || inputMode() != InputMode.Library) return
         val before = chips.indexOf(state.shelf)
-        if (shelf != state.shelf || state.searching) { coordinator.chooseShelf(shelf); host.stageArrive(if (chips.indexOf(shelf) >= before) 1 else -1) }
+        if (shelf != state.shelf || state.searching) { coordinator.chooseShelf(shelf); arrive(if (chips.indexOf(shelf) >= before) 1 else -1) }
     }
     /** The sort control beside the chips. */
     fun stepSort() {
@@ -617,7 +627,7 @@ class ConsoleShell(
     fun switchShelf(delta: Int) {
         val before = state.shelf
         coordinator.switchShelf(delta)
-        if (state.shelf != before) host.stageArrive(delta)
+        if (state.shelf != before) arrive(delta)
     }
     /** How many save states a game has, for the library's line about it. Read on the IO threads. */
     suspend fun saveCount(game: LibraryGame): Int = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { slots.list(game.id, game.system).size } }.getOrDefault(0)
@@ -648,6 +658,7 @@ class ConsoleShell(
     }
     /** A on a console: the Library, on that console's chip. */
     fun browseSystem(system: GameSystem) {
+        browsed++
         home()
         val shelf = chips.firstOrNull { it is Shelf.Console && it.system == system } ?: return
         if (shelf != state.shelf || state.searching) coordinator.chooseShelf(shelf)
@@ -1119,7 +1130,7 @@ class ConsoleShell(
         home(); coordinator.query(state.query.copy(search = value))
     }))
     /** [fromState]: true continues from the newest save state (Resume), false starts from the beginning (Start over). */
-    fun play(disc: Int? = null, fromState: Boolean? = null) { home(); start(disc, fromState) }
+    fun play(disc: Int? = null, fromState: Boolean? = null) { launchFromDetail = Destination.Details in stack; home(); start(disc, fromState) }
     fun hide() { home(); coordinator.hideSelected() }
 
     // ---- Backup -----------------------------------------------------------------------------------------

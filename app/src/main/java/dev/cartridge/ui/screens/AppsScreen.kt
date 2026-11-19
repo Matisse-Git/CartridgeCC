@@ -77,7 +77,7 @@ import dev.cartridge.ui.design.*
                 add(Hint(Pad.confirm(swapped), "Try again", primary = true, tag = "apps-retry") { shell.select() })
             add(Hint(Pad.back(swapped), if (apps.searching) "Clear search" else "Back", tag = "back") { shell.back() })
         }
-        HintBar(hints, Modifier.align(Alignment.BottomStart).testTag("apps-hints"),
+        ScreenHints(hints, active, Modifier.align(Alignment.BottomStart).testTag("apps-hints"),
             context = if (entries.isEmpty()) null else if (homeNote) "Apps open full screen · press Home to return to Cartridge" else "Apps open full screen")
     }
 }

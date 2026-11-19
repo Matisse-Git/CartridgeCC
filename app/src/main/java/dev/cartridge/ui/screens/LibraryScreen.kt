@@ -73,7 +73,7 @@ private object ShelfGeometry {
  * of real boxes, the focused game's facts and the hint bar. [browsing] is false while anything covers the shelf.
  */
 @Composable fun LibraryScreen(state: CollectionState, shell: ConsoleShell, device: DeviceStatus, swapped: Boolean, browsing: Boolean,
-    modifier: Modifier = Modifier) {
+    modifier: Modifier = Modifier, detail: Float = 0f, flying: Set<String> = emptySet()) {
     val motion = LocalDesignMotion.current
     val media = LocalGameMedia.current
     val game = state.selectedGame
@@ -138,7 +138,7 @@ private object ShelfGeometry {
             empty -> Welcome(shell, swapped, Modifier.alpha(chromeAlpha))
             game == null && state.loaded -> NoResults(state, shell, swapped, Modifier.alpha(chromeAlpha))
             game != null -> {
-                ShelfRow(state, shell, center, launch.value, browsing && ready, focusFaces)
+                ShelfRow(state, shell, center, launch.value, browsing && ready, focusFaces, detail, flying)
                 FocusInfo(game, shell, Modifier.padding(top = 500.dp).fillMaxWidth().alpha(chromeAlpha * (1f - launch.value)))
             }
         }
@@ -156,7 +156,7 @@ private object ShelfGeometry {
                 if (shell.previewEnabled && media?.video(game) != null) add(Hint(Pad.R3, if (shell.previewSound) "Mute" else "Sound", tag = "preview-sound") { shell.stick(1) })
                 add(Hint(Pad.Menu, "Quick menu", tag = "system-menu") { shell.openMenu() })
             }
-            HintBar(hints, Modifier.align(Alignment.BottomStart).alpha(chromeAlpha).testTag("library-hints"), context = context)
+            ScreenHints(hints, browsing, Modifier.align(Alignment.BottomStart).alpha(chromeAlpha).testTag("library-hints"), context = context)
         }
     }
 }
@@ -181,17 +181,32 @@ private object ShelfGeometry {
     Box(modifier.fillMaxWidth().height(34.dp)) {
     Row(Modifier.align(Alignment.CenterStart).padding(end = 170.dp), verticalAlignment = Alignment.CenterVertically) {
         Glyph(Pad.L1, modifier = Modifier.padding(end = 10.dp))
-        LazyRow(Modifier.weight(1f, fill = false), state = list, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        // The selected chip's pill glides along the row to the next chip; the chips themselves stay where they are.
+        Box(Modifier.weight(1f, fill = false)) {
+        val motion = LocalDesignMotion.current
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val info = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == selected }
+        val target = info?.let { with(density) { it.offset.toDp().value to it.size.toDp().value } }
+        var placed by remember { mutableStateOf(false) }
+        val pillX by animateFloatAsState(target?.first ?: 0f, if (placed) motion.move(DesignMotion.TAB_MS) else androidx.compose.animation.core.snap(), label = "chip-x")
+        val pillW by animateFloatAsState(target?.second ?: 0f, if (placed) motion.move(DesignMotion.TAB_MS) else androidx.compose.animation.core.snap(), label = "chip-w")
+        if (target != null) SideEffect { placed = true }
+        if (target != null) Box(Modifier.matchParentSize()) {
+            Box(Modifier.offset(x = pillX.dp).width(pillW.dp).fillMaxHeight().clip(RoundedCornerShape(17.dp)).background(Palette.ChipSelected))
+        }
+        LazyRow(state = list, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             itemsIndexed(chips, key = { _, shelf -> shelf.key }) { index, shelf ->
                 val on = index == selected
-                Row(Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(if (on) Palette.ChipSelected else Palette.ChipRest)
+                val ink by androidx.compose.animation.animateColorAsState(if (on) Color.White else Palette.Soft, motion.fade(), label = "chip-ink")
+                Row(Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(if (on) Color.Transparent else Palette.ChipRest)
                     .tap("chip-${shelf.key}", ready) { shell.chooseChip(shelf) }.padding(horizontal = 14.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     val name = if (shelf is Shelf.Console) shelf.system.shortName else shelf.title
-                    Text(name, Typo.Caption.copy(fontWeight = FontWeight.SemiBold), color = if (on) Color.White else Palette.Soft, lines = 1)
+                    Text(name, Typo.Caption.copy(fontWeight = FontWeight.SemiBold), color = ink, lines = 1)
                     counts[shelf]?.let { Text("%,d".format(it), Typo.Caption.copy(fontWeight = FontWeight.SemiBold).tabular(), color = if (on) Palette.Soft else Palette.Secondary, lines = 1) }
                 }
             }
+        }
         }
         Glyph(Pad.R1, modifier = Modifier.padding(start = 10.dp))
     }
@@ -233,29 +248,76 @@ private fun pose(offset: Float): Pose {
  * The 3D shelf. The focus moves continuously (450 ms ease) so every box slides, turns and dims through the steps
  * between; a new chip's games arrive in place. Tapping a side box moves to it; tapping the focused box plays it.
  */
-@Composable private fun ShelfRow(state: CollectionState, shell: ConsoleShell, center: Float, launch: Float, enabled: Boolean, focusFaces: dev.cartridge.storage.CoverFaces?) {
+@Composable private fun ShelfRow(state: CollectionState, shell: ConsoleShell, center: Float, launch: Float, enabled: Boolean, focusFaces: dev.cartridge.storage.CoverFaces?,
+    detail: Float, flying: Set<String>) {
     val motion = LocalDesignMotion.current
     val media = LocalGameMedia.current
     val index = state.selection.index
     val position = remember { Animatable(index.toFloat()) }
-    var shelfKey by remember { mutableStateOf(state.shelf.key to state.query) }
+    val key = state.shelf.key to state.query
+    var shelfKey by remember { mutableStateOf(key) }
+    // The boxes on screen a moment ago, so a row that is replaced can leave while the new one arrives.
+    val frame = remember { mutableListOf<Pair<LibraryGame, Float>>() }
+    var leaving by remember { mutableStateOf<Leaving?>(null) }
+    if (key != shelfKey) {
+        // Another chip arrives from the side it lies on; a sort or search has no side, so it rises in place.
+        val side = if (key.first != shelfKey.first) shell.shelfDirection else 0
+        // Spines flying in from Systems are the new row's arrival; the old row simply goes.
+        leaving = Leaving(if (flying.isEmpty()) frame.toList() else emptyList(), side, (leaving?.id ?: 0) + 1)
+        shelfKey = key
+    }
+    val swap = remember { Animatable(1f) }
+    LaunchedEffect(leaving?.id) {
+        val row = leaving ?: return@LaunchedEffect
+        position.snapTo(index.toFloat())
+        swap.snapTo(0f)
+        swap.animateTo(1f, motion.progress(if (row.side == 0) DesignMotion.RISE_MS else DesignMotion.ROW_MS))
+        leaving = null
+    }
+    // Opening the console: the boxes rise into place from the middle outward, once per start of the app.
+    val entrance = remember { Animatable(if (ShelfEntrance.done || state.slots.isEmpty()) 1f else 0f) }
+    LaunchedEffect(state.slots.isNotEmpty()) {
+        if (ShelfEntrance.done || state.slots.isEmpty()) return@LaunchedEffect
+        ShelfEntrance.done = true
+        entrance.animateTo(1f, motion.progress(DesignMotion.START_MS))
+    }
     LaunchedEffect(index, state.shelf.key, state.query) {
-        val key = state.shelf.key to state.query
-        // A different chip, search or sort is a different row: it appears at its focus instead of sliding across.
-        if (key != shelfKey) { shelfKey = key; position.snapTo(index.toFloat()); return@LaunchedEffect }
-        // A long jump starts a few boxes out, so it reads as a move without sweeping the whole collection past.
+        // A new row starts at its own focus rather than sliding across from the old row's.
+        if (leaving != null) return@LaunchedEffect
         if (abs(position.value - index) > 6f) position.snapTo(index + sign(position.value - index) * 6f)
         position.animateTo(index.toFloat(), motion.shelf())
     }
-    val pos = position.value
+    val pos = if (leaving != null) index.toFloat() else position.value
     val bottom = ShelfGeometry.AREA_TOP + ShelfGeometry.AREA_HEIGHT - ShelfGeometry.BOTTOM_GAP
     val first = (pos - ShelfGeometry.REACH).toInt().coerceAtLeast(0)
     val last = (pos + ShelfGeometry.REACH).roundToInt().coerceAtMost(state.slots.lastIndex)
+    val rowTravel = motion.travel(ROW_TRAVEL)
+    val riseTravel = motion.travel(RISE_TRAVEL)
+    // The focused box is handed to the stage while it flies to Game detail or into a game; the others make way.
+    val handedOff = detail > 0f || state.launch != null
+    val apart = motion.travel(APART_TRAVEL) * detail
+    val shown = mutableListOf<Pair<LibraryGame, Float>>()
     Box(Modifier.fillMaxSize()) {
+        leaving?.let { row ->
+            val t = swap.value
+            for ((game, offset) in row.boxes) key("leaving-${row.id}-${game.id}") {
+                val p = pose(offset)
+                val faces = rememberFaces(media, game.label, game.shownAs)
+                val look = remember(game.title, game.system, game.metadata["year"], faces) { BoxLook.of(game, faces) }
+                val (baseW, baseH) = boxSize(game.shownAs)
+                val w = baseW * p.scale; val h = baseH * p.scale
+                val dx = -row.side * rowTravel * t
+                val dy = if (row.side == 0) riseTravel * .6f * t else 0f
+                val alpha = p.alpha * (1f - t)
+                if (alpha > .01f) GameBox(look, w.dp, h.dp, p.angle, Modifier.zIndex(10f - abs(offset)).absoluteOffset((center + p.centerX - w / 2 + dx).dp, (bottom - h + dy).dp),
+                    translateZ = p.lift.dp, dim = p.dim, focused = false, alpha = alpha)
+            }
+        }
         for (i in first..last) {
             val game = state.slots[i] ?: continue
             val offset = i - pos
             if (abs(offset) >= ShelfGeometry.REACH) continue
+            shown += game to offset
             key(game.id) {
                 val focusedHere = i == index
                 val p = pose(offset)
@@ -263,18 +325,51 @@ private fun pose(offset: Float): Pose {
                 val faces = if (focusedHere && focusFaces != null) focusFaces else rememberFaces(media, label, game.shownAs)
                 val look = remember(game.title, game.system, game.metadata["year"], faces) { BoxLook.of(game, faces) }
                 val (baseW, baseH) = boxSize(game.shownAs)
-                // On the way into a game the focused box comes toward the camera and the others step back into the dark.
+                // On the way back from a game the focused box settles from near the camera; the others step back into the dark.
                 val toward = if (focusedHere) launch else 0f
                 val w = baseW * p.scale; val h = baseH * p.scale
-                val alpha = p.alpha * if (focusedHere) (1f - ((launch - .7f) / .3f).coerceIn(0f, 1f)) else (1f - launch)
+                // A row arriving: each box a beat after the one nearer the focus, from the side (or from below) it comes.
+                val step = abs(offset).roundToInt().coerceAtMost(4)
+                val arrive = if (leaving != null && flying.isEmpty()) stagger(swap.value, step, .07f) else 1f
+                val rise = stagger(entrance.value, step, .09f)
+                val side = leaving?.side ?: 0
+                val dx = side * rowTravel * (1f - arrive) + sign(offset) * apart
+                val dy = (if (leaving != null && side == 0) riseTravel * (1f - arrive) else 0f) + riseTravel * 1.5f * (1f - rise)
+                val hidden = (focusedHere && handedOff) || game.id in flying
+                val alpha = if (hidden) 0f else p.alpha * arrive * rise * (if (focusedHere) 1f else (1f - launch) * (1f - detail))
                 if (alpha > .01f) GameBox(look, w.dp, h.dp, p.angle * (1f - toward),
-                    Modifier.zIndex(20f - abs(offset)).absoluteOffset((center + p.centerX - w / 2).dp, (bottom - h - toward * 40f).dp)
+                    Modifier.zIndex(20f - abs(offset)).absoluteOffset((center + p.centerX - w / 2 + dx).dp, (bottom - h - toward * 40f + dy).dp)
                         .semantics { contentDescription = "${look.title}, ${game.system.title}" }
                         .tap("box-$i", enabled) { if (focusedHere) shell.select() else shell.coordinator.navigate(i - index) },
                     translateZ = (p.lift + toward * 520f).dp, dim = p.dim, focused = abs(offset) < .5f, alpha = alpha)
             }
         }
     }
+    SideEffect { frame.clear(); frame.addAll(shown) }
+}
+
+/** A row on its way out: the boxes it showed, at their distances from the focus, and the side it leaves toward (0: it sinks). */
+private class Leaving(val boxes: List<Pair<LibraryGame, Float>>, val side: Int, val id: Int)
+
+/** The console's opening rise plays once per start of the app, not on every return to the shelf. */
+private object ShelfEntrance { var done = false }
+
+private const val ROW_TRAVEL = 340f
+private const val RISE_TRAVEL = 28f
+private const val APART_TRAVEL = 120f
+
+/** Where the focused box stands on the shelf at rest: where a box flying to or from the shelf lands. */
+fun shelfFocusPose(media: dev.cartridge.domain.Media): BoxPose = shelfPose(media, 0f)
+
+/** Where a box [offset] places from the focus stands on the shelf at rest, and how dim it is there. */
+fun shelfDim(offset: Float) = pose(offset).dim
+
+fun shelfPose(media: dev.cartridge.domain.Media, offset: Float): BoxPose {
+    val (baseW, baseH) = boxSize(media)
+    val p = pose(offset)
+    val w = baseW * p.scale; val h = baseH * p.scale
+    val bottom = ShelfGeometry.AREA_TOP + ShelfGeometry.AREA_HEIGHT - ShelfGeometry.BOTTOM_GAP
+    return BoxPose(Layout.WIDTH / 2 + p.centerX - w / 2, bottom - h, w, h, p.angle, p.lift)
 }
 
 /** The focused game's name, facts and history, centred under the shelf. */
@@ -381,7 +476,7 @@ private fun playtime(ms: Long): String {
 }
 
 /** Frames drawn in the last second, for the frame-rate readout. */
-@Composable private fun rememberFrameRate(): Int {
+@Composable internal fun rememberFrameRate(): Int {
     var rate by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
         var frames = 0; var since = 0L

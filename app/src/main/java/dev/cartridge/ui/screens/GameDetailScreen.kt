@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -61,7 +62,7 @@ private sealed class StripItem {
  * sheet opened from it (More, Game settings, Manage) covers it.
  */
 @Composable fun GameDetailScreen(state: CollectionState, shell: ConsoleShell, device: DeviceStatus, swapped: Boolean, active: Boolean,
-    modifier: Modifier = Modifier) {
+    modifier: Modifier = Modifier, enter: Float = 1f, drawBox: Boolean = true) {
     val game = state.selectedGame ?: return Box(modifier.fillMaxSize().background(Palette.Canvas))
     val media = LocalGameMedia.current
     val faces = rememberFaces(media, game.label, game.shownAs)
@@ -87,30 +88,34 @@ private sealed class StripItem {
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color(0xEB000000), .38f to Color(0xC7000000), .72f to Color(0x40000000), 1f to Color(0x59000000))))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x8C000000), .18f to Color.Transparent, .62f to Color.Transparent, .92f to Palette.Canvas)))
 
-        Header(shell, device, backdrop, swapped)
+        // Coming in, the words arrive a beat after one another, each from a little below; going out, the reverse.
+        val rise = LocalDesignMotion.current.travel(18f)
+        fun Modifier.arriving(order: Int) = graphicsLayer { val t = stagger(enter, order); alpha = t; translationY = ((1f - t) * rise).dp.toPx() }
+        Box(Modifier.arriving(0)) { Header(shell, device, backdrop, swapped) }
 
         // The box, turned toward the words beside it.
         val (baseW, baseH) = boxSize(game.shownAs)
         val look = remember(game.title, game.system, game.metadata["year"], faces) { BoxLook.of(game, faces) }
-        GameBox(look, (baseW * 1.24f).dp, (baseH * 1.24f).dp, 24f, Modifier.absoluteOffset(96.dp, 124.dp)
+        // The stage draws it while it flies here from the shelf; at rest it is this screen's own.
+        if (drawBox) GameBox(look, (baseW * 1.24f).dp, (baseH * 1.24f).dp, 24f, Modifier.absoluteOffset(96.dp, 124.dp)
             .semantics { contentDescription = "${look.title}, ${game.system.title}" }, focused = true)
 
         Column(Modifier.absoluteOffset(400.dp, 112.dp).width(640.dp)) {
-            Facts(game, look)
-            if (page != null) Actions(page, shell, swapped, Modifier.padding(top = 22.dp))
-            Stats(game, shell, Modifier.padding(top = 22.dp))
+            Column(Modifier.arriving(1)) { Facts(game, look) }
+            if (page != null) Actions(page, shell, swapped, Modifier.padding(top = 22.dp).arriving(2))
+            Stats(game, shell, Modifier.padding(top = 22.dp).arriving(3))
         }
 
-        if (strip.isNotEmpty()) Strip(strip, game, faces, shell, Modifier.absoluteOffset(96.dp, 506.dp))
+        if (strip.isNotEmpty()) Strip(strip, game, faces, shell, Modifier.absoluteOffset(96.dp, 506.dp).arriving(4))
 
         val primary = page?.rows?.firstOrNull()
-        if (active) HintBar(buildList {
+        ScreenHints(buildList {
             if (primary != null) add(Hint(Pad.confirm(swapped), primary.title, primary = true, tag = "detail-primary") { shell.activate(page, primary) })
             if (strip.any { it is StripItem.Video }) add(Hint(Pad.R3, if (shell.trailerSound) "Mute trailer" else "Trailer sound", tag = "trailer-sound") { shell.stick(1) })
             add(Hint(Pad.Y, if (game.favorite) "Unfavorite" else "Favorite", tag = "detail-favorite") { shell.secondary() })
             add(Hint(Pad.X, "Game settings", tag = "detail-settings") { shell.alternate() })
             add(Hint(Pad.back(swapped), "Back", tag = "back") { shell.back() })
-        }, Modifier.align(Alignment.BottomStart))
+        }, active, Modifier.align(Alignment.BottomStart))
     }
 }
 
@@ -326,4 +331,10 @@ private fun day(time: Long): String {
         days < 7 -> "$days days ago"
         else -> java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(time))
     }
+}
+
+/** Where Game detail's box stands: where the shelf's box lands when it flies here, and where it sets off back from. */
+fun detailBoxPose(media: dev.cartridge.domain.Media): BoxPose {
+    val (baseW, baseH) = boxSize(media)
+    return BoxPose(96f, 124f, baseW * 1.24f, baseH * 1.24f, 24f)
 }

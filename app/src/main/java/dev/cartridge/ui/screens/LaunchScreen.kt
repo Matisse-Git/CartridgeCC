@@ -32,6 +32,7 @@ import dev.cartridge.session.CollectionScreen
 import dev.cartridge.session.CollectionState
 import dev.cartridge.session.Launch
 import dev.cartridge.ui.design.*
+import kotlinx.coroutines.launch
 
 /**
  * Launching (spec 4.4, Launch.dc.html): while a game is on its way in, its screenshot at half strength behind a radial
@@ -39,17 +40,23 @@ import dev.cartridge.ui.design.*
  * over the shelf as the shelf's box comes forward, and when the game's first picture is ready the box flies on toward
  * the camera as the screen fades into the game. [pauseShortcut] names the buttons that open the pause menu in play.
  */
-@Composable fun LaunchScreen(state: CollectionState, pauseShortcut: String, modifier: Modifier = Modifier) {
+@Composable fun LaunchScreen(state: CollectionState, pauseShortcut: String, modifier: Modifier = Modifier, from: BoxPose? = null) {
     val reduced = state.reducedMotion
     // The launch stays drawn while it fades out after the coordinator has let go of it.
     var shown by remember { mutableStateOf<Launch?>(null) }
     val appear = remember { Animatable(0f) }
     val leave = remember { Animatable(0f) }
     val progress = remember { Animatable(0f) }
+    // The box itself is the one that was on the shelf or on Game detail: it flies from [from] to its place here.
+    val flight = remember { Animatable(1f) }
+    var origin by remember { mutableStateOf<BoxPose?>(null) }
     val current = state.launch
     if (current != null && current != shown) SideEffect { shown = current }
     LaunchedEffect(current?.gameId) {
         if (current != null) {
+            origin = from
+            flight.snapTo(if (from != null && !reduced) 0f else 1f)
+            launch { flight.animateTo(1f, tween(DesignMotion.FLIGHT_MS, easing = DesignMotion.Ease)) }
             leave.snapTo(0f); progress.snapTo(.08f)
             // From the shelf the screen rises while the box comes forward; from a resumed session it has the curtain's time.
             val fromShelf = state.screen == CollectionScreen.Inserting
@@ -79,11 +86,14 @@ import dev.cartridge.ui.design.*
     val look = remember(game.title, game.system, game.metadata["year"], faces) { BoxLook.of(game, faces) }
     val gone = leave.value
     val alpha = appear.value * (1f - gone)
-    if (alpha <= 0f) return
+    // A box that flew here is there from the start; the screen around it rises behind it.
+    val boxAlpha = if (origin != null) 1f - gone else alpha
+    if (alpha <= 0f && boxAlpha <= 0f) return
 
-    BoxWithConstraints(modifier.fillMaxSize().graphicsLayer { this.alpha = alpha }.background(Palette.Canvas).testTag("launch-screen")
+    BoxWithConstraints(modifier.fillMaxSize().testTag("launch-screen")
         .semantics { contentDescription = "Starting ${look.title}" }) {
         val cx = maxWidth.value / 2f
+        Box(Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha }.background(Palette.Canvas)) {
         // The game's own scenery at 50 %, softened, under a vignette that keeps the middle open.
         MediaBackdrop(game, faces, Modifier.fillMaxSize().alpha(.5f).then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(2.dp) else Modifier),
             playVideo = false)
@@ -96,19 +106,21 @@ import dev.cartridge.ui.design.*
                     Offset(-size.width, -size.height), size.copy(size.width * 3f, size.height * 3f))
             }
         }
+        }
 
         // The box, at Game detail's size, fitted to the mockup's 262 so a tall case keeps clear of the words.
         val (baseW, baseH) = boxSize(game.shownAs)
         val k = minOf(1.24f, BOX_HEIGHT / baseH)
         val w = baseW * k; val h = baseH * k
         // It settles in from slightly nearer as the screen rises, and flies on toward the camera as it fades.
-        val arrive = 1f - appear.value
+        val arrive = if (origin != null) 0f else 1f - appear.value
         val near = arrive * .12f + gone * gone * .9f
-        GameBox(look, w.dp, h.dp, -8f * (1f - gone), Modifier.absoluteOffset((cx - w / 2f).dp, (140f + BOX_HEIGHT - h).dp)
-            .graphicsLayer { scaleX = 1f + near; scaleY = 1f + near; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(.5f, .55f) },
-            translateZ = 60.dp, focused = true)
+        val here = BoxPose(cx - w / 2f, 140f + BOX_HEIGHT - h, w, h, -8f * (1f - gone), 60f)
+        val pose = origin?.toward(here, flight.value) ?: here
+        PosedBox(look, pose, Modifier.graphicsLayer { scaleX = 1f + near; scaleY = 1f + near; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(.5f, .55f) },
+            alpha = boxAlpha)
 
-        Column(Modifier.absoluteOffset(0.dp, 456.dp).fillMaxWidth().alpha(1f - gone), horizontalAlignment = Alignment.CenterHorizontally,
+        Column(Modifier.absoluteOffset(0.dp, 456.dp).fillMaxWidth().alpha(alpha), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp)) {
             look.series?.let { Text(it, Typo.Caption.copy(fontWeight = FontWeight.SemiBold), color = Palette.Quiet, lines = 1) }
             Text(if (look.series != null) look.short else look.title, Typo.Title, Modifier.widthIn(max = 1000.dp).testTag("launch-title"), lines = 1)
@@ -120,7 +132,7 @@ import dev.cartridge.ui.design.*
             }
         }
 
-        PauseHint(pauseShortcut, Modifier.align(Alignment.BottomCenter).padding(bottom = 36.dp).alpha(1f - gone))
+        PauseHint(pauseShortcut, Modifier.align(Alignment.BottomCenter).padding(bottom = 36.dp).alpha(alpha))
     }
 }
 
