@@ -15,8 +15,8 @@ android {
         manifestPlaceholders["appLabel"] = "Cartridge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "0.7.0-ps1"
+        versionCode = 18
+        versionName = "0.8.0-redesign.1"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
@@ -45,6 +45,8 @@ android {
     }
     // Dolphin's build files need CMake 3.25 or later.
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.31.6" } }
+    // Releases are signed with this machine's debug key, so a release installs straight over a debug build and keeps its data.
+    buildTypes { getByName("release") { signingConfig = signingConfigs.getByName("debug") } }
     buildFeatures { compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
